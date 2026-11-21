@@ -15,6 +15,7 @@ PostgreSQL 17 conserva una identidad interna por paciente y un estado por solici
 | `Interaction` | Registro de una interacción en un canal, con actor y contenido opcionales. Se guarda el contenido necesario para dar continuidad al trámite. |
 | `DomainEvent` | Hecho de negocio asociado a una solicitud, con canal, actor opcional y datos en JSONB. |
 | `Appointment` | Hasta una fila por solicitud, vinculada a una clínica y un estudio. Cambios y cancelaciones actualizan esa fila. |
+| `AssistanceAuthorization` | Referencia de atención y permiso temporal de un asesor sobre una solicitud. |
 | `AuditLog` | Acción de seguridad con actor opcional y referencia genérica por tipo e ID de entidad. Sus metadatos son opcionales. |
 
 ## Integridad e historial
@@ -51,3 +52,10 @@ pnpm --filter @salud-digna/api exec prisma migrate diff --from-config-datasource
 La [migración de identidad](../apps/api/prisma/migrations/20261121201000_add_identity_link/migration.sql) agrega `IdentityLink`, un índice de paciente y la clave foránea que restringe la eliminación del paciente. El SQL se generó comparando el esquema anterior con el actual y se aplica con `pnpm --filter @salud-digna/api prisma:migrate:deploy`. Las bases que ya tienen la migración inicial conservan su historial.
 
 El consumo del desafío, la vinculación y la auditoría ocurren en la misma transacción. La unicidad de `PatientIdentity(provider, externalId)` protege la titularidad incluso cuando dos desafíos apuntan al mismo identificador.
+
+
+## Migración de atención asistida
+
+La [migración de atención asistida](../apps/api/prisma/migrations/20261121203200_add_assistance_authorization/migration.sql) añade una tabla con la referencia y el permiso. El hash es único. El canje rellena en una sola escritura condicional el asesor, la fecha de consumo y el vencimiento del permiso. Las claves foráneas vinculan la solicitud y al asesor, y el índice facilita comprobar permisos vigentes por solicitud y asesor.
+
+Aplica las migraciones versionadas a la base autorizada con `pnpm --filter @salud-digna/api prisma:migrate:deploy`.

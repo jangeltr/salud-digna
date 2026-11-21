@@ -1,7 +1,8 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { activeAssistance, requireAssistance } from '../call-center/assistance-access';
 import { isUUID } from 'class-validator';
 import { Prisma } from '../generated/prisma/client';
-import { AppointmentStatus, ServiceRequestStatus, ServiceRequestType } from '../generated/prisma/enums';
+import { AppointmentStatus, Channel, ServiceRequestStatus, ServiceRequestType } from '../generated/prisma/enums';
 import { PrismaService } from '../persistence/prisma.service';
 import type { WebRequestOrigin } from '../requests/request-origin';
 import {
@@ -9,6 +10,8 @@ import {
 } from '../requests/request-workflow';
 import type { RequestPaginationDto } from '../requests/requests.dto';
 import type { AppointmentDto, AppointmentPageDto } from './appointments.dto';
+
+type ConfirmationActor = WebRequestOrigin | { channel: typeof Channel.CALL_CENTER; actorUserId: string };
 
 const appointmentFields = {
   id: true,
@@ -33,11 +36,14 @@ function appointmentConflict(): ConflictException {
 export class AppointmentsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async confirm(actor: WebRequestOrigin, requestId: string, version: number): Promise<AppointmentDto> {
-    const { patientId, channel } = actor;
+  async confirm(actor: ConfirmationActor, requestId: string, version: number): Promise<AppointmentDto> {
+    const { actorUserId, channel } = actor;
 
     try {
       return await this.prisma.client.$transaction(async (tx) => {
+        const patientId = channel === Channel.CALL_CENTER
+          ? await requireAssistance(tx, actorUserId, requestId)
+          : actor.patientId;
         const request = await this.findRequest(tx, patientId, requestId);
         if (request.status === ServiceRequestStatus.COMPLETED) {
           return this.confirmedAppointment(tx, patientId, requestId, request);
@@ -58,6 +64,9 @@ export class AppointmentsService {
             id: requestId, patientId, version,
             status: ServiceRequestStatus.PENDING_CONFIRMATION,
             currentStep: RequestStep.REVIEW,
+            ...(channel === Channel.CALL_CENTER && {
+              assistanceAuthorizations: { some: activeAssistance(actorUserId) },
+            }),
           },
           data: {
             status: ServiceRequestStatus.COMPLETED, currentStep: RequestStep.CONFIRMED,
@@ -66,6 +75,7 @@ export class AppointmentsService {
         });
 
         if (!changed.count) {
+          if (channel === Channel.CALL_CENTER) await requireAssistance(tx, actorUserId, requestId);
           const latest = await this.findRequest(tx, patientId, requestId);
           if (latest.status === ServiceRequestStatus.COMPLETED) {
             return this.confirmedAppointment(tx, patientId, requestId, latest);
@@ -85,7 +95,7 @@ export class AppointmentsService {
           },
           select: appointmentFields,
         });
-        const event = { ...actor, requestId, createdAt: completedAt };
+        const event = { patientId, actorUserId, channel, requestId, createdAt: completedAt };
         const nextVersion = version + 1;
         await tx.domainEvent.createMany({
           data: [

@@ -74,8 +74,12 @@ export class RequestsService {
   async get(origin: RequestOrigin, id: string): Promise<RequestSnapshotDto> {
     const actor = await this.authorize(origin);
     return this.prisma.client.$transaction(async (tx) => {
-      return snapshot(await this.findOwn(tx, actor.patientId, id));
+      return this.readSnapshot(tx, actor.patientId, id);
     }, { isolationLevel: 'RepeatableRead' });
+  }
+
+  async readSnapshot(tx: Prisma.TransactionClient, patientId: string, id: string): Promise<RequestSnapshotDto> {
+    return snapshot(await this.findOwn(tx, patientId, id));
   }
 
   async updateContext(origin: RequestOrigin, id: string, input: UpdateRequestContextDto): Promise<RequestSnapshotDto> {
@@ -127,12 +131,13 @@ export class RequestsService {
       const switched = current.lastChannel !== actor.channel;
       await this.claim(tx, current, version, switched || action === 'REQUEST_PAUSED', actor.channel);
       const updated = await this.findOwn(tx, actor.patientId, id);
+      const createdAt = new Date();
       await this.recordEvents(tx, actor, id, [
         { type: action, payload: { from: current.lastChannel, to: actor.channel, version: updated.version } },
         ...this.channelEvents(current.lastChannel, actor.channel, updated.version),
-      ]);
+      ], createdAt);
       await tx.interaction.create({
-        data: { requestId: id, ...actor, type: action },
+        data: { requestId: id, ...actor, type: action, createdAt },
       });
       return snapshot(updated);
     }, { isolationLevel: 'ReadCommitted' });
@@ -193,7 +198,8 @@ export class RequestsService {
     actor: RequestActor,
     requestId: string,
     events: RequestEvent[],
+    createdAt?: Date,
   ): Promise<void> {
-    await tx.domainEvent.createMany({ data: events.map((event) => ({ ...event, ...actor, requestId })) });
+    await tx.domainEvent.createMany({ data: events.map((event) => ({ ...event, ...actor, requestId, createdAt })) });
   }
 }

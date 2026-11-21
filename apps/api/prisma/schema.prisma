@@ -83,6 +83,7 @@ model User {
   interactions Interaction[]
   domainEvents DomainEvent[]
   auditLogs    AuditLog[]
+  assistanceAuthorizations AssistanceAuthorization[]
 }
 
 model Clinic {
@@ -127,6 +128,7 @@ model ServiceRequest {
   interactions Interaction[]
   domainEvents DomainEvent[]
   appointment  Appointment?
+  assistanceAuthorizations AssistanceAuthorization[]
 
   @@unique([id, patientId])
   @@index([patientId, createdAt])
@@ -218,4 +220,19 @@ model IdentityLink {
   patient Patient @relation(fields: [patientId], references: [id], onDelete: Restrict)
 
   @@index([patientId])
+}
+
+model AssistanceAuthorization {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  requestId       String    @db.Uuid
+  codeHash        String    @unique @db.Char(64)
+  codeExpiresAt   DateTime  @db.Timestamptz(3)
+  claimedAt       DateTime? @db.Timestamptz(3)
+  advisorId       String?   @db.Uuid
+  accessExpiresAt DateTime? @db.Timestamptz(3)
+
+  request ServiceRequest @relation(fields: [requestId], references: [id], onDelete: Restrict)
+  advisor User?          @relation(fields: [advisorId], references: [id], onDelete: Restrict)
+
+  @@index([requestId, advisorId, accessExpiresAt])
 }

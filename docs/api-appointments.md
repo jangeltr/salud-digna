@@ -55,4 +55,4 @@ Los listados devuelven `{ items, page, limit, hasMore }`. Los valores predetermi
 
 ## Límites del MVP
 
-Los horarios son demostrativos y carecen de validez como disponibilidad real de Salud Digna. La confirmación registra la cita del MVP. La comprobación de horarios laborales, cupos, disponibilidad real y calendarios externos queda pendiente. La confirmación asistida por Call Center requerirá un flujo verificable de autorización para atender al paciente.
+Los horarios son demostrativos y carecen de validez como disponibilidad real de Salud Digna. La confirmación registra la cita del MVP. La comprobación de horarios laborales, cupos, disponibilidad real y calendarios externos queda pendiente. La [confirmación asistida de Call Center](api-call-center.md) exige un permiso vigente para el asesor. Reutiliza la transacción de citas y registra el canal `CALL_CENTER` y al asesor como actor.

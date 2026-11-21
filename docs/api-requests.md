@@ -71,7 +71,7 @@ La versión se comprueba con una escritura condicional. Con `409`, vuelve a cons
 
 ## Canales, acceso y trazabilidad
 
-Las peticiones públicas con JWT se registran como `WEB`, incluidas las que una app haga al mismo contrato. La interfaz interna de `RequestsService` admite un adaptador de WhatsApp que compruebe la procedencia de la acción antes de invocar el servicio. `IdentityService` debe resolver el identificador real como verificado y la cuenta de paciente debe estar activa. Los identificadores del simulador quedan fuera de ese flujo. El acceso de `ADVISOR` y `ADMIN` queda pendiente del flujo autorizado y auditado de Call Center.
+Las peticiones públicas con JWT se registran como `WEB`, incluidas las que una app haga al mismo contrato. La interfaz interna de `RequestsService` admite un adaptador de WhatsApp que compruebe la procedencia de la acción antes de invocar el servicio. `IdentityService` debe resolver el identificador real como verificado y la cuenta de paciente debe estar activa. Los identificadores del simulador quedan fuera de ese flujo. El rol `ADVISOR` recupera y confirma por las [rutas de Call Center](api-call-center.md) con un permiso temporal. El rol `ADMIN` utiliza las [rutas de monitoreo](api-admin.md).
 
 Se registran `REQUEST_CREATED`, `REQUEST_CONTEXT_UPDATED`, `REQUEST_PAUSED`, `REQUEST_RESUMED`, `CHANNEL_SWITCHED` y `REQUEST_STATUS_CHANGED` según corresponda. Los eventos incluyen solicitud, paciente, actor, canal y fecha. Su carga conserva la versión y el paso, estado o canal relevantes. Las notas y selecciones quedan en el contexto. Pausa y reanudación generan además una `Interaction` sin contenido. Cada escritura y su trazabilidad se guardan en una sola transacción.
 

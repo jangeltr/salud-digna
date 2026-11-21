@@ -76,7 +76,7 @@ export class ListRequestsDto extends RequestPaginationDto {
   status?: ServiceRequestStatus;
 }
 
-class RequestContextDto {
+export class RequestContextDto {
   @ApiPropertyOptional({ format: 'uuid', example: studyExample })
   studyId?: string;
 

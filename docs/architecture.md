@@ -6,11 +6,13 @@ La API se ejecutará como un monolito modular en NestJS con TypeScript. Los adap
 
 El backend conservará un identificador interno estable para el paciente y otro para la solicitud. Una vez verificada la identidad en el canal entrante, el backend resolverá la relación con el paciente y verificará su autorización sobre la solicitud. A partir de esos identificadores podrá recuperar el estado, los datos parciales y el historial. La vinculación de una identidad externa requerirá verificación y quedará registrada para auditoría.
 
-`IdentityModule` devuelve el mismo `patientId` a los adaptadores internos cuando la identidad de origen está verificada. La vinculación requiere un código emitido desde una sesión de paciente y una prueba del canal aportada por un adaptador confiable. Las identidades de demostración se aíslan con un prefijo reservado y quedan fuera de la resolución de canales reales. Los futuros servicios de Call Center deberán autenticar a sus operadores como `ADVISOR` o `ADMIN` y comprobar el acceso al paciente resuelto. Consulta el [contrato de identidad](api-identity.md).
+`IdentityModule` devuelve el mismo `patientId` a los adaptadores internos cuando la identidad de origen está verificada. La vinculación requiere un código emitido desde una sesión de paciente y una prueba del canal aportada por un adaptador confiable. Las identidades de demostración se aíslan con un prefijo reservado y quedan fuera de la resolución de canales reales. Call Center autentica a los asesores como `ADVISOR` y exige un permiso temporal emitido por el titular para la solicitud concreta. Consulta el [contrato de identidad](api-identity.md).
 
 `RequestsModule` conserva el contexto parcial junto a la solicitud. La API registra las acciones autenticadas por JWT como `WEB`. La entrada interna de WhatsApp exige un adaptador confiable, una identidad verificada y una cuenta de paciente activa. Una interrupción conserva el paso, y una reanudación desde otro canal registra el cambio. Consulta los [contratos de solicitudes](api-requests.md).
 
 `AppointmentsModule` completa la solicitud y confirma la cita en la misma transacción, con el control de versión de Requests y la restricción de una cita por solicitud. El paciente puede recuperar la confirmación desde cualquier consumidor autenticado. Consulta el [contrato de citas](api-appointments.md).
+
+El flujo [de Call Center](api-call-center.md) permite al paciente emitir una referencia, al asesor canjearla y recuperar el contexto, y al servicio de citas confirmar con el actor y canal de atención. [Patient Journey](api-journey.md) presenta los eventos estructurados de la solicitud y las interacciones operativas complementarias. [Monitoreo administrativo](api-admin.md) ofrece estadísticas, una lista operativa y un historial individual con registro de auditoría.
 
 ## Persistencia y eventos
 
