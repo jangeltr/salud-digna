@@ -1,4 +1,4 @@
-import { Body, Controller, ForbiddenException, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import {
   ApiBadRequestResponse, ApiBearerAuth, ApiConflictResponse, ApiCreatedResponse, ApiForbiddenResponse,
   ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags, ApiUnauthorizedResponse,
@@ -7,17 +7,13 @@ import type { AccountDto } from '../auth/auth.dto';
 import { CurrentUser } from '../auth/authenticated-user';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles, RolesGuard } from '../auth/roles.guard';
-import { Channel, UserRole } from '../generated/prisma/enums';
+import { UserRole } from '../generated/prisma/enums';
 import {
   CreateRequestDto, ListRequestsDto, RequestPageDto, RequestPaginationDto,
   RequestSnapshotDto, RequestVersionDto, UpdateRequestContextDto,
 } from './requests.dto';
-import { RequestsService, type RequestOrigin } from './requests.service';
-
-function webSession(user: AccountDto): RequestOrigin {
-  if (!user.patientId) throw new ForbiddenException('La cuenta requiere un perfil de paciente.');
-  return { channel: Channel.WEB, patientId: user.patientId, actorUserId: user.id };
-}
+import { webSession } from './request-origin';
+import { RequestsService } from './requests.service';
 
 const conflict = { description: 'Versión desactualizada o solicitud cerrada. Consulta el estado vigente.' };
 const notFound = { description: 'Solicitud inexistente o fuera del perfil autenticado.' };

@@ -13,6 +13,7 @@ Todas las rutas públicas requieren `Authorization: Bearer <jwt>` de un usuario 
 | `PATCH /api/v1/requests/:id/context` | `version` y selecciones o notas a actualizar. | `200` con el contexto y la versión nuevos. |
 | `POST /api/v1/requests/:id/pause` | `{"version":2}`, con la versión vigente. | `200` con el paso y el contexto conservados. Registra la interrupción e incrementa la versión. |
 | `POST /api/v1/requests/:id/resume` | `{"version":3}`, con la versión vigente. | `200` con el avance actual. Si cambia de canal, actualiza `lastChannel` e incrementa la versión. |
+| `POST /api/v1/requests/:id/confirm` | `{"version":2}`, con la versión para confirmar. | `200` con la cita confirmada o recuperada. Consulta el [contrato de citas](api-appointments.md). |
 
 Los listados devuelven `{ items, page, limit, hasMore }` y ordenan por `updatedAt` descendente, con desempate por ID. La primera página es 1 y el tamaño predeterminado es 20, con un máximo de 100. `/pending` incluye `DRAFT`, `IN_PROGRESS` y `PENDING_CONFIRMATION`, también tras una pausa.
 
@@ -64,7 +65,7 @@ Ejemplo sintético de la respuesta a la actualización.
 | Con clínica, falta fecha | `SELECT_DATETIME` | `IN_PROGRESS` |
 | Con estudio, clínica y fecha | `REVIEW` | `PENDING_CONFIRMATION` |
 
-Las correcciones pueden hacer retroceder el paso. `COMPLETED` y `CANCELLED` son estados cerrados y rechazan escrituras ordinarias. `CONFIRMED` se reserva para la confirmación definitiva. La fecha propuesta queda guardada para revisión y aún carece de una reserva o validación de disponibilidad.
+Las correcciones pueden hacer retroceder el paso. `COMPLETED` y `CANCELLED` son estados cerrados y rechazan escrituras ordinarias. La confirmación cambia la solicitud a `COMPLETED` con paso `CONFIRMED` y crea la cita en una sola transacción. Los horarios siguen siendo demostrativos. Consulta los [requisitos y reintentos de confirmación](api-appointments.md).
 
 La versión se comprueba con una escritura condicional. Con `409`, vuelve a consultar `GET /api/v1/requests/:id` y aplica la intención del usuario sobre la versión nueva si la solicitud sigue abierta. Una pausa registra la interrupción sin cerrar el trámite. Una reanudación en el mismo canal registra actividad con la misma versión y el mismo contexto.
 

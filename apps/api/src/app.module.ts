@@ -5,6 +5,7 @@ import { IdentityModule } from './identity/identity.module';
 import { RequestsModule } from './requests/requests.module';
 import { ClinicsModule } from './clinics/clinics.module';
 import { StudiesModule } from './studies/studies.module';
+import { AppointmentsModule } from './appointments/appointments.module';
 
-@Module({ imports: [HealthModule, AuthModule, IdentityModule, RequestsModule, ClinicsModule, StudiesModule] })
+@Module({ imports: [HealthModule, AuthModule, IdentityModule, RequestsModule, ClinicsModule, StudiesModule, AppointmentsModule] })
 export class AppModule {}

@@ -1,14 +1,15 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import type { Prisma } from '../generated/prisma/client';
 import { Channel, ServiceRequestStatus, ServiceRequestType, UserRole } from '../generated/prisma/enums';
 import { IdentityService } from '../identity/identity.service';
 import { PrismaService } from '../persistence/prisma.service';
 import type { RequestPageDto, RequestPaginationDto, RequestSnapshotDto, UpdateRequestContextDto } from './requests.dto';
-import { advanceWorkflow, OPEN_REQUEST_STATUSES, RequestStep, type RequestContextData } from './request-workflow';
+import type { RequestOrigin } from './request-origin';
+import {
+  advanceWorkflow, OPEN_REQUEST_STATUSES, readRequestContext, RequestStep, requireActiveSelections, versionConflict,
+} from './request-workflow';
 
-export type RequestOrigin =
-  | { channel: typeof Channel.WEB; patientId: string; actorUserId: string }
-  | { channel: typeof Channel.WHATSAPP; externalId: string };
+export type { RequestOrigin } from './request-origin';
 
 type RequestActor = { patientId: string; channel: Channel; actorUserId: string };
 type RequestEvent = Pick<Prisma.DomainEventCreateManyInput, 'type' | 'payload'>;
@@ -18,18 +19,7 @@ type StoredRequest = Prisma.ServiceRequestGetPayload<{ include: typeof includeCo
 
 function snapshot(row: StoredRequest): RequestSnapshotDto {
   const { patientId: _patientId, context, ...request } = row;
-  const data = context?.data;
-  const publicContext: RequestContextData = {};
-  if (data && typeof data === 'object' && !Array.isArray(data)) {
-    for (const key of ['studyId', 'clinicId', 'scheduledAt', 'notes'] as const) {
-      if (typeof data[key] === 'string') publicContext[key] = data[key];
-    }
-  }
-  return { ...request, context: publicContext };
-}
-
-function versionConflict(): ConflictException {
-  return new ConflictException('La versión cambió. Recupera el estado actualizado de la solicitud.');
+  return { ...request, context: readRequestContext(context?.data) };
 }
 
 @Injectable()
@@ -96,16 +86,7 @@ export class RequestsService {
       await this.claim(tx, current, version, true);
       const next = advanceWorkflow(snapshot(current).context, patch);
 
-      if (next.context.studyId && !await tx.study.findFirst({
-        where: { id: next.context.studyId, isActive: true }, select: { id: true },
-      })) {
-        throw new BadRequestException('Selecciona un estudio activo.');
-      }
-      if (next.context.clinicId && !await tx.clinic.findFirst({
-        where: { id: next.context.clinicId, isActive: true }, select: { id: true },
-      })) {
-        throw new BadRequestException('Selecciona una clínica activa.');
-      }
+      await requireActiveSelections(tx, next.context);
 
       const data = { ...next.context };
       await tx.requestContext.upsert({

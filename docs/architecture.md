@@ -10,6 +10,8 @@ El backend conservará un identificador interno estable para el paciente y otro 
 
 `RequestsModule` conserva el contexto parcial junto a la solicitud. La API registra las acciones autenticadas por JWT como `WEB`. La entrada interna de WhatsApp exige un adaptador confiable, una identidad verificada y una cuenta de paciente activa. Una interrupción conserva el paso, y una reanudación desde otro canal registra el cambio. Consulta los [contratos de solicitudes](api-requests.md).
 
+`AppointmentsModule` completa la solicitud y confirma la cita en la misma transacción, con el control de versión de Requests y la restricción de una cita por solicitud. El paciente puede recuperar la confirmación desde cualquier consumidor autenticado. Consulta el [contrato de citas](api-appointments.md).
+
 ## Persistencia y eventos
 
 PostgreSQL 17 será la fuente de verdad. Prisma ORM 7 utiliza el adaptador `@prisma/adapter-pg` para el acceso a datos y Prisma Migrate para versionar los cambios de esquema. Las actualizaciones de estado e historial que formen parte de una misma operación se persistirán en una transacción. Los módulos podrán publicar eventos internos después de confirmar la transacción para coordinar efectos secundarios.

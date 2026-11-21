@@ -10,7 +10,7 @@
 | Requests | Implementado para agendamiento. Crea y recupera solicitudes, registra interrupciones y reanudaciones y controla escrituras concurrentes. |
 | Context | El motor de solicitudes conserva el contexto parcial y registra las interacciones operativas de pausa y reanudación. |
 | Workflow | El motor recalcula paso y estado a partir del contexto. Las transferencias al Call Center y las asignaciones quedan pendientes. |
-| Appointments | Gestionar disponibilidad, reservas y cambios de cita. |
+| Appointments | Implementado para confirmación y consulta de citas propias. La disponibilidad y los cambios de cita quedan pendientes. |
 | Events | Registrar eventos de negocio y, cuando se requiera, publicarlos y distribuirlos entre módulos. |
 | Audit | Registrar acciones relevantes y correlacionarlas con el actor y la solicitud. |
 
@@ -25,3 +25,5 @@ Consulta los [contratos de Identity y el simulador](api-identity.md).
 Consulta los [contratos del motor de solicitudes](api-requests.md).
 
 Consulta los contratos de [clínicas](api-clinics.md) y [estudios](api-studies.md).
+
+Consulta los [contratos de confirmación y consulta de citas](api-appointments.md).

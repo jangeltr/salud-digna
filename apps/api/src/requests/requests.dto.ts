@@ -2,12 +2,11 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { Equals, IsEnum, IsInt, IsISO8601, IsString, IsUUID, Matches, Max, MaxLength, Min, ValidateIf } from 'class-validator';
 import { Channel, ServiceRequestStatus, ServiceRequestType } from '../generated/prisma/enums';
-import { RequestStep } from './request-workflow';
+import { RequestStep, SCHEDULE_WITH_TIME_ZONE } from './request-workflow';
 
 const studyExample = '00000000-0000-4000-8000-000000000002';
 const clinicExample = '00000000-0000-4000-8000-000000000003';
 const scheduleExample = '2027-01-05T16:30:00.000Z';
-const withTimeZone = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?(Z|[+-]\d{2}:\d{2})$/;
 
 export class CreateRequestDto {
   @ApiPropertyOptional({ enum: ServiceRequestType, default: ServiceRequestType.APPOINTMENT })
@@ -40,7 +39,7 @@ export class UpdateRequestContextDto extends RequestVersionDto {
   @ApiPropertyOptional({ type: String, format: 'date-time', nullable: true, example: scheduleExample })
   @ValidateIf((_object, value) => value !== undefined && value !== null)
   @IsISO8601({ strict: true, strictSeparator: true })
-  @Matches(withTimeZone)
+  @Matches(SCHEDULE_WITH_TIME_ZONE)
   scheduledAt?: string | null;
 
   @ApiPropertyOptional({ type: String, nullable: true, maxLength: 500, example: 'Prefiero el turno de la mañana.' })
