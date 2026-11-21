@@ -5,8 +5,8 @@
 | Auth | Implementado. Registra pacientes, autentica las cuentas activas y ofrece guards reutilizables de autenticación y roles. |
 | Patients | Mantener el identificador interno y el perfil del paciente. |
 | Identity | Implementado. Vincula identidades mediante códigos temporales, resuelve internamente identidades verificadas y ofrece un simulador de desarrollo. |
-| Studies | Consultar el catálogo de estudios y sus requisitos. |
-| Clinics | Mantener el catálogo de clínicas e identificar qué estudios ofrece cada sede. |
+| Studies | Implementado. Ofrece consulta pública de estudios activos y gestión del catálogo para administradores. |
+| Clinics | Implementado. Ofrece consulta pública de clínicas activas y gestión del catálogo para administradores. |
 | Requests | Implementado para agendamiento. Crea y recupera solicitudes, registra interrupciones y reanudaciones y controla escrituras concurrentes. |
 | Context | El motor de solicitudes conserva el contexto parcial y registra las interacciones operativas de pausa y reanudación. |
 | Workflow | El motor recalcula paso y estado a partir del contexto. Las transferencias al Call Center y las asignaciones quedan pendientes. |
@@ -23,3 +23,5 @@ Consulta los [contratos de Auth y la gestión inicial de administradores](api-au
 Consulta los [contratos de Identity y el simulador](api-identity.md).
 
 Consulta los [contratos del motor de solicitudes](api-requests.md).
+
+Consulta los contratos de [clínicas](api-clinics.md) y [estudios](api-studies.md).

@@ -20,6 +20,8 @@ Los módulos que necesiten consultar PostgreSQL importarán `PrismaModule` e iny
 
 `GET /api/v1/health` indica que la API está disponible. Fuera de producción, `GET /api/v1/health/db` ejecuta `SELECT 1` a través de `HealthService` para verificar el acceso a PostgreSQL.
 
+Los catálogos públicos de clínicas y estudios muestran registros activos. Las escrituras requieren el rol `ADMIN` y usan desactivación lógica. Requests valida los identificadores activos al actualizar el contexto y puede recuperar el contexto histórico aunque los registros del catálogo se desactiven. Los precios de estudios usan Decimal en PostgreSQL y una cadena decimal en la API. Consulta los contratos de [clínicas](api-clinics.md) y [estudios](api-studies.md).
+
 ## Autenticación y autorización
 
 `AuthModule` registra la cuenta y el perfil de paciente en una sola transacción. La cuenta `User` identifica al actor autenticado y `Patient` identifica al titular de los trámites. Las rutas protegidas validan JWT Bearer y consultan el estado y rol actuales de la cuenta. Los módulos que usen roles también deberán comprobar la titularidad o asignación de cada recurso en sus consultas. Consulta los [contratos de autenticación](api-auth.md).
