@@ -6,6 +6,8 @@ La API se ejecutará como un monolito modular en NestJS con TypeScript. Los adap
 
 El backend conservará un identificador interno estable para el paciente y otro para la solicitud. Una vez verificada la identidad en el canal entrante, el backend resolverá la relación con el paciente y verificará su autorización sobre la solicitud. A partir de esos identificadores podrá recuperar el estado, los datos parciales y el historial. La vinculación de una identidad externa requerirá verificación y quedará registrada para auditoría.
 
+`IdentityModule` devuelve el mismo `patientId` a los adaptadores internos cuando la identidad de origen está verificada. La vinculación requiere un código emitido desde una sesión de paciente y una prueba del canal aportada por un adaptador confiable. Las identidades de demostración se aíslan con un prefijo reservado y quedan fuera de la resolución de canales reales. Los futuros servicios de Call Center deberán autenticar a sus operadores como `ADVISOR` o `ADMIN` y comprobar el acceso al paciente resuelto. Consulta el [contrato de identidad](api-identity.md).
+
 ## Persistencia y eventos
 
 PostgreSQL 17 será la fuente de verdad. Prisma ORM 7 utiliza el adaptador `@prisma/adapter-pg` para el acceso a datos y Prisma Migrate para versionar los cambios de esquema. Las actualizaciones de estado e historial que formen parte de una misma operación se persistirán en una transacción. Los módulos podrán publicar eventos internos después de confirmar la transacción para coordinar efectos secundarios.

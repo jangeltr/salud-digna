@@ -4,7 +4,7 @@
 | --- | --- |
 | Auth | Implementado. Registra pacientes, autentica las cuentas activas y ofrece guards reutilizables de autenticación y roles. |
 | Patients | Mantener el identificador interno y el perfil del paciente. |
-| Identity | Resolver identidades verificadas por canal y vincularlas al paciente con trazabilidad. |
+| Identity | Implementado. Vincula identidades mediante códigos temporales, resuelve internamente identidades verificadas y ofrece un simulador de desarrollo. |
 | Studies | Consultar el catálogo de estudios y sus requisitos. |
 | Clinics | Mantener el catálogo de clínicas e identificar qué estudios ofrece cada sede. |
 | Requests | Gestionar las solicitudes de estudio y su historial. |
@@ -19,3 +19,5 @@ Cada módulo pendiente se incorporará a `AppModule` cuando su primer flujo lo r
 El [modelo de datos del MVP](database.md) define las entidades que podrán usar estos módulos. La oferta de estudios por clínica, las asignaciones y las reglas de disponibilidad quedan para sus respectivos flujos.
 
 Consulta los [contratos de Auth y la gestión inicial de administradores](api-auth.md).
+
+Consulta los [contratos de Identity y el simulador](api-identity.md).

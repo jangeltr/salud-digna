@@ -5,7 +5,8 @@ PostgreSQL 17 conserva una identidad interna por paciente y un estado por solici
 | Entidad | Relaciones y propósito |
 | --- | --- |
 | `Patient` | Identidad interna. El correo y el teléfono son datos de contacto opcionales. |
-| `PatientIdentity` | Varios identificadores externos por paciente. El par `provider` y `externalId` es único. Los módulos de negocio deberán verificar la vinculación. |
+| `PatientIdentity` | Varios identificadores externos por paciente. El par `provider` y `externalId` es único. La verificación del canal se registra en `verifiedAt` cuando un adaptador confiable aporta la evidencia. |
+| `IdentityLink` | Desafío asociado a un paciente y proveedor. Conserva el hash SHA-256, vencimiento, contador de intentos y momento de consumo. |
 | `User` | Cuenta con correo único y rol. El vínculo con `Patient` es opcional y admite como máximo una cuenta vinculada por paciente. El hash de contraseña es opcional. |
 | `Clinic` | Catálogo de sedes referenciadas por las citas. |
 | `Study` | Catálogo de estudios referenciados por las citas. El precio usa `DECIMAL(12,2)`. |
@@ -43,3 +44,10 @@ pnpm --filter @salud-digna/api exec prisma migrate diff --from-config-datasource
 ```
 
 `migrate deploy` aplica las migraciones versionadas con los permisos del usuario configurado. Si faltan permisos, detén la operación. Para futuras migraciones de desarrollo, consulta la [estrategia de base auxiliar](development.md#prisma-y-migraciones).
+
+
+## Migración de identidad
+
+La [migración de identidad](../apps/api/prisma/migrations/20261121201000_add_identity_link/migration.sql) agrega `IdentityLink`, un índice de paciente y la clave foránea que restringe la eliminación del paciente. El SQL se generó comparando el esquema anterior con el actual y se aplica con `pnpm --filter @salud-digna/api prisma:migrate:deploy`. Las bases que ya tienen la migración inicial conservan su historial.
+
+El consumo del desafío, la vinculación y la auditoría ocurren en la misma transacción. La unicidad de `PatientIdentity(provider, externalId)` protege la titularidad incluso cuando dos desafíos apuntan al mismo identificador.
