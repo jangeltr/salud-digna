@@ -16,6 +16,10 @@ Los módulos que necesiten consultar PostgreSQL importarán `PrismaModule` e iny
 
 `GET /api/v1/health` indica que la API está disponible. Fuera de producción, `GET /api/v1/health/db` ejecuta `SELECT 1` a través de `HealthService` para verificar el acceso a PostgreSQL.
 
+## Autenticación y autorización
+
+`AuthModule` registra la cuenta y el perfil de paciente en una sola transacción. La cuenta `User` identifica al actor autenticado y `Patient` identifica al titular de los trámites. Las rutas protegidas validan JWT Bearer y consultan el estado y rol actuales de la cuenta. Los módulos que usen roles también deberán comprobar la titularidad o asignación de cada recurso en sus consultas. Consulta los [contratos de autenticación](api-auth.md).
+
 ## Integración pública
 
 REST con OpenAPI documentará operaciones, esquemas, autenticación y errores. Swagger UI permitirá consultar y probar el contrato en los entornos habilitados. Socket.IO podrá avisar de cambios a consumidores autorizados. Ante una reconexión, los consumidores podrán recuperar el estado vigente mediante REST.

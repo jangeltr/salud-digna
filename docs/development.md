@@ -15,7 +15,7 @@ Ejecuta los comandos desde la raíz del repositorio.
 ```sh
 pnpm install
 cp -n apps/api/.env.example apps/api/.env
-# Configura DATABASE_URL en apps/api/.env si vas a usar PostgreSQL.
+# Configura DATABASE_URL y JWT_SECRET en apps/api/.env.
 pnpm --filter @salud-digna/api dev
 ```
 
@@ -36,8 +36,12 @@ pnpm --filter @salud-digna/api start
 | `CORS_ORIGINS` | Lista vacía | Orígenes HTTP(S) separados por comas, sin rutas ni comodines. Las credenciales de CORS están desactivadas. El archivo de ejemplo permite `http://localhost:5173` y `http://localhost:5174`. |
 | `DATABASE_URL` | Vacía | URL de PostgreSQL para la API y Prisma CLI. |
 | `SHADOW_DATABASE_URL` | Vacía | URL de la base auxiliar dedicada para `prisma:migrate:dev`. |
+| `JWT_SECRET` | Obligatoria | Secreto aleatorio de al menos 32 bytes, sin espacios. La API no arranca si falta o es inválido. |
+| `JWT_EXPIRES_IN` | `1800` | Vigencia del JWT en segundos enteros positivos. |
 
 Usa PostgreSQL 17 accesible en `127.0.0.1:5432`, con la base `salud_digna` y el usuario `salud_digna_app` autenticado mediante SCRAM-SHA-256. Configura manualmente `DATABASE_URL` en `apps/api/.env` con el formato `postgresql://salud_digna_app:<PASSWORD>@127.0.0.1:5432/salud_digna?schema=public`. Sustituye el marcador por la contraseña codificada para URL y conserva el archivo local fuera de Git.
+
+Genera un secreto para tu instalación con `openssl rand -hex 32` y configúralo manualmente en `apps/api/.env`. Si la instalación parte de un archivo existente, agrega las variables de JWT sin reemplazar las demás. Consulta los [contratos de autenticación y la comprobación local](api-auth.md).
 
 Con los valores de desarrollo, estas peticiones comprueban la API, PostgreSQL y OpenAPI.
 

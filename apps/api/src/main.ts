@@ -21,6 +21,7 @@ async function bootstrap() {
   const openApi = new DocumentBuilder()
     .setTitle('Salud Digna API')
     .setVersion('1.0')
+    .addBearerAuth({ type: 'http', scheme: 'bearer', bearerFormat: 'JWT' })
     .build();
   SwaggerModule.setup('api/docs', app, () => SwaggerModule.createDocument(app, openApi));
 
