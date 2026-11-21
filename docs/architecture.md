@@ -4,7 +4,7 @@ La API se ejecutará como un monolito modular en NestJS con TypeScript. Los adap
 
 ## Continuidad entre canales
 
-El backend conservará un identificador interno estable para el paciente y otro para la conversación. Una vez verificada la identidad en el canal entrante, el backend resolverá la relación con el paciente y verificará su autorización sobre la conversación. A partir de esos identificadores podrá recuperar el estado, los datos parciales y el historial. La vinculación de una identidad externa requerirá verificación y quedará registrada para auditoría.
+El backend conservará un identificador interno estable para el paciente y otro para la solicitud. Una vez verificada la identidad en el canal entrante, el backend resolverá la relación con el paciente y verificará su autorización sobre la solicitud. A partir de esos identificadores podrá recuperar el estado, los datos parciales y el historial. La vinculación de una identidad externa requerirá verificación y quedará registrada para auditoría.
 
 ## Persistencia y eventos
 
@@ -12,7 +12,7 @@ PostgreSQL 17 será la fuente de verdad. Prisma ORM 7 utiliza el adaptador `@pri
 
 Para entradas reintentables, como webhooks, se prevé deduplicar con identificadores estables del proveedor. Si un flujo requiere entrega duradera de eventos, se evaluará una tabla de salida transaccional en PostgreSQL. Redis, BullMQ e IA podrán añadirse cuando exista una necesidad concreta.
 
-Los módulos que necesiten consultar PostgreSQL importarán `PrismaModule` e inyectarán `PrismaService` en sus servicios o repositorios. El proveedor crea un único cliente al primer uso y cierra su pool durante el apagado ordenado de NestJS. El esquema inicial solo declara el proveedor y el generador.
+Los módulos que necesiten consultar PostgreSQL importarán `PrismaModule` e inyectarán `PrismaService` en sus servicios o repositorios. El proveedor crea un único cliente al primer uso y cierra su pool durante el apagado ordenado de NestJS. El esquema inicial define el paciente y sus identidades, la solicitud y su contexto, los catálogos, la cita y las trazas operativas. Las interacciones y los eventos pertenecen a la solicitud y conservan su historial. La fila de la solicitud contiene el estado vigente. Consulta el [modelo de datos y sus restricciones](database.md).
 
 `GET /api/v1/health` indica que la API está disponible. Fuera de producción, `GET /api/v1/health/db` ejecuta `SELECT 1` a través de `HealthService` para verificar el acceso a PostgreSQL.
 
