@@ -2,7 +2,7 @@
 
 MVP para el Hackatec de Salud Digna. Un paciente puede iniciar una solicitud en la web, continuar por WhatsApp y finalizarla con el Call Center, conservando su identidad, contexto, datos parciales e historial de atención.
 
-El incremento 002 añade la API NestJS al monorepo.
+El incremento 003 integra Prisma con la API NestJS.
 
 ## Arquitectura
 
@@ -33,7 +33,7 @@ Cada integrante mantiene su aplicación. La ubicación de la aplicación móvil 
 
 ## Entorno e instalación inicial
 
-Se requiere acceso al repositorio privado, Git, Node.js 24 LTS y pnpm 11.28.11, fijado en `package.json`. PostgreSQL será necesario cuando la API incorpore persistencia. Fuentes de versiones disponibles en [Node.js](https://nodejs.org/en/blog/release/v24.22.3/) y [pnpm](https://github.com/pnpm/pnpm/releases/tag/v11.28.11).
+Se requiere acceso al repositorio privado, Git, Node.js 24 LTS y pnpm 11.28.11, fijado en `package.json`. Usa PostgreSQL 17 para comprobar la persistencia. Fuentes de versiones disponibles en [Node.js](https://nodejs.org/en/blog/release/v24.22.3/) y [pnpm](https://github.com/pnpm/pnpm/releases/tag/v11.28.11).
 
 Ejecuta estos comandos desde la raíz del repositorio.
 
@@ -42,10 +42,11 @@ node --version
 pnpm --version
 pnpm install
 cp -n apps/api/.env.example apps/api/.env
+# Configura DATABASE_URL en apps/api/.env para habilitar la conexión a PostgreSQL.
 pnpm --filter @salud-digna/api dev
 ```
 
-Con los valores del ejemplo, la API queda disponible en `http://127.0.0.1:3000`. El estado del servicio se consulta en `/api/v1/health`, Swagger UI en `/api/docs` y el documento OpenAPI en `/api/docs-json`. Consulta los comandos de compilación y las variables en [Desarrollo e integración](docs/development.md).
+Con los valores del ejemplo, la API queda disponible en `http://127.0.0.1:3000`. El estado del servicio se consulta en `/api/v1/health`, la conectividad de PostgreSQL en `/api/v1/health/db` fuera de producción, Swagger UI en `/api/docs` y el documento OpenAPI en `/api/docs-json`. Consulta los comandos de compilación y las variables en [Desarrollo e integración](docs/development.md).
 
 ## Convenciones y documentación
 

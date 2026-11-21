@@ -9,6 +9,7 @@ async function bootstrap() {
   const { host, port, corsOrigins } = loadConfig();
   const app = await NestFactory.create(AppModule);
 
+  app.enableShutdownHooks();
   app.setGlobalPrefix('api/v1');
   app.enableCors({ origin: corsOrigins });
   app.useGlobalPipes(new ValidationPipe({

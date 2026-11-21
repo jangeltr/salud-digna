@@ -1,13 +1,7 @@
-import { loadEnvFile } from 'node:process';
+import { loadLocalEnv } from './config/load-local-env';
 
 export function loadConfig() {
-  try {
-    loadEnvFile();
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-      throw error;
-    }
-  }
+  loadLocalEnv();
 
   const nodeEnv = process.env.NODE_ENV ?? 'development';
   if (!['development', 'test', 'production'].includes(nodeEnv)) {

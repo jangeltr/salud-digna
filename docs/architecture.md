@@ -8,9 +8,13 @@ El backend conservará un identificador interno estable para el paciente y otro 
 
 ## Persistencia y eventos
 
-PostgreSQL será la fuente de verdad y Prisma gestionará el acceso a datos y las migraciones. Las actualizaciones de estado e historial que formen parte de una misma operación se persistirán en una transacción. Los módulos podrán publicar eventos internos después de confirmar la transacción para coordinar efectos secundarios.
+PostgreSQL 17 será la fuente de verdad. Prisma ORM 7 utiliza el adaptador `@prisma/adapter-pg` para el acceso a datos y Prisma Migrate para versionar los cambios de esquema. Las actualizaciones de estado e historial que formen parte de una misma operación se persistirán en una transacción. Los módulos podrán publicar eventos internos después de confirmar la transacción para coordinar efectos secundarios.
 
 Para entradas reintentables, como webhooks, se prevé deduplicar con identificadores estables del proveedor. Si un flujo requiere entrega duradera de eventos, se evaluará una tabla de salida transaccional en PostgreSQL. Redis, BullMQ e IA podrán añadirse cuando exista una necesidad concreta.
+
+Los módulos que necesiten consultar PostgreSQL importarán `PrismaModule` e inyectarán `PrismaService` en sus servicios o repositorios. El proveedor crea un único cliente al primer uso y cierra su pool durante el apagado ordenado de NestJS. El esquema inicial solo declara el proveedor y el generador.
+
+`GET /api/v1/health` indica que la API está disponible. Fuera de producción, `GET /api/v1/health/db` ejecuta `SELECT 1` a través de `HealthService` para verificar el acceso a PostgreSQL.
 
 ## Integración pública
 

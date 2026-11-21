@@ -12,3 +12,5 @@ coverage/
 *.pem
 *.key
 .aws/
+
+/apps/api/src/generated/prisma/
