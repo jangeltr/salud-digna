@@ -14,6 +14,8 @@ El backend conservará un identificador interno estable para el paciente y otro 
 
 El flujo [de Call Center](api-call-center.md) permite al paciente emitir una referencia, al asesor canjearla y recuperar el contexto, y al servicio de citas confirmar con el actor y canal de atención. [Patient Journey](api-journey.md) presenta los eventos estructurados de la solicitud y las interacciones operativas complementarias. [Monitoreo administrativo](api-admin.md) ofrece estadísticas, una lista operativa y un historial individual con registro de auditoría.
 
+`ConversationModule` interpreta mensajes y consulta los servicios de solicitudes, citas y catálogos. Las selecciones estructuradas pasan por el mismo control de versión y la misma transacción de Requests. El simulador de desarrollo usa la sesión de paciente, registra el canal lógico WhatsApp con origen simulado y conserva el último canal real. Consulta el [contrato de conversaciones](api-conversations.md).
+
 ## Persistencia y eventos
 
 PostgreSQL 17 será la fuente de verdad. Prisma ORM 7 utiliza el adaptador `@prisma/adapter-pg` para el acceso a datos y Prisma Migrate para versionar los cambios de esquema. Las actualizaciones de estado e historial que formen parte de una misma operación se persistirán en una transacción. Los módulos podrán publicar eventos internos después de confirmar la transacción para coordinar efectos secundarios.

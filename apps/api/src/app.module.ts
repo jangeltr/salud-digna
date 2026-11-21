@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, type DynamicModule } from '@nestjs/common';
 import { HealthModule } from './health/health.module';
 import { AuthModule } from './auth/auth.module';
 import { IdentityModule } from './identity/identity.module';
@@ -10,5 +10,10 @@ import { CallCenterModule } from './call-center/call-center.module';
 import { JourneyModule } from './journey/journey.module';
 import { AdminMonitoringModule } from './admin-monitoring/admin-monitoring.module';
 
+import { ConversationModule } from './conversations/conversation.module';
 @Module({ imports: [HealthModule, AuthModule, IdentityModule, RequestsModule, ClinicsModule, StudiesModule, AppointmentsModule, CallCenterModule, JourneyModule, AdminMonitoringModule] })
-export class AppModule {}
+export class AppModule {
+  static configure(): DynamicModule {
+    return { module: AppModule, imports: [ConversationModule.register()] };
+  }
+}

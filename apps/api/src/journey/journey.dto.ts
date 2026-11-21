@@ -24,8 +24,8 @@ export class JourneyEntryDto {
 
   @ApiProperty({
     type: 'object',
-    additionalProperties: { oneOf: [{ type: 'string' }, { type: 'integer' }] },
+    additionalProperties: { oneOf: [{ type: 'string' }, { type: 'integer' }, { type: 'boolean' }] },
     example: { appointmentId: '00000000-0000-4000-8000-000000000004', version: 3 },
   })
-  payload!: Record<string, string | number>;
+  payload!: Record<string, string | number | boolean>;
 }

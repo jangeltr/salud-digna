@@ -8,6 +8,7 @@
 | Studies | Implementado. Ofrece consulta pública de estudios activos y gestión del catálogo para administradores. |
 | Clinics | Implementado. Ofrece consulta pública de clínicas activas y gestión del catálogo para administradores. |
 | Requests | Implementado para agendamiento. Crea y recupera solicitudes, registra interrupciones y reanudaciones y controla escrituras concurrentes. |
+| Conversations | Interpreta mensajes en español y continúa el contexto persistido mediante un simulador de desarrollo. |
 | Context | El motor de solicitudes conserva el contexto parcial y registra las interacciones operativas de pausa y reanudación. |
 | Workflow | El motor recalcula paso y estado a partir del contexto. Call Center usa el mismo flujo para la confirmación asistida. |
 | Appointments | Implementado para confirmación propia y asistida, y consulta de citas propias. La disponibilidad y los cambios de cita quedan pendientes. |
@@ -32,3 +33,5 @@ Consulta los contratos de [clínicas](api-clinics.md) y [estudios](api-studies.m
 Consulta los [contratos de confirmación y consulta de citas](api-appointments.md).
 
 Consulta los contratos de [Call Center](api-call-center.md), [Journey](api-journey.md) y [monitoreo administrativo](api-admin.md).
+
+Consulta el [contrato de conversaciones](api-conversations.md).

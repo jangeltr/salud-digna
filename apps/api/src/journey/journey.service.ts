@@ -18,6 +18,7 @@ function safePayload(type: string, value: Prisma.JsonValue): JourneyEntryDto['pa
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
   const safe: JourneyEntryDto['payload'] = {};
 
+  if (value.simulated === true) safe.simulated = true;
   if (typeof value.version === 'number' && Number.isSafeInteger(value.version) && value.version > 0) {
     safe.version = value.version;
   }

@@ -151,6 +151,12 @@ export class AppointmentsService {
     return appointment;
   }
 
+  findForRequest(patientId: string, requestId: string): Promise<AppointmentDto | null> {
+    return this.prisma.client.appointment.findUnique({
+      where: { requestId, patientId }, select: appointmentFields,
+    });
+  }
+
   private async findRequest(tx: Prisma.TransactionClient, patientId: string, id: string) {
     const request = await tx.serviceRequest.findUnique({
       where: { id, patientId }, select: requestFields,

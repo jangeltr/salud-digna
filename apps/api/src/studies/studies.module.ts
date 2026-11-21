@@ -8,5 +8,6 @@ import { StudiesService } from './studies.service';
   imports: [AuthModule, PrismaModule],
   controllers: [StudiesController],
   providers: [StudiesService],
+  exports: [StudiesService],
 })
 export class StudiesModule {}

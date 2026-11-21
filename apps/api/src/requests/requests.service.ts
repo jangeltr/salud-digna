@@ -1,4 +1,5 @@
 import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { conversationSimulationEnabled } from '../config/conversation-simulation';
 import type { Prisma } from '../generated/prisma/client';
 import { Channel, ServiceRequestStatus, ServiceRequestType, UserRole } from '../generated/prisma/enums';
 import { IdentityService } from '../identity/identity.service';
@@ -11,8 +12,8 @@ import {
 
 export type { RequestOrigin } from './request-origin';
 
-type RequestActor = { patientId: string; channel: Channel; actorUserId: string };
-type RequestEvent = Pick<Prisma.DomainEventCreateManyInput, 'type' | 'payload'>;
+type RequestActor = { patientId: string; channel: Channel; actorUserId: string; simulated?: true };
+type RequestEvent = { type: string; payload: Prisma.InputJsonObject };
 
 const includeContext = { context: { select: { data: true } } } satisfies Prisma.ServiceRequestInclude;
 type StoredRequest = Prisma.ServiceRequestGetPayload<{ include: typeof includeContext }>;
@@ -30,7 +31,7 @@ export class RequestsService {
   ) {}
 
   async create(origin: RequestOrigin): Promise<RequestSnapshotDto> {
-    const actor = await this.authorize(origin);
+    const actor = await this.resolveActor(origin);
     return this.prisma.client.$transaction(async (tx) => {
       const request = await tx.serviceRequest.create({
         data: {
@@ -38,7 +39,7 @@ export class RequestsService {
           type: ServiceRequestType.APPOINTMENT,
           status: ServiceRequestStatus.DRAFT,
           currentStep: RequestStep.SELECT_STUDY,
-          lastChannel: actor.channel,
+          lastChannel: actor.simulated ? Channel.WEB : actor.channel,
           version: 1,
           context: { create: { data: {} } },
         },
@@ -57,7 +58,7 @@ export class RequestsService {
     status?: ServiceRequestStatus,
     pending = false,
   ): Promise<RequestPageDto> {
-    const actor = await this.authorize(origin);
+    const actor = await this.resolveActor(origin);
     const rows = await this.prisma.client.$transaction((tx) => tx.serviceRequest.findMany({
       where: {
         patientId: actor.patientId,
@@ -72,7 +73,7 @@ export class RequestsService {
   }
 
   async get(origin: RequestOrigin, id: string): Promise<RequestSnapshotDto> {
-    const actor = await this.authorize(origin);
+    const actor = await this.resolveActor(origin);
     return this.prisma.client.$transaction(async (tx) => {
       return this.readSnapshot(tx, actor.patientId, id);
     }, { isolationLevel: 'RepeatableRead' });
@@ -82,8 +83,10 @@ export class RequestsService {
     return snapshot(await this.findOwn(tx, patientId, id));
   }
 
-  async updateContext(origin: RequestOrigin, id: string, input: UpdateRequestContextDto): Promise<RequestSnapshotDto> {
-    const actor = await this.authorize(origin);
+  async updateContext(
+    origin: RequestOrigin, id: string, input: UpdateRequestContextDto, interactionType?: string,
+  ): Promise<RequestSnapshotDto> {
+    const actor = await this.resolveActor(origin);
     const { version, ...patch } = input;
     return this.prisma.client.$transaction(async (tx) => {
       const current = await this.findOwn(tx, actor.patientId, id);
@@ -100,7 +103,7 @@ export class RequestsService {
       });
       const updated = await tx.serviceRequest.update({
         where: { id },
-        data: { status: next.status, currentStep: next.currentStep, lastChannel: actor.channel },
+        data: { status: next.status, currentStep: next.currentStep, lastChannel: actor.simulated ? current.lastChannel : actor.channel },
         include: includeContext,
       });
 
@@ -113,8 +116,16 @@ export class RequestsService {
           payload: { from: current.status, to: updated.status, version: updated.version },
         });
       }
-      events.push(...this.channelEvents(current.lastChannel, actor.channel, updated.version));
+      events.push(...this.channelEvents(current.lastChannel, updated.lastChannel, updated.version));
       await this.recordEvents(tx, actor, id, events);
+      if (interactionType) {
+        await tx.interaction.create({
+          data: {
+            requestId: id, patientId: actor.patientId, actorUserId: actor.actorUserId,
+            channel: actor.channel, type: interactionType,
+          },
+        });
+      }
       return snapshot(updated);
     }, { isolationLevel: 'ReadCommitted' });
   }
@@ -125,26 +136,34 @@ export class RequestsService {
     version: number,
     action: 'REQUEST_PAUSED' | 'REQUEST_RESUMED',
   ): Promise<RequestSnapshotDto> {
-    const actor = await this.authorize(origin);
+    const actor = await this.resolveActor(origin);
     return this.prisma.client.$transaction(async (tx) => {
       const current = await this.findOwn(tx, actor.patientId, id);
-      const switched = current.lastChannel !== actor.channel;
-      await this.claim(tx, current, version, switched || action === 'REQUEST_PAUSED', actor.channel);
+      const lastChannel = actor.simulated ? current.lastChannel : actor.channel;
+      const switched = current.lastChannel !== lastChannel;
+      await this.claim(tx, current, version, switched || action === 'REQUEST_PAUSED', lastChannel);
       const updated = await this.findOwn(tx, actor.patientId, id);
       const createdAt = new Date();
       await this.recordEvents(tx, actor, id, [
         { type: action, payload: { from: current.lastChannel, to: actor.channel, version: updated.version } },
-        ...this.channelEvents(current.lastChannel, actor.channel, updated.version),
+        ...this.channelEvents(current.lastChannel, updated.lastChannel, updated.version),
       ], createdAt);
       await tx.interaction.create({
-        data: { requestId: id, ...actor, type: action, createdAt },
+        data: {
+          requestId: id, patientId: actor.patientId, channel: actor.channel, actorUserId: actor.actorUserId,
+          type: actor.simulated ? `SIMULATED_${action}` : action, createdAt,
+        },
       });
       return snapshot(updated);
     }, { isolationLevel: 'ReadCommitted' });
   }
 
-  private async authorize(origin: RequestOrigin): Promise<RequestActor> {
+  async resolveActor(origin: RequestOrigin): Promise<RequestActor> {
     if (origin.channel === Channel.WEB) return origin;
+    if (origin.simulated) {
+      if (!conversationSimulationEnabled()) throw new ForbiddenException('Simulación deshabilitada.');
+      return origin;
+    }
 
     const identity = await this.identity.resolveVerifiedIdentity(Channel.WHATSAPP, origin.externalId);
     if (identity.status !== 'VERIFIED') {
@@ -200,6 +219,12 @@ export class RequestsService {
     events: RequestEvent[],
     createdAt?: Date,
   ): Promise<void> {
-    await tx.domainEvent.createMany({ data: events.map((event) => ({ ...event, ...actor, requestId, createdAt })) });
+    const { patientId, actorUserId, channel, simulated } = actor;
+    await tx.domainEvent.createMany({
+      data: events.map(({ type, payload }) => ({
+        type, payload: simulated ? { ...payload, simulated: true } : payload,
+        patientId, actorUserId, channel, requestId, createdAt,
+      })),
+    });
   }
 }

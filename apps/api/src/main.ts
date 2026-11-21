@@ -7,7 +7,7 @@ import { loadConfig } from './config';
 
 async function bootstrap() {
   const { host, port, corsOrigins } = loadConfig();
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule.configure());
 
   app.enableShutdownHooks();
   app.setGlobalPrefix('api/v1');
