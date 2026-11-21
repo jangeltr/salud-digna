@@ -7,9 +7,9 @@
 | Identity | Implementado. Vincula identidades mediante códigos temporales, resuelve internamente identidades verificadas y ofrece un simulador de desarrollo. |
 | Studies | Consultar el catálogo de estudios y sus requisitos. |
 | Clinics | Mantener el catálogo de clínicas e identificar qué estudios ofrece cada sede. |
-| Requests | Gestionar las solicitudes de estudio y su historial. |
-| Context | Conservar los datos parciales de la solicitud y registrar las interacciones necesarias para retomar la atención entre canales. |
-| Workflow | Coordinar transiciones de estado, transferencias al Call Center y asignaciones a operadores. |
+| Requests | Implementado para agendamiento. Crea y recupera solicitudes, registra interrupciones y reanudaciones y controla escrituras concurrentes. |
+| Context | El motor de solicitudes conserva el contexto parcial y registra las interacciones operativas de pausa y reanudación. |
+| Workflow | El motor recalcula paso y estado a partir del contexto. Las transferencias al Call Center y las asignaciones quedan pendientes. |
 | Appointments | Gestionar disponibilidad, reservas y cambios de cita. |
 | Events | Registrar eventos de negocio y, cuando se requiera, publicarlos y distribuirlos entre módulos. |
 | Audit | Registrar acciones relevantes y correlacionarlas con el actor y la solicitud. |
@@ -21,3 +21,5 @@ El [modelo de datos del MVP](database.md) define las entidades que podrán usar 
 Consulta los [contratos de Auth y la gestión inicial de administradores](api-auth.md).
 
 Consulta los [contratos de Identity y el simulador](api-identity.md).
+
+Consulta los [contratos del motor de solicitudes](api-requests.md).

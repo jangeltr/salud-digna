@@ -8,13 +8,15 @@ El backend conservará un identificador interno estable para el paciente y otro 
 
 `IdentityModule` devuelve el mismo `patientId` a los adaptadores internos cuando la identidad de origen está verificada. La vinculación requiere un código emitido desde una sesión de paciente y una prueba del canal aportada por un adaptador confiable. Las identidades de demostración se aíslan con un prefijo reservado y quedan fuera de la resolución de canales reales. Los futuros servicios de Call Center deberán autenticar a sus operadores como `ADVISOR` o `ADMIN` y comprobar el acceso al paciente resuelto. Consulta el [contrato de identidad](api-identity.md).
 
+`RequestsModule` conserva el contexto parcial junto a la solicitud. La API registra las acciones autenticadas por JWT como `WEB`. La entrada interna de WhatsApp exige un adaptador confiable, una identidad verificada y una cuenta de paciente activa. Una interrupción conserva el paso, y una reanudación desde otro canal registra el cambio. Consulta los [contratos de solicitudes](api-requests.md).
+
 ## Persistencia y eventos
 
 PostgreSQL 17 será la fuente de verdad. Prisma ORM 7 utiliza el adaptador `@prisma/adapter-pg` para el acceso a datos y Prisma Migrate para versionar los cambios de esquema. Las actualizaciones de estado e historial que formen parte de una misma operación se persistirán en una transacción. Los módulos podrán publicar eventos internos después de confirmar la transacción para coordinar efectos secundarios.
 
 Para entradas reintentables, como webhooks, se prevé deduplicar con identificadores estables del proveedor. Si un flujo requiere entrega duradera de eventos, se evaluará una tabla de salida transaccional en PostgreSQL. Redis, BullMQ e IA podrán añadirse cuando exista una necesidad concreta.
 
-Los módulos que necesiten consultar PostgreSQL importarán `PrismaModule` e inyectarán `PrismaService` en sus servicios o repositorios. El proveedor crea un único cliente al primer uso y cierra su pool durante el apagado ordenado de NestJS. El esquema inicial define el paciente y sus identidades, la solicitud y su contexto, los catálogos, la cita y las trazas operativas. Las interacciones y los eventos pertenecen a la solicitud y conservan su historial. La fila de la solicitud contiene el estado vigente. Consulta el [modelo de datos y sus restricciones](database.md).
+Los módulos que necesiten consultar PostgreSQL importarán `PrismaModule` e inyectarán `PrismaService` en sus servicios o repositorios. El proveedor crea un único cliente al primer uso y cierra su pool durante el apagado ordenado de NestJS. El esquema inicial define el paciente y sus identidades, la solicitud y su contexto, los catálogos, la cita y las trazas operativas. Las interacciones y los eventos pertenecen a la solicitud y conservan su historial. La fila de la solicitud contiene el estado vigente. El motor comprueba la versión con una escritura condicional y guarda contexto y eventos en la misma transacción. Las consultas cargan la solicitud y su contexto desde una misma instantánea. Consulta el [modelo de datos y sus restricciones](database.md).
 
 `GET /api/v1/health` indica que la API está disponible. Fuera de producción, `GET /api/v1/health/db` ejecuta `SELECT 1` a través de `HealthService` para verificar el acceso a PostgreSQL.
 
