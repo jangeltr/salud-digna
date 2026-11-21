@@ -1,0 +1,14 @@
+node_modules/
+.pnpm-store/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+*.log
+
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.aws/
