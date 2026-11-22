@@ -8,7 +8,7 @@
 | Studies | Implementado. Ofrece consulta pública de estudios activos y gestión del catálogo para administradores. |
 | Clinics | Implementado. Ofrece consulta pública de clínicas activas y gestión del catálogo para administradores. |
 | Requests | Implementado para agendamiento. Crea y recupera solicitudes, registra interrupciones y reanudaciones y controla escrituras concurrentes. |
-| Conversations | Interpreta mensajes en español y continúa el contexto persistido mediante un simulador de desarrollo. |
+| Conversations | Interpreta mensajes en español con reglas locales u OpenAI opcional y continúa el contexto persistido mediante un simulador de desarrollo. |
 | Context | El motor de solicitudes conserva el contexto parcial y registra las interacciones operativas de pausa y reanudación. |
 | Workflow | El motor recalcula paso y estado a partir del contexto. Call Center usa el mismo flujo para la confirmación asistida. |
 | Appointments | Implementado para confirmación propia y asistida, y consulta de citas propias. La disponibilidad y los cambios de cita quedan pendientes. |

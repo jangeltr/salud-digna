@@ -7,14 +7,17 @@ import { AppointmentStatus, ServiceRequestStatus } from '../generated/prisma/enu
 import { PrismaService } from '../persistence/prisma.service';
 import type { WhatsAppRequestOrigin } from '../requests/request-origin';
 import { OPEN_REQUEST_STATUSES, RequestStep } from '../requests/request-workflow';
-import { UpdateRequestContextDto, type RequestSnapshotDto } from '../requests/requests.dto';
+import { UpdateRequestContextDto, type RequestPageDto, type RequestSnapshotDto } from '../requests/requests.dto';
 import { RequestsService } from '../requests/requests.service';
 import { StudiesService } from '../studies/studies.service';
 import {
   ConversationIntent, SelectionAction,
   type ConversationMessageDto, type ConversationReplyDto, type SuggestedActionDto,
 } from './conversation.dto';
-import { CONVERSATION_INTERPRETER, type ConversationInterpreter } from './conversation-interpreter';
+import {
+  CONVERSATION_INTERPRETER, normalizeSpanish, type ConversationInterpretation, type ConversationInterpreter,
+  type InterpretationContext,
+} from './conversation-interpreter';
 
 const selectionFields = {
   SELECT_STUDY: 'studyId', SELECT_CLINIC: 'clinicId', SELECT_DATETIME: 'scheduledAt',
@@ -49,6 +52,25 @@ function nextSelection(request: RequestSnapshotDto): SelectionAction | undefined
   return undefined;
 }
 
+function interpretationContext(request?: RequestSnapshotDto): InterpretationContext {
+  const selected = {
+    study: Boolean(request?.context.studyId), clinic: Boolean(request?.context.clinicId),
+    datetime: Boolean(request?.context.scheduledAt),
+  };
+  const availableActions: SelectionAction[] = [];
+  if (request && OPEN_REQUEST_STATUSES.includes(request.status)) {
+    availableActions.push(SelectionAction.SELECT_STUDY);
+    if (selected.study) availableActions.push(SelectionAction.SELECT_CLINIC);
+    if (selected.clinic) availableActions.push(SelectionAction.SELECT_DATETIME);
+  }
+  return {
+    status: request?.status ?? null,
+    step: Object.values(RequestStep).find((step) => step === request?.currentStep) ?? null,
+    selected,
+    availableActions,
+  };
+}
+
 function stepMessage(request: RequestSnapshotDto): string {
   if (request.status === ServiceRequestStatus.COMPLETED) return 'La solicitud ya está completada.';
   if (request.status === ServiceRequestStatus.CANCELLED) return 'La solicitud está cancelada.';
@@ -78,9 +100,8 @@ export class ConversationService {
 
   async respond(origin: WhatsAppRequestOrigin, input: ConversationMessageDto): Promise<ConversationReplyDto> {
     const actor = await this.requests.resolveActor(origin);
-    const intent = input.action ? selectionIntents[input.action.type] : await this.interpreter.interpret(input.message);
-
     if (input.action) {
+      const intent = selectionIntents[input.action.type];
       if (!input.requestId || input.version === undefined) {
         throw new BadRequestException('Indica la solicitud y su versión para guardar una selección.');
       }
@@ -96,9 +117,18 @@ export class ConversationService {
       return response(intent, `Guardé tu selección. ${stepMessage(updated)}`, updated);
     }
 
-    const result = input.requestId
-      ? await this.replyToRequest(intent, await this.requests.get(origin, input.requestId), actor.patientId)
-      : await this.findConversationRequest(origin, intent, actor.patientId);
+    const request = input.requestId ? await this.requests.get(origin, input.requestId) : undefined;
+    let pending: Promise<RequestPageDto> | undefined;
+    const loadPending = () => pending ??= this.requests.list(origin, { page: 1, limit: 5 }, undefined, true);
+    const interpretation = await this.interpreter.interpret(input.message, async () => {
+      if (request) return interpretationContext(request);
+      const page = await loadPending();
+      return interpretationContext(page.items.length === 1 && !page.hasMore ? page.items[0] : undefined);
+    });
+    const { intent } = interpretation;
+    const result = request
+      ? await this.replyToRequest(interpretation, request, actor.patientId)
+      : await this.findConversationRequest(origin, interpretation, actor.patientId, loadPending);
 
     if (result.requestId) {
       await this.prisma.client.interaction.create({
@@ -111,12 +141,16 @@ export class ConversationService {
     return result;
   }
 
-  private async findConversationRequest(origin: WhatsAppRequestOrigin, intent: ConversationIntent, patientId: string) {
+  private async findConversationRequest(
+    origin: WhatsAppRequestOrigin, interpretation: ConversationInterpretation, patientId: string,
+    loadPending: () => Promise<RequestPageDto>,
+  ) {
+    const { intent } = interpretation;
     if (intent === ConversationIntent.APPOINTMENT_STATUS) {
       const page = await this.appointments.list(patientId, { page: 1, limit: 5 });
       if (!page.items.length) return response(intent, 'Todavía no tienes citas registradas.');
       if (page.items.length === 1 && !page.hasMore) {
-        return this.replyToRequest(intent, await this.requests.get(origin, page.items[0].requestId), patientId);
+        return this.replyToRequest(interpretation, await this.requests.get(origin, page.items[0].requestId), patientId);
       }
       return response(intent, 'Tienes varias citas. Elige la solicitud que quieres consultar.', undefined,
         page.items.map((appointment) => ({
@@ -125,13 +159,13 @@ export class ConversationService {
         })));
     }
 
-    const page = await this.requests.list(origin, { page: 1, limit: 5 }, undefined, true);
+    const page = await loadPending();
     if (!page.items.length) {
       const greeting = intent === ConversationIntent.GREETING ? 'Hola. ' : '';
       return response(intent, `${greeting}No tienes solicitudes abiertas. Puedes iniciar una desde la aplicación.`);
     }
     if (page.items.length === 1 && !page.hasMore) {
-      return this.replyToRequest(intent, page.items[0], patientId);
+      return this.replyToRequest(interpretation, page.items[0], patientId);
     }
 
     const actions: SuggestedActionDto[] = page.items.map((request) => ({
@@ -141,7 +175,9 @@ export class ConversationService {
     return response(intent, 'Tienes varias solicitudes abiertas. Elige cuál quieres continuar.', undefined, actions);
   }
 
-  private async replyToRequest(intent: ConversationIntent, request: RequestSnapshotDto, patientId: string) {
+  private async replyToRequest(
+    { intent, parameters }: ConversationInterpretation, request: RequestSnapshotDto, patientId: string,
+  ) {
     if (intent === ConversationIntent.APPOINTMENT_STATUS) {
       const appointment = await this.appointments.findForRequest(patientId, request.id);
       const reply = appointment
@@ -172,11 +208,24 @@ export class ConversationService {
     } else {
       selection = undefined;
     }
-    const options = await this.selectionOptions(selection, request.id);
+    if (intent === ConversationIntent.SELECT_DATETIME && selection === SelectionAction.SELECT_DATETIME && parameters) {
+      const { scheduledAt, needsClarification } = parameters;
+      if (needsClarification || !scheduledAt || Date.parse(scheduledAt) <= Date.now()) {
+        return response(intent, '¿Qué fecha y hora futuras prefieres? Indica también tu zona horaria.', request,
+          [{ type: selection, label: 'Indicar fecha, hora y zona horaria', requestId: request.id }]);
+      }
+      return response(intent, 'Puedes revisar y enviar este horario como preferencia.', request,
+        [{ type: selection, label: 'Usar el horario propuesto', value: scheduledAt, requestId: request.id }]);
+    }
+
+    const hint = selection === SelectionAction.SELECT_STUDY ? parameters?.studyName : parameters?.clinicName;
+    const options = await this.selectionOptions(selection, request.id, hint);
     return response(intent, lead + stepMessage(request), request, options);
   }
 
-  private async selectionOptions(selection: SelectionAction | undefined, requestId: string): Promise<SuggestedActionDto[]> {
+  private async selectionOptions(
+    selection: SelectionAction | undefined, requestId: string, hint?: string | null,
+  ): Promise<SuggestedActionDto[]> {
     if (selection === SelectionAction.SELECT_DATETIME) {
       return [{ type: selection, label: 'Indicar fecha y hora preferidas', requestId }];
     }
@@ -184,6 +233,8 @@ export class ConversationService {
 
     const catalog = selection === SelectionAction.SELECT_STUDY ? this.studies : this.clinics;
     const { items } = await catalog.list({ page: 1, limit: 5 });
-    return items.map((item) => ({ type: selection, label: item.name, value: item.id, requestId }));
+    const matches = (name: string) => hint ? Number(normalizeSpanish(name).includes(hint)) : 0;
+    return items.sort((a, b) => matches(b.name) - matches(a.name))
+      .map((item) => ({ type: selection, label: item.name, value: item.id, requestId }));
   }
 }

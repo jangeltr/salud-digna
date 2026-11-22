@@ -1,10 +1,37 @@
 import { Injectable } from '@nestjs/common';
-import { ConversationIntent } from './conversation.dto';
+import type { ServiceRequestStatus } from '../generated/prisma/enums';
+import type { RequestStep } from '../requests/request-workflow';
+import { ConversationIntent, type SelectionAction } from './conversation.dto';
 
 export const CONVERSATION_INTERPRETER = Symbol('CONVERSATION_INTERPRETER');
 
+export interface InterpretationContext {
+  status: ServiceRequestStatus | null;
+  step: RequestStep | null;
+  selected: { study: boolean; clinic: boolean; datetime: boolean };
+  availableActions: SelectionAction[];
+}
+
+export interface ConversationInterpretation {
+  intent: ConversationIntent;
+  confidence?: number;
+  parameters?: {
+    studyName: string | null;
+    clinicName: string | null;
+    scheduledAt: string | null;
+    needsClarification: boolean;
+  };
+  replySuggestion?: string | null;
+}
+
 export interface ConversationInterpreter {
-  interpret(message: string): ConversationIntent | Promise<ConversationIntent>;
+  interpret(
+    message: string, getContext: () => Promise<InterpretationContext>,
+  ): ConversationInterpretation | Promise<ConversationInterpretation>;
+}
+
+export function normalizeSpanish(message: string): string {
+  return message.toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
 }
 
 const rules: [RegExp, ConversationIntent][] = [
@@ -21,8 +48,8 @@ const rules: [RegExp, ConversationIntent][] = [
 
 @Injectable()
 export class SpanishConversationInterpreter implements ConversationInterpreter {
-  interpret(message: string): ConversationIntent {
-    const normalized = message.toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
-    return rules.find(([pattern]) => pattern.test(normalized))?.[1] ?? ConversationIntent.UNKNOWN;
+  interpret(message: string): ConversationInterpretation {
+    const normalized = normalizeSpanish(message);
+    return { intent: rules.find(([pattern]) => pattern.test(normalized))?.[1] ?? ConversationIntent.UNKNOWN };
   }
 }

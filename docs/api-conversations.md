@@ -74,10 +74,10 @@ Se reutilizan el DTO, el control de versión y la transacción de Requests. Para
 | `404` | Ruta deshabilitada o solicitud inexistente o ajena. |
 | `409` | Solicitud cerrada o versión desactualizada de una selección. Recupera el estado y envía una nueva acción explícita si corresponde. |
 
-## Persistencia e integraciones futuras
+## Persistencia e integraciones
 
 Las solicitudes, el contexto y las citas se leen desde los servicios que ya los gestionan. Las interacciones registran el canal lógico `WHATSAPP`, el actor, la intención y un resultado como `CONVERSATION_SIMULATED_SELECT_STUDY_UPDATED`. Los mensajes y las respuestas completas se omiten. Para las escrituras, Requests registra la interacción y sus eventos en la misma transacción. `payload.simulated: true` distingue estos eventos en Journey. El simulador conserva `lastChannel` como último canal real, y deja intacta la verificación de identidades.
 
 La interfaz interna `WhatsAppAdapter` define recepción verificada y entrega de respuestas. Un adaptador real deberá autenticar el webhook, deduplicar por ID del proveedor, normalizar el remitente y acreditar su identidad vinculada antes de operar. La ruta de desarrollo funciona exclusivamente con la sesión del paciente y puede probarse sin vincular un teléfono.
 
-`ConversationInterpreter` es el contrato que permite reemplazar el intérprete determinista por un clasificador posterior. Un proveedor de IA podrá proponer una intención. Las operaciones seguirán sujetas a identidad, autorización, acciones explícitas y datos de los catálogos y servicios centrales.
+La [integración opcional con OpenAI](integrations/openai.md) usa el mismo contrato REST. Puede proponer una intención o dar prioridad a una opción real del catálogo. Ante una fecha ambigua solicita aclaración, y una fecha explícita puede aparecer como sugerencia para que el paciente la envíe en una acción estructurada. Las escrituras siguen sujetas a identidad, autorización, selección explícita y versión.
