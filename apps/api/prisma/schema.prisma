@@ -246,9 +246,15 @@ enum WhatsAppInboxStatus {
   FAILED
 }
 
+enum WhatsAppProvider {
+  META
+  TWILIO
+}
+
 model WhatsAppInbox {
-  providerMessageId String               @id
-  phoneNumberId     String
+  providerMessageId String
+  provider          WhatsAppProvider     @default(META)
+  recipientKey      String               @map("phoneNumberId")
   sender            String?
   receivedAt        DateTime             @db.Timestamptz(3)
   input             Json?                @db.JsonB
@@ -259,5 +265,6 @@ model WhatsAppInbox {
   outboundMessageId String?
   lastError         String?
 
-  @@index([phoneNumberId, status, nextAttemptAt])
+  @@id([provider, providerMessageId])
+  @@index([provider, recipientKey, status, nextAttemptAt], map: "WhatsAppInbox_provider_recipient_status_next_idx")
 }

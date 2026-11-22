@@ -1,16 +1,12 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { WHATSAPP_CONFIG, type WhatsAppConfig } from './whatsapp.config';
+import { WHATSAPP_CONFIG, type MetaConfig } from './whatsapp.config';
 import { asArray, asObject } from './whatsapp-input';
 
-export class WhatsAppDeliveryError extends Error {
-  constructor(readonly category: string, readonly retryable: boolean) {
-    super(category);
-  }
-}
+import { WhatsAppDeliveryError, type WhatsAppSender } from './whatsapp-sender';
 
 @Injectable()
-export class WhatsAppCloudApiClient {
-  constructor(@Inject(WHATSAPP_CONFIG) private readonly config: WhatsAppConfig) {}
+export class WhatsAppCloudApiClient implements WhatsAppSender {
+  constructor(@Inject(WHATSAPP_CONFIG) private readonly config: MetaConfig) {}
 
   async sendText(to: string, body: string): Promise<string> {
     const { version, phoneNumberId, accessToken } = this.config;

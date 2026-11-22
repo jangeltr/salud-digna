@@ -1,8 +1,9 @@
-import { Controller, Get, Header, Headers, HttpCode, Post, Query, Req } from '@nestjs/common';
+import { Controller, Get, Inject, Header, Headers, HttpCode, Post, Query, Req } from '@nestjs/common';
 import {
   ApiBadRequestResponse, ApiBody, ApiForbiddenResponse, ApiHeader, ApiOkResponse, ApiOperation,
   ApiPayloadTooLargeResponse, ApiQuery, ApiTags, ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
+import { WHATSAPP_CONFIG, type MetaConfig } from './whatsapp.config';
 import { WhatsAppService } from './whatsapp.service';
 import { WhatsAppWebhookVerifier } from './whatsapp-webhook-verifier';
 
@@ -10,6 +11,7 @@ import { WhatsAppWebhookVerifier } from './whatsapp-webhook-verifier';
 @Controller('webhooks/whatsapp')
 export class WhatsAppWebhookController {
   constructor(
+    @Inject(WHATSAPP_CONFIG) private readonly config: MetaConfig,
     private readonly verifier: WhatsAppWebhookVerifier,
     private readonly whatsapp: WhatsAppService,
   ) {}
@@ -42,6 +44,6 @@ export class WhatsAppWebhookController {
   async receive(@Req() request: { rawBody?: Buffer }, @Headers('x-hub-signature-256') signature: unknown): Promise<void> {
     const body = request.rawBody;
     this.verifier.verify(body, signature);
-    await this.whatsapp.accept(body);
+    await this.whatsapp.accept(body, this.config.phoneNumberId);
   }
 }

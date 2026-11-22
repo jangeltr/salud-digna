@@ -1,17 +1,15 @@
-import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import type { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../persistence/prisma.service';
-import { WHATSAPP_CONFIG, type WhatsAppConfig } from './whatsapp.config';
 import { asArray, asObject, queueInput } from './whatsapp-input';
 
 @Injectable()
 export class WhatsAppService {
   constructor(
-    @Inject(WHATSAPP_CONFIG) private readonly config: WhatsAppConfig,
     private readonly prisma: PrismaService,
   ) {}
 
-  async accept(rawBody: Buffer): Promise<void> {
+  async accept(rawBody: Buffer, phoneNumberId: string): Promise<void> {
     let envelope: ReturnType<typeof asObject>;
     try {
       envelope = asObject(JSON.parse(rawBody.toString('utf8')));
@@ -26,7 +24,7 @@ export class WhatsAppService {
         const changeData = asObject(change);
         const value = asObject(changeData?.value);
         if (changeData?.field !== 'messages' || value?.messaging_product !== 'whatsapp' ||
-            asObject(value.metadata)?.phone_number_id !== this.config.phoneNumberId) continue;
+            asObject(value.metadata)?.phone_number_id !== phoneNumberId) continue;
 
         for (const item of asArray(value.messages)) {
           const message = asObject(item);
@@ -41,13 +39,17 @@ export class WhatsAppService {
           const receivedAt = new Date(Number(timestamp) * 1000);
           if (receivedAt.getTime() <= 0 || receivedAt.getTime() > Date.now() + 5 * 60_000) continue;
           rows.push({
-            providerMessageId: id, phoneNumberId: this.config.phoneNumberId,
+            providerMessageId: id, provider: 'META', recipientKey: phoneNumberId,
             sender: from, receivedAt, input: queueInput(body.trim()),
           });
         }
       }
     }
 
+    await this.enqueue(rows);
+  }
+
+  async enqueue(rows: Prisma.WhatsAppInboxCreateManyInput[]): Promise<void> {
     if (rows.length) await this.prisma.client.whatsAppInbox.createMany({ data: rows, skipDuplicates: true });
   }
 }
