@@ -1,5 +1,5 @@
 import { Controller, Header, Headers, HttpCode, Inject, Post, Req, UnsupportedMediaTypeException } from '@nestjs/common';
-import { ApiConsumes, ApiHeader, ApiOkResponse, ApiTags, ApiUnauthorizedResponse } from '@nestjs/swagger';
+import { ApiBody, ApiConsumes, ApiHeader, ApiOkResponse, ApiPayloadTooLargeResponse, ApiTags, ApiUnauthorizedResponse, ApiUnsupportedMediaTypeResponse } from '@nestjs/swagger';
 import { normalizeTwilio, verifyTwilioForm } from './twilio-webhook';
 import { WHATSAPP_CONFIG, type TwilioConfig } from './whatsapp.config';
 import { WhatsAppService } from './whatsapp.service';
@@ -17,7 +17,21 @@ export class TwilioWebhookController {
   @Header('Content-Type', 'text/xml; charset=utf-8')
   @ApiConsumes('application/x-www-form-urlencoded')
   @ApiHeader({ name: 'X-Twilio-Signature', required: true })
-  @ApiOkResponse({ description: 'TwiML vacío tras aceptar el mensaje para procesamiento asíncrono.' })
+  @ApiBody({ schema: {
+    type: 'object',
+    required: ['MessageSid', 'AccountSid', 'From', 'To', 'Body', 'NumMedia'],
+    properties: {
+      MessageSid: { type: 'string' }, AccountSid: { type: 'string' },
+      From: { type: 'string' }, To: { type: 'string' },
+      Body: { type: 'string', maxLength: 500 }, NumMedia: { type: 'string', enum: ['0'] },
+    },
+  } })
+  @ApiPayloadTooLargeResponse({ description: 'El webhook supera 256 KiB.' })
+  @ApiUnsupportedMediaTypeResponse({ description: 'Se requiere application/x-www-form-urlencoded.' })
+  @ApiOkResponse({
+    description: 'TwiML vacío tras aceptar el mensaje para procesamiento asíncrono.',
+    content: { 'text/xml': { schema: { type: 'string', example: '<Response></Response>' } } },
+  })
   @ApiUnauthorizedResponse({ description: 'Firma ausente o inválida.' })
   async receive(
     @Req() request: { rawBody?: Buffer; originalUrl: string },

@@ -16,7 +16,7 @@ export class CreateRequestDto {
 }
 
 export class RequestVersionDto {
-  @ApiProperty({ minimum: 1, maximum: 2147483647, example: 1 })
+  @ApiProperty({ type: 'integer', minimum: 1, maximum: 2147483647, example: 1 })
   @IsInt()
   @Min(1)
   @Max(2147483647)

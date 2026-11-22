@@ -19,7 +19,7 @@ export class JourneyEntryDto {
   @ApiProperty({ enum: Channel, enumName: 'Channel', example: Channel.CALL_CENTER })
   channel!: Channel;
 
-  @ApiProperty({ enum: UserRole, enumName: 'UserRole', nullable: true, example: UserRole.ADVISOR })
+  @ApiProperty({ type: String, enum: [...Object.values(UserRole), null], nullable: true, example: UserRole.ADVISOR })
   actorRole!: UserRole | null;
 
   @ApiProperty({

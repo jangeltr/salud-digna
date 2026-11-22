@@ -2,7 +2,8 @@ import 'reflect-metadata';
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { SwaggerModule } from '@nestjs/swagger';
+import { API_PREFIX, createOpenApiDocument } from './openapi/openapi-document';
 import { AppModule } from './app.module';
 import { loadConfig } from './config';
 import { TWILIO_WEBHOOK_PATH, WHATSAPP_WEBHOOK_PATH, selectedWhatsAppProvider, whatsappEnabled } from './whatsapp/whatsapp.config';
@@ -24,7 +25,7 @@ async function bootstrap() {
   }
 
   app.enableShutdownHooks();
-  app.setGlobalPrefix('api/v1');
+  app.setGlobalPrefix(API_PREFIX);
   app.enableCors({ origin: corsOrigins });
   app.useGlobalPipes(new ValidationPipe({
     transform: true,
@@ -32,12 +33,7 @@ async function bootstrap() {
     forbidNonWhitelisted: true,
   }));
 
-  const openApi = new DocumentBuilder()
-    .setTitle('Salud Digna API')
-    .setVersion('1.0')
-    .addBearerAuth({ type: 'http', scheme: 'bearer', bearerFormat: 'JWT' })
-    .build();
-  SwaggerModule.setup('api/docs', app, () => SwaggerModule.createDocument(app, openApi));
+  SwaggerModule.setup('api/docs', app, () => createOpenApiDocument(app));
 
   await app.listen(port, host);
 }
