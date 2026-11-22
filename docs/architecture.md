@@ -6,15 +6,33 @@ La API se ejecutará como un monolito modular en NestJS con TypeScript. Los adap
 
 El backend conservará un identificador interno estable para el paciente y otro para la solicitud. Una vez verificada la identidad en el canal entrante, el backend resolverá la relación con el paciente y verificará su autorización sobre la solicitud. A partir de esos identificadores podrá recuperar el estado, los datos parciales y el historial. La vinculación de una identidad externa requerirá verificación y quedará registrada para auditoría.
 
+`IdentityModule` devuelve el mismo `patientId` a los adaptadores internos cuando la identidad de origen está verificada. La vinculación requiere un código emitido desde una sesión de paciente y una prueba del canal aportada por un adaptador confiable. Las identidades de demostración se aíslan con un prefijo reservado y quedan fuera de la resolución de canales reales. Call Center autentica a los asesores como `ADVISOR` y exige un permiso temporal emitido por el titular para la solicitud concreta. Consulta el [contrato de identidad](api-identity.md).
+
+`RequestsModule` conserva el contexto parcial junto a la solicitud. La API registra las acciones autenticadas por JWT como `WEB`. La entrada interna de WhatsApp exige un adaptador confiable, una identidad verificada y una cuenta de paciente activa. Una interrupción conserva el paso, y una reanudación desde otro canal registra el cambio. Consulta los [contratos de solicitudes](api-requests.md).
+
+`AppointmentsModule` completa la solicitud y confirma la cita en la misma transacción, con el control de versión de Requests y la restricción de una cita por solicitud. El paciente puede recuperar la confirmación desde cualquier consumidor autenticado. Consulta el [contrato de citas](api-appointments.md).
+
+El flujo [de Call Center](api-call-center.md) permite al paciente emitir una referencia, al asesor canjearla y recuperar el contexto, y al servicio de citas confirmar con el actor y canal de atención. [Patient Journey](api-journey.md) presenta los eventos estructurados de la solicitud y las interacciones operativas complementarias. [Monitoreo administrativo](api-admin.md) ofrece estadísticas, una lista operativa y un historial individual con registro de auditoría.
+
+`ConversationModule` interpreta mensajes y consulta los servicios de solicitudes, citas y catálogos. Las selecciones estructuradas pasan por el mismo control de versión y la misma transacción de Requests. El simulador de desarrollo usa la sesión de paciente, registra el canal lógico WhatsApp con origen simulado y conserva el último canal real. El intérprete puede usar OpenAI con contexto operativo reducido, validación del resultado y alternativa determinista local. Consulta el [contrato de conversaciones](api-conversations.md) y la [integración con OpenAI](integrations/openai.md).
+
+`WhatsAppModule` recibe webhooks firmados de Meta y utiliza una bandeja durable para deduplicar mensajes y preparar respuestas fuera de la petición HTTP. Los remitentes vinculados continúan en ConversationModule. Consulta el [adaptador de WhatsApp](integrations/whatsapp.md).
+
 ## Persistencia y eventos
 
 PostgreSQL 17 será la fuente de verdad. Prisma ORM 7 utiliza el adaptador `@prisma/adapter-pg` para el acceso a datos y Prisma Migrate para versionar los cambios de esquema. Las actualizaciones de estado e historial que formen parte de una misma operación se persistirán en una transacción. Los módulos podrán publicar eventos internos después de confirmar la transacción para coordinar efectos secundarios.
 
 Para entradas reintentables, como webhooks, se prevé deduplicar con identificadores estables del proveedor. Si un flujo requiere entrega duradera de eventos, se evaluará una tabla de salida transaccional en PostgreSQL. Redis, BullMQ e IA podrán añadirse cuando exista una necesidad concreta.
 
-Los módulos que necesiten consultar PostgreSQL importarán `PrismaModule` e inyectarán `PrismaService` en sus servicios o repositorios. El proveedor crea un único cliente al primer uso y cierra su pool durante el apagado ordenado de NestJS. El esquema inicial define el paciente y sus identidades, la solicitud y su contexto, los catálogos, la cita y las trazas operativas. Las interacciones y los eventos pertenecen a la solicitud y conservan su historial. La fila de la solicitud contiene el estado vigente. Consulta el [modelo de datos y sus restricciones](database.md).
+Los módulos que necesiten consultar PostgreSQL importarán `PrismaModule` e inyectarán `PrismaService` en sus servicios o repositorios. El proveedor crea un único cliente al primer uso y cierra su pool durante el apagado ordenado de NestJS. El esquema inicial define el paciente y sus identidades, la solicitud y su contexto, los catálogos, la cita y las trazas operativas. Las interacciones y los eventos pertenecen a la solicitud y conservan su historial. La fila de la solicitud contiene el estado vigente. El motor comprueba la versión con una escritura condicional y guarda contexto y eventos en la misma transacción. Las consultas cargan la solicitud y su contexto desde una misma instantánea. Consulta el [modelo de datos y sus restricciones](database.md).
 
 `GET /api/v1/health` indica que la API está disponible. Fuera de producción, `GET /api/v1/health/db` ejecuta `SELECT 1` a través de `HealthService` para verificar el acceso a PostgreSQL.
+
+Los catálogos públicos de clínicas y estudios muestran registros activos. Las escrituras requieren el rol `ADMIN` y usan desactivación lógica. Requests valida los identificadores activos al actualizar el contexto y puede recuperar el contexto histórico aunque los registros del catálogo se desactiven. Los precios de estudios usan Decimal en PostgreSQL y una cadena decimal en la API. Consulta los contratos de [clínicas](api-clinics.md) y [estudios](api-studies.md).
+
+## Autenticación y autorización
+
+`AuthModule` registra la cuenta y el perfil de paciente en una sola transacción. La cuenta `User` identifica al actor autenticado y `Patient` identifica al titular de los trámites. Las rutas protegidas validan JWT Bearer y consultan el estado y rol actuales de la cuenta. Los módulos que usen roles también deberán comprobar la titularidad o asignación de cada recurso en sus consultas. Consulta los [contratos de autenticación](api-auth.md).
 
 ## Integración pública
 

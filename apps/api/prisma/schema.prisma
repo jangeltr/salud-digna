@@ -49,9 +49,10 @@ model Patient {
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
 
-  identities PatientIdentity[]
-  user       User?
-  requests   ServiceRequest[]
+  identities    PatientIdentity[]
+  identityLinks IdentityLink[]
+  user          User?
+  requests      ServiceRequest[]
 }
 
 model PatientIdentity {
@@ -82,6 +83,7 @@ model User {
   interactions Interaction[]
   domainEvents DomainEvent[]
   auditLogs    AuditLog[]
+  assistanceAuthorizations AssistanceAuthorization[]
 }
 
 model Clinic {
@@ -126,6 +128,7 @@ model ServiceRequest {
   interactions Interaction[]
   domainEvents DomainEvent[]
   appointment  Appointment?
+  assistanceAuthorizations AssistanceAuthorization[]
 
   @@unique([id, patientId])
   @@index([patientId, createdAt])
@@ -203,4 +206,58 @@ model AuditLog {
   actor User? @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
 
   @@index([entityType, entityId, createdAt])
+}
+
+model IdentityLink {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  patientId  String    @db.Uuid
+  provider   Channel
+  codeHash   String    @db.Char(64)
+  attempts   Int       @default(0)
+  expiresAt  DateTime  @db.Timestamptz(3)
+  consumedAt DateTime? @db.Timestamptz(3)
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Restrict)
+
+  @@index([patientId])
+}
+
+model AssistanceAuthorization {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  requestId       String    @db.Uuid
+  codeHash        String    @unique @db.Char(64)
+  codeExpiresAt   DateTime  @db.Timestamptz(3)
+  claimedAt       DateTime? @db.Timestamptz(3)
+  advisorId       String?   @db.Uuid
+  accessExpiresAt DateTime? @db.Timestamptz(3)
+
+  request ServiceRequest @relation(fields: [requestId], references: [id], onDelete: Restrict)
+  advisor User?          @relation(fields: [advisorId], references: [id], onDelete: Restrict)
+
+  @@index([requestId, advisorId, accessExpiresAt])
+}
+
+enum WhatsAppInboxStatus {
+  PENDING
+  PREPARING
+  READY
+  SENDING
+  SENT
+  FAILED
+}
+
+model WhatsAppInbox {
+  providerMessageId String               @id
+  phoneNumberId     String
+  sender            String?
+  receivedAt        DateTime             @db.Timestamptz(3)
+  input             Json?                @db.JsonB
+  reply             String?
+  status            WhatsAppInboxStatus  @default(PENDING)
+  attempts          Int                  @default(0)
+  nextAttemptAt     DateTime             @default(now()) @db.Timestamptz(3)
+  outboundMessageId String?
+  lastError         String?
+
+  @@index([phoneNumberId, status, nextAttemptAt])
 }
