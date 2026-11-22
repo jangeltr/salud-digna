@@ -90,11 +90,16 @@ export class IdentityService {
 
   // El adaptador aporta este identificador después de comprobar su procedencia.
   linkTrustedIdentity(provider: Channel, externalId: string, linkId: string, code: string) {
-    return this.completeLink({ source: 'TRUSTED', provider, externalId }, linkId, code);
+    return this.completeLink({ source: 'TRUSTED', provider, externalId }, linkId, hashCode(code));
+  }
+
+  linkTrustedIdentityByDigest(provider: Channel, externalId: string, linkId: string, digest: string) {
+    if (!/^[a-f0-9]{64}$/.test(digest)) throw new BadRequestException('Código de vinculación no válido.');
+    return this.completeLink({ source: 'TRUSTED', provider, externalId }, linkId, Buffer.from(digest, 'hex'));
   }
 
   linkSimulatedIdentity(actor: IdentityPatient, provider: Channel, fixture: string, linkId: string, code: string) {
-    return this.completeLink({ source: 'SIMULATED', actor, provider, externalId: fixture }, linkId, code);
+    return this.completeLink({ source: 'SIMULATED', actor, provider, externalId: fixture }, linkId, hashCode(code));
   }
 
   async resolveVerifiedIdentity(provider: Channel, externalId: string): Promise<Resolution> {
@@ -107,7 +112,7 @@ export class IdentityService {
     return { status: 'VERIFIED', patientId: identity.patientId };
   }
 
-  private async completeLink(proof: LinkProof, linkId: string, code: string): Promise<LinkedIdentityDto> {
+  private async completeLink(proof: LinkProof, linkId: string, codeDigest: Buffer): Promise<LinkedIdentityDto> {
     const { provider, source } = proof;
     const normalized = normalizeExternalId(provider, proof.externalId);
     const simulated = source === 'SIMULATED';
@@ -121,7 +126,7 @@ export class IdentityService {
       });
       if (!link) return { status: 'INVALID' } as const;
 
-      const matches = timingSafeEqual(hashCode(code), Buffer.from(link.codeHash, 'hex'));
+      const matches = timingSafeEqual(codeDigest, Buffer.from(link.codeHash, 'hex'));
       const now = new Date();
       const claimed = await tx.identityLink.updateMany({
         where: { id: linkId, consumedAt: null, expiresAt: { gt: now }, attempts: { lt: MAX_ATTEMPTS } },

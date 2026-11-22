@@ -59,3 +59,8 @@ El consumo del desafío, la vinculación y la auditoría ocurren en la misma tra
 La [migración de atención asistida](../apps/api/prisma/migrations/20261121203200_add_assistance_authorization/migration.sql) añade una tabla con la referencia y el permiso. El hash es único. El canje rellena en una sola escritura condicional el asesor, la fecha de consumo y el vencimiento del permiso. Las claves foráneas vinculan la solicitud y al asesor, y el índice facilita comprobar permisos vigentes por solicitud y asesor.
 
 Aplica las migraciones versionadas a la base autorizada con `pnpm --filter @salud-digna/api prisma:migrate:deploy`.
+
+
+## Migración de WhatsApp
+
+La [migración de WhatsAppInbox](../apps/api/prisma/migrations/20261122180000_add_whatsapp_inbox/migration.sql) añade la bandeja de entrada local. El identificador de mensaje de Meta es la clave primaria de deduplicación. Consulta el [flujo y las reglas de retención](integrations/whatsapp.md).

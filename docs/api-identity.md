@@ -73,6 +73,6 @@ Con la migración aplicada en una base de desarrollo, configura `NODE_ENV=develo
 
 El servidor aporta una identidad sintética fija por proveedor. Así el cliente no elige el identificador de destino. El registro usa el prefijo reservado `sim:`, conserva `verifiedAt: null` y se excluye de la resolución real. Cada fixture puede pertenecer a un solo paciente por base de desarrollo. El simulador está deshabilitado por defecto y solo funciona en desarrollo con activación explícita.
 
-WhatsApp real queda pendiente de un adaptador que valide la firma y el origen del webhook, extraiga el identificador del remitente, normalice el teléfono y entregue el desafío desde ese canal. También queda pendiente definir la retención de desafíos vencidos y la interacción mediante la que se presenta el par `linkId` y `code` en el canal real.
+En el [adaptador de WhatsApp Cloud API](integrations/whatsapp.md), el paciente envía `vincular <linkId> <code>` desde el número que quiere asociar. El webhook firmado acredita el remitente y el adaptador entrega el hash a IdentityModule para consumir el desafío.
 
 El [simulador de conversaciones](api-conversations.md) es independiente de la vinculación de identidades. Usa la sesión JWT de paciente y conserva el estado de verificación de los canales.

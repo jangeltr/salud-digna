@@ -236,3 +236,28 @@ model AssistanceAuthorization {
 
   @@index([requestId, advisorId, accessExpiresAt])
 }
+
+enum WhatsAppInboxStatus {
+  PENDING
+  PREPARING
+  READY
+  SENDING
+  SENT
+  FAILED
+}
+
+model WhatsAppInbox {
+  providerMessageId String               @id
+  phoneNumberId     String
+  sender            String?
+  receivedAt        DateTime             @db.Timestamptz(3)
+  input             Json?                @db.JsonB
+  reply             String?
+  status            WhatsAppInboxStatus  @default(PENDING)
+  attempts          Int                  @default(0)
+  nextAttemptAt     DateTime             @default(now()) @db.Timestamptz(3)
+  outboundMessageId String?
+  lastError         String?
+
+  @@index([phoneNumberId, status, nextAttemptAt])
+}

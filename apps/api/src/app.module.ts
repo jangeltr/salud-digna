@@ -11,9 +11,11 @@ import { JourneyModule } from './journey/journey.module';
 import { AdminMonitoringModule } from './admin-monitoring/admin-monitoring.module';
 
 import { ConversationModule } from './conversations/conversation.module';
+import { WhatsAppModule } from './whatsapp/whatsapp.module';
 @Module({ imports: [HealthModule, AuthModule, IdentityModule, RequestsModule, ClinicsModule, StudiesModule, AppointmentsModule, CallCenterModule, JourneyModule, AdminMonitoringModule] })
 export class AppModule {
   static configure(): DynamicModule {
-    return { module: AppModule, imports: [ConversationModule.register()] };
+    const conversation = ConversationModule.register();
+    return { module: AppModule, imports: [conversation, WhatsAppModule.register(conversation)] };
   }
 }
