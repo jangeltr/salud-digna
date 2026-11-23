@@ -1,0 +1,71 @@
+name: Revisión de integración
+
+on:
+  pull_request:
+    branches: [main]
+  merge_group:
+    types: [checks_requested]
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    name: Integración del monorepo
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      OPENAPI_EXPORT: 'true'
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24'
+      - name: Clasificar cambios
+        id: scope
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "${BASE_SHA:-}" =~ ^[0-9a-f]{40}$ || ! "${GITHUB_SHA:-}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Falta el SHA base o el SHA del resultado de integración." >&2
+            exit 1
+          fi
+          diff_file=$(mktemp)
+          trap 'rm -f -- "$diff_file"' EXIT
+          # Clasificar ambos lados de los archivos movidos.
+          git diff --name-only --no-renames -z "$BASE_SHA" "$GITHUB_SHA" -- > "$diff_file"
+          node .github/scripts/pr-scope.mjs < "$diff_file"
+      - name: Instalar pnpm
+        if: steps.scope.outputs.build == 'true'
+        run: npm install --global --ignore-scripts pnpm@11.28.11
+      - name: Verificar e instalar dependencias
+        if: steps.scope.outputs.build == 'true'
+        run: pnpm install --frozen-lockfile
+      - name: Compilar paquetes afectados
+        if: steps.scope.outputs.build == 'true'
+        env:
+          BUILD_ALL: ${{ steps.scope.outputs.full }}
+          AFFECTED_APPS: ${{ steps.scope.outputs.apps }}
+        shell: bash
+        run: |
+          if [[ "$BUILD_ALL" == true ]]; then
+            pnpm -r run --if-present build
+          else
+            for app in $AFFECTED_APPS; do
+              if [[ -f "apps/$app/package.json" ]]; then
+                pnpm --filter "./apps/$app" --fail-if-no-match run --if-present build
+              fi
+            done
+          fi
+      - name: Comparar el contrato OpenAPI generado
+        if: steps.scope.outputs.openapi == 'true'
+        run: |
+          git ls-files --error-unmatch docs/openapi.json
+          node apps/api/dist/openapi/export-openapi.js
+          git diff --exit-code HEAD -- docs/openapi.json
