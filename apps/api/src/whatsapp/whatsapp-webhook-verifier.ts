@@ -1,10 +1,10 @@
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { ForbiddenException, Inject, Injectable, UnauthorizedException } from '@nestjs/common';
-import { WHATSAPP_CONFIG, type WhatsAppConfig } from './whatsapp.config';
+import { WHATSAPP_CONFIG, type MetaConfig } from './whatsapp.config';
 
 @Injectable()
 export class WhatsAppWebhookVerifier {
-  constructor(@Inject(WHATSAPP_CONFIG) private readonly config: WhatsAppConfig) {}
+  constructor(@Inject(WHATSAPP_CONFIG) private readonly config: MetaConfig) {}
 
   challenge(mode: unknown, token: unknown, challenge: unknown): string {
     const digest = (value: string) => createHash('sha256').update(value).digest();

@@ -1,0 +1,3741 @@
+{
+  "openapi": "3.0.0",
+  "paths": {
+    "/api/v1/conversations/dev/message": {
+      "post": {
+        "operationId": "ConversationController_message",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConversationMessageDto"
+              },
+              "examples": {
+                "greeting": {
+                  "value": {
+                    "message": "Hola"
+                  }
+                },
+                "resume": {
+                  "value": {
+                    "message": "Quiero continuar mi solicitud"
+                  }
+                },
+                "status": {
+                  "value": {
+                    "message": "¿Cuál es el estado de mi solicitud?",
+                    "requestId": "00000000-0000-4000-8000-000000000001"
+                  }
+                },
+                "selectStudy": {
+                  "value": {
+                    "message": "Elijo este estudio",
+                    "requestId": "00000000-0000-4000-8000-000000000001",
+                    "version": 1,
+                    "action": {
+                      "type": "SELECT_STUDY",
+                      "value": "00000000-0000-4000-8000-000000000201"
+                    }
+                  }
+                },
+                "advisor": {
+                  "value": {
+                    "message": "Quiero hablar con un asesor",
+                    "requestId": "00000000-0000-4000-8000-000000000001"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationReplyDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Mensaje, selección, versión o destino inválidos."
+          },
+          "401": {
+            "description": "Se requiere un JWT activo."
+          },
+          "403": {
+            "description": "Se requiere el rol PATIENT y un perfil asociado."
+          },
+          "404": {
+            "description": "Ruta deshabilitada, solicitud inexistente o solicitud de otro paciente."
+          },
+          "409": {
+            "description": "Versión desactualizada o solicitud cerrada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "example": {
+                    "statusCode": 409,
+                    "message": "La versión cambió. Recupera el estado actualizado de la solicitud.",
+                    "error": "Conflict"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Simular un mensaje de WhatsApp para el paciente autenticado",
+        "tags": [
+          "Conversation · Development"
+        ]
+      }
+    },
+    "/api/v1/webhooks/whatsapp": {
+      "get": {
+        "operationId": "WhatsAppWebhookController_challenge",
+        "parameters": [
+          {
+            "name": "hub.challenge",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "example": "00123456"
+            }
+          },
+          {
+            "name": "hub.verify_token",
+            "required": true,
+            "in": "query",
+            "description": "Token de verificación de la integración.",
+            "schema": {}
+          },
+          {
+            "name": "hub.mode",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "example": "subscribe"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "example": "00123456"
+                }
+              }
+            },
+            "description": ""
+          },
+          "403": {
+            "description": "Modo, token o challenge inválidos."
+          }
+        },
+        "summary": "Verificar el callback de Meta",
+        "tags": [
+          "WhatsApp Webhook"
+        ]
+      },
+      "post": {
+        "operationId": "WhatsAppWebhookController_receive",
+        "parameters": [
+          {
+            "name": "X-Hub-Signature-256",
+            "in": "header",
+            "description": "HMAC-SHA256 de los bytes originales, con prefijo sha256=.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "example": {
+                  "object": "whatsapp_business_account",
+                  "entry": []
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Notificación aceptada. Los mensajes admitidos se guardaron para procesarlos después."
+          },
+          "400": {
+            "description": "La notificación autenticada contiene JSON inválido."
+          },
+          "401": {
+            "description": "Firma ausente o inválida."
+          },
+          "413": {
+            "description": "El webhook supera 256 KiB."
+          }
+        },
+        "summary": "Aceptar notificaciones firmadas de WhatsApp Cloud API",
+        "tags": [
+          "WhatsApp Webhook"
+        ]
+      }
+    },
+    "/api/v1/identity": {
+      "get": {
+        "operationId": "IdentityController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LinkedIdentityDto"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Se requiere un JWT activo."
+          },
+          "403": {
+            "description": "Se requiere rol PATIENT y un perfil asociado."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Consultar las identidades del paciente autenticado",
+        "tags": [
+          "Identity"
+        ]
+      }
+    },
+    "/api/v1/identity/links": {
+      "post": {
+        "operationId": "IdentityController_requestLink",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestIdentityLinkDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "example": "no-store"
+                }
+              }
+            },
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdentityLinkCodeDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Proveedor inválido o campos adicionales."
+          },
+          "401": {
+            "description": "Se requiere un JWT activo."
+          },
+          "403": {
+            "description": "Se requiere rol PATIENT y un perfil asociado."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Solicitar un código de vinculación de cinco minutos",
+        "tags": [
+          "Identity"
+        ]
+      }
+    },
+    "/api/v1/identity/dev/confirm": {
+      "post": {
+        "operationId": "IdentityController_confirmSimulation",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmIdentityLinkDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkedIdentityDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Solicitud inválida o código incorrecto, consumido, vencido o agotado."
+          },
+          "401": {
+            "description": "Se requiere un JWT activo."
+          },
+          "403": {
+            "description": "Se requiere rol PATIENT y un perfil asociado."
+          },
+          "404": {
+            "description": "Simulador deshabilitado."
+          },
+          "409": {
+            "description": "Identidad de simulación no disponible para vinculación."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Confirmar con una identidad sintética del simulador de desarrollo",
+        "tags": [
+          "Identity"
+        ]
+      }
+    },
+    "/api/v1/health": {
+      "get": {
+        "operationId": "HealthController_getHealth",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "El servicio está operativo.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    }
+                  },
+                  "example": {
+                    "status": "ok"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Health"
+        ]
+      }
+    },
+    "/api/v1/health/db": {
+      "get": {
+        "operationId": "HealthController_getDatabaseHealth",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "PostgreSQL responde.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    }
+                  },
+                  "example": {
+                    "status": "ok"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Diagnóstico deshabilitado en producción."
+          },
+          "503": {
+            "description": "Base de datos no disponible."
+          }
+        },
+        "summary": "Diagnóstico operativo de PostgreSQL. Disponible fuera de producción.",
+        "tags": [
+          "Health"
+        ]
+      }
+    },
+    "/api/v1/auth/register": {
+      "post": {
+        "operationId": "AuthController_register",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos de registro inválidos."
+          },
+          "409": {
+            "description": "Correo ya registrado."
+          },
+          "429": {
+            "description": "Límite de intentos alcanzado.",
+            "headers": {
+              "Retry-After": {
+                "description": "Segundos antes de reintentar.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Registrar una cuenta de paciente",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "operationId": "AuthController_login",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos de inicio de sesión inválidos."
+          },
+          "401": {
+            "description": "Correo o contraseña incorrectos."
+          },
+          "429": {
+            "description": "Límite de intentos alcanzado.",
+            "headers": {
+              "Retry-After": {
+                "description": "Segundos antes de reintentar.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Iniciar sesión con correo y contraseña",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/me": {
+      "get": {
+        "operationId": "AuthController_me",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token ausente, inválido o cuenta sin acceso."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Consultar la cuenta autenticada",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/requests": {
+      "post": {
+        "operationId": "RequestsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestSnapshotDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Tipo de solicitud inválido o campos adicionales."
+          },
+          "401": {
+            "description": "Se requiere un JWT activo."
+          },
+          "403": {
+            "description": "Se requiere rol PATIENT y un perfil asociado."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Crear una solicitud de agendamiento",
+        "tags": [
+          "Requests"
+        ]
+      },
+      "get": {
+        "operationId": "RequestsController_list",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 10000,
+              "default": 1,
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Object"
+                }
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Object"
+                }
+              ]
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/ServiceRequestStatus"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestPageDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Parámetros de lista inválidos."
+          },
+          "401": {
+            "description": "Se requiere un JWT activo."
+          },
+          "403": {
+            "description": "Se requiere rol PATIENT y un perfil asociado."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Listar las solicitudes propias con filtro opcional por estado",
+        "tags": [
+          "Requests"
+        ]
+      }
+    },
+    "/api/v1/requests/pending": {
+      "get": {
+        "operationId": "RequestsController_pending",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 10000,
+              "default": 1,
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Object"
+                }
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Object"
+                }
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestPageDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Paginación inválida."
+          },
+          "401": {
+            "description": "Se requiere un JWT activo."
+          },
+          "403": {
+            "description": "Se requiere rol PATIENT y un perfil asociado."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Recuperar las solicitudes abiertas más recientemente modificadas",
+        "tags": [
+          "Requests"
+        ]
+      }
+    },
+    "/api/v1/requests/{id}": {
+      "get": {
+        "operationId": "RequestsController_get",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "example": "00000000-0000-4000-8000-000000000001",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestSnapshotDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Identificador inválido."
+          },
+          "401": {
+            "description": "Se requiere un JWT activo."
+          },
+          "403": {
+            "description": "Se requiere rol PATIENT y un perfil asociado."
+          },
+          "404": {
+            "description": "Solicitud inexistente o fuera del perfil autenticado."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Recuperar el contexto y estado persistidos",
+        "tags": [
+          "Requests"
+        ]
+      }
+    },
+    "/api/v1/requests/{id}/context": {
+      "patch": {
+        "operationId": "RequestsController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "example": "00000000-0000-4000-8000-000000000001",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateRequestContextDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestSnapshotDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Versión, campos, selecciones o fecha inválidos."
+          },
+          "401": {
+            "description": "Se requiere un JWT activo."
+          },
+          "403": {
+            "description": "Se requiere rol PATIENT y un perfil asociado."
+          },
+          "404": {
+            "description": "Solicitud inexistente o fuera del perfil autenticado."
+          },
+          "409": {
+            "description": "Versión desactualizada o solicitud cerrada. Consulta el estado vigente."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Actualizar parcialmente el contexto de una solicitud abierta",
+        "tags": [
+          "Requests"
+        ]
+      }
+    },
+    "/api/v1/requests/{id}/pause": {
+      "post": {
+        "operationId": "RequestsController_pause",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "example": "00000000-0000-4000-8000-000000000001",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestVersionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestSnapshotDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Identificador, versión o cuerpo inválidos."
+          },
+          "401": {
+            "description": "Se requiere un JWT activo."
+          },
+          "403": {
+            "description": "Se requiere rol PATIENT y un perfil asociado."
+          },
+          "404": {
+            "description": "Solicitud inexistente o fuera del perfil autenticado."
+          },
+          "409": {
+            "description": "Versión desactualizada o solicitud cerrada. Consulta el estado vigente."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Registrar una interrupción y conservar el avance de la solicitud",
+        "tags": [
+          "Requests"
+        ]
+      }
+    },
+    "/api/v1/requests/{id}/resume": {
+      "post": {
+        "operationId": "RequestsController_resume",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "example": "00000000-0000-4000-8000-000000000001",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestVersionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestSnapshotDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Identificador, versión o cuerpo inválidos."
+          },
+          "401": {
+            "description": "Se requiere un JWT activo."
+          },
+          "403": {
+            "description": "Se requiere rol PATIENT y un perfil asociado."
+          },
+          "404": {
+            "description": "Solicitud inexistente o fuera del perfil autenticado."
+          },
+          "409": {
+            "description": "Versión desactualizada o solicitud cerrada. Consulta el estado vigente."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Reanudar una solicitud abierta desde el canal de la sesión",
+        "tags": [
+          "Requests"
+        ]
+      }
+    },
+    "/api/v1/clinics": {
+      "get": {
+        "operationId": "ClinicsController_list",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 10000,
+              "default": 1,
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Object"
+                }
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Object"
+                }
+              ]
+            }
+          },
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "description": "Fragmento del nombre, sin distinguir mayúsculas.",
+            "schema": {
+              "maxLength": 100,
+              "example": "Demo",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClinicPageDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Paginación o filtro inválido."
+          }
+        },
+        "summary": "Listar clínicas del catálogo público",
+        "tags": [
+          "Clinics"
+        ]
+      },
+      "post": {
+        "operationId": "ClinicsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateClinicDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClinicDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Cuerpo inválido o campos adicionales."
+          },
+          "401": {
+            "description": "JWT ausente o inválido."
+          },
+          "403": {
+            "description": "Se requiere el rol ADMIN."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Crear registro de clínica como ADMIN",
+        "tags": [
+          "Clinics"
+        ]
+      }
+    },
+    "/api/v1/clinics/{id}": {
+      "get": {
+        "operationId": "ClinicsController_get",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "example": "00000000-0000-4000-8000-000000000101",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClinicDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Identificador inválido."
+          },
+          "404": {
+            "description": "Clínica inexistente o desactivada en el catálogo público."
+          }
+        },
+        "summary": "Consultar el detalle público de clínica",
+        "tags": [
+          "Clinics"
+        ]
+      },
+      "patch": {
+        "operationId": "ClinicsController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "example": "00000000-0000-4000-8000-000000000101",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateClinicDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClinicDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Identificador, cuerpo o campos adicionales inválidos."
+          },
+          "401": {
+            "description": "JWT ausente o inválido."
+          },
+          "403": {
+            "description": "Se requiere el rol ADMIN."
+          },
+          "404": {
+            "description": "Clínica no encontrada."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Modificar, activar o desactivar un registro de clínica como ADMIN",
+        "tags": [
+          "Clinics"
+        ]
+      }
+    },
+    "/api/v1/studies": {
+      "get": {
+        "operationId": "StudiesController_list",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 10000,
+              "default": 1,
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Object"
+                }
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Object"
+                }
+              ]
+            }
+          },
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "description": "Fragmento del nombre, sin distinguir mayúsculas.",
+            "schema": {
+              "maxLength": 100,
+              "example": "Demo",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudyPageDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Paginación o filtro inválido."
+          }
+        },
+        "summary": "Listar estudios del catálogo público",
+        "tags": [
+          "Studies"
+        ]
+      },
+      "post": {
+        "operationId": "StudiesController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateStudyDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudyDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Cuerpo inválido o campos adicionales."
+          },
+          "401": {
+            "description": "JWT ausente o inválido."
+          },
+          "403": {
+            "description": "Se requiere el rol ADMIN."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Crear registro de estudio como ADMIN",
+        "tags": [
+          "Studies"
+        ]
+      }
+    },
+    "/api/v1/studies/{id}": {
+      "get": {
+        "operationId": "StudiesController_get",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "example": "00000000-0000-4000-8000-000000000201",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudyDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Identificador inválido."
+          },
+          "404": {
+            "description": "Estudio inexistente o desactivado en el catálogo público."
+          }
+        },
+        "summary": "Consultar el detalle público de estudio",
+        "tags": [
+          "Studies"
+        ]
+      },
+      "patch": {
+        "operationId": "StudiesController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "example": "00000000-0000-4000-8000-000000000201",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateStudyDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudyDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Identificador, cuerpo o campos adicionales inválidos."
+          },
+          "401": {
+            "description": "JWT ausente o inválido."
+          },
+          "403": {
+            "description": "Se requiere el rol ADMIN."
+          },
+          "404": {
+            "description": "Estudio no encontrado."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Modificar, activar o desactivar un registro de estudio como ADMIN",
+        "tags": [
+          "Studies"
+        ]
+      }
+    },
+    "/api/v1/requests/{id}/confirm": {
+      "post": {
+        "operationId": "AppointmentsController_confirm",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "example": "00000000-0000-4000-8000-000000000001",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmAppointmentDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Cita confirmada o recuperada sin duplicarla.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppointmentDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "UUID, versión, estado o contexto inválidos para confirmar."
+          },
+          "401": {
+            "description": "Se requiere un JWT activo."
+          },
+          "403": {
+            "description": "Se requiere el rol PATIENT y un perfil asociado."
+          },
+          "404": {
+            "description": "Solicitud inexistente o perteneciente a otro paciente."
+          },
+          "409": {
+            "description": "Versión desactualizada, solicitud cerrada o confirmación contradictoria."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Confirmar una solicitud propia o recuperar su confirmación existente",
+        "tags": [
+          "Appointments"
+        ]
+      }
+    },
+    "/api/v1/appointments": {
+      "get": {
+        "operationId": "AppointmentsController_list",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 10000,
+              "default": 1,
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Object"
+                }
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Object"
+                }
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppointmentPageDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Paginación inválida."
+          },
+          "401": {
+            "description": "Se requiere un JWT activo."
+          },
+          "403": {
+            "description": "Se requiere el rol PATIENT y un perfil asociado."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Listar las citas propias de forma paginada",
+        "tags": [
+          "Appointments"
+        ]
+      }
+    },
+    "/api/v1/appointments/upcoming": {
+      "get": {
+        "operationId": "AppointmentsController_upcoming",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 10000,
+              "default": 1,
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Object"
+                }
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Object"
+                }
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppointmentPageDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Paginación inválida."
+          },
+          "401": {
+            "description": "Se requiere un JWT activo."
+          },
+          "403": {
+            "description": "Se requiere el rol PATIENT y un perfil asociado."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Listar próximas citas confirmadas de la cuenta",
+        "tags": [
+          "Appointments"
+        ]
+      }
+    },
+    "/api/v1/appointments/{id}": {
+      "get": {
+        "operationId": "AppointmentsController_get",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "example": "00000000-0000-4000-8000-000000000004",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppointmentDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Identificador inválido."
+          },
+          "401": {
+            "description": "Se requiere un JWT activo."
+          },
+          "403": {
+            "description": "Se requiere el rol PATIENT y un perfil asociado."
+          },
+          "404": {
+            "description": "Cita inexistente o perteneciente a otro paciente."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Consultar una cita propia",
+        "tags": [
+          "Appointments"
+        ]
+      }
+    },
+    "/api/v1/requests/{id}/assistance-code": {
+      "post": {
+        "operationId": "CallCenterController_issue",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "example": "00000000-0000-4000-8000-000000000001",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistanceCodeDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "UUID inválido."
+          },
+          "401": {
+            "description": "Se requiere un JWT activo."
+          },
+          "403": {
+            "description": "Rol insuficiente o cuenta de paciente sin perfil asociado."
+          },
+          "404": {
+            "description": "Solicitud inexistente o sin permiso vigente para esta cuenta."
+          },
+          "409": {
+            "description": "Solicitud cerrada."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Emitir una referencia de cinco minutos para una solicitud propia abierta",
+        "tags": [
+          "Call Center"
+        ]
+      }
+    },
+    "/api/v1/call-center/claim": {
+      "post": {
+        "operationId": "CallCenterController_claim",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClaimAssistanceDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistanceGrantDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Referencia inválida, vencida, consumida o de una solicitud cerrada."
+          },
+          "401": {
+            "description": "Se requiere un JWT activo."
+          },
+          "403": {
+            "description": "Rol insuficiente o cuenta de paciente sin perfil asociado."
+          },
+          "429": {
+            "description": "Límite de intentos de canje alcanzado.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Segundos antes de reintentar."
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Canjear la referencia y autorizar al asesor actual durante 30 minutos",
+        "tags": [
+          "Call Center"
+        ]
+      }
+    },
+    "/api/v1/call-center/requests/{id}": {
+      "get": {
+        "operationId": "CallCenterController_get",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "example": "00000000-0000-4000-8000-000000000001",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistedRequestDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "UUID inválido."
+          },
+          "401": {
+            "description": "Se requiere un JWT activo."
+          },
+          "403": {
+            "description": "Rol insuficiente o cuenta de paciente sin perfil asociado."
+          },
+          "404": {
+            "description": "Solicitud inexistente o sin permiso vigente para esta cuenta."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Recuperar la solicitud y el contexto con permiso de atención vigente",
+        "tags": [
+          "Call Center"
+        ]
+      }
+    },
+    "/api/v1/call-center/requests/{id}/confirm": {
+      "post": {
+        "operationId": "CallCenterController_confirm",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "example": "00000000-0000-4000-8000-000000000001",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmAppointmentDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppointmentDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "UUID, cuerpo, estado o contexto inválidos para confirmar."
+          },
+          "401": {
+            "description": "Se requiere un JWT activo."
+          },
+          "403": {
+            "description": "Rol insuficiente o cuenta de paciente sin perfil asociado."
+          },
+          "404": {
+            "description": "Solicitud inexistente o sin permiso vigente para esta cuenta."
+          },
+          "409": {
+            "description": "Versión desactualizada, solicitud cerrada o confirmación contradictoria."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Confirmar o recuperar una cita con permiso de atención vigente",
+        "tags": [
+          "Call Center"
+        ]
+      }
+    },
+    "/api/v1/requests/{id}/journey": {
+      "get": {
+        "operationId": "JourneyController_get",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "example": "00000000-0000-4000-8000-000000000001",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/JourneyEntryDto"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Identificador inválido."
+          },
+          "401": {
+            "description": "Se requiere un JWT activo."
+          },
+          "403": {
+            "description": "Rol insuficiente o cuenta de paciente sin perfil asociado."
+          },
+          "404": {
+            "description": "Solicitud inexistente o sin acceso autorizado."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Consultar el historial propio o autorizado temporalmente",
+        "tags": [
+          "Journey"
+        ]
+      }
+    },
+    "/api/v1/admin/overview": {
+      "get": {
+        "operationId": "AdminMonitoringController_overview",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminOverviewDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Se requiere un JWT activo."
+          },
+          "403": {
+            "description": "Se requiere el rol ADMIN."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Consultar indicadores agregados de pacientes, solicitudes y citas",
+        "tags": [
+          "Admin Monitoring"
+        ]
+      }
+    },
+    "/api/v1/admin/requests": {
+      "get": {
+        "operationId": "AdminMonitoringController_list",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 10000,
+              "default": 1,
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Object"
+                }
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Object"
+                }
+              ]
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/ServiceRequestStatus"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminRequestPageDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Paginación o estado inválidos."
+          },
+          "401": {
+            "description": "Se requiere un JWT activo."
+          },
+          "403": {
+            "description": "Se requiere el rol ADMIN."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Listar solicitudes para monitoreo operativo",
+        "tags": [
+          "Admin Monitoring"
+        ]
+      }
+    },
+    "/api/v1/admin/requests/{id}/journey": {
+      "get": {
+        "operationId": "AdminMonitoringController_timeline",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "example": "00000000-0000-4000-8000-000000000001",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/JourneyEntryDto"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "UUID inválido."
+          },
+          "401": {
+            "description": "Se requiere un JWT activo."
+          },
+          "403": {
+            "description": "Se requiere el rol ADMIN."
+          },
+          "404": {
+            "description": "Solicitud no encontrada."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Consultar la trazabilidad de una solicitud con registro de auditoría",
+        "tags": [
+          "Admin Monitoring"
+        ]
+      }
+    },
+    "/api/v1/webhooks/twilio/whatsapp": {
+      "post": {
+        "operationId": "TwilioWebhookController_receive",
+        "parameters": [
+          {
+            "name": "content-type",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Twilio-Signature",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "MessageSid",
+                  "AccountSid",
+                  "From",
+                  "To",
+                  "Body",
+                  "NumMedia"
+                ],
+                "properties": {
+                  "MessageSid": {
+                    "type": "string"
+                  },
+                  "AccountSid": {
+                    "type": "string"
+                  },
+                  "From": {
+                    "type": "string"
+                  },
+                  "To": {
+                    "type": "string"
+                  },
+                  "Body": {
+                    "type": "string",
+                    "maxLength": 500
+                  },
+                  "NumMedia": {
+                    "type": "string",
+                    "enum": [
+                      "0"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "TwiML vacío tras aceptar el mensaje para procesamiento asíncrono.",
+            "content": {
+              "text/xml": {
+                "schema": {
+                  "type": "string",
+                  "example": "<Response></Response>"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Firma ausente o inválida."
+          },
+          "413": {
+            "description": "El webhook supera 256 KiB."
+          },
+          "415": {
+            "description": "Se requiere application/x-www-form-urlencoded."
+          }
+        },
+        "tags": [
+          "WhatsApp Webhook"
+        ]
+      }
+    }
+  },
+  "info": {
+    "title": "Salud Digna API",
+    "description": "Contrato generado del backend. Las rutas de simulación y los webhooks dependen de la configuración. Los webhooks de Meta y Twilio corresponden a perfiles alternativos.",
+    "version": "1.0",
+    "contact": {}
+  },
+  "tags": [],
+  "servers": [
+    {
+      "url": "https://api.salud-digna.app"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearer": {
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "type": "http"
+      }
+    },
+    "schemas": {
+      "ConversationSelectionDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "SELECT_STUDY",
+              "SELECT_CLINIC",
+              "SELECT_DATETIME"
+            ],
+            "example": "SELECT_STUDY"
+          },
+          "value": {
+            "type": "string",
+            "description": "UUID de catálogo o fecha ISO 8601 con zona horaria.",
+            "example": "00000000-0000-4000-8000-000000000201"
+          }
+        },
+        "required": [
+          "type",
+          "value"
+        ]
+      },
+      "ConversationMessageDto": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647,
+            "example": 1
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "example": "Quiero continuar mi solicitud"
+          },
+          "requestId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-4000-8000-000000000001"
+          },
+          "action": {
+            "$ref": "#/components/schemas/ConversationSelectionDto"
+          }
+        },
+        "required": [
+          "message"
+        ]
+      },
+      "SuggestedActionDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "SELECT_STUDY",
+              "SELECT_CLINIC",
+              "SELECT_DATETIME",
+              "SELECT_REQUEST",
+              "LIST_REQUESTS",
+              "REQUEST_ASSISTANCE"
+            ],
+            "example": "SELECT_STUDY"
+          },
+          "label": {
+            "type": "string",
+            "example": "Demo Glucosa"
+          },
+          "value": {
+            "type": "string",
+            "example": "00000000-0000-4000-8000-000000000201"
+          },
+          "requestId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-4000-8000-000000000001"
+          }
+        },
+        "required": [
+          "type",
+          "label"
+        ]
+      },
+      "ConversationReplyDto": {
+        "type": "object",
+        "properties": {
+          "reply": {
+            "type": "string",
+            "example": "El siguiente paso es elegir un estudio."
+          },
+          "intent": {
+            "type": "string",
+            "enum": [
+              "GREETING",
+              "RESUME_REQUEST",
+              "REQUEST_STATUS",
+              "SELECT_STUDY",
+              "SELECT_CLINIC",
+              "SELECT_DATETIME",
+              "APPOINTMENT_STATUS",
+              "HELP",
+              "TALK_TO_ADVISOR",
+              "UNKNOWN"
+            ],
+            "example": "RESUME_REQUEST"
+          },
+          "requestId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "currentStep": {
+            "type": "string",
+            "enum": [
+              "SELECT_STUDY",
+              "SELECT_CLINIC",
+              "SELECT_DATETIME",
+              "REVIEW",
+              "CONFIRMED",
+              null
+            ],
+            "nullable": true
+          },
+          "requestStatus": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "IN_PROGRESS",
+              "PENDING_CONFIRMATION",
+              "COMPLETED",
+              "CANCELLED",
+              null
+            ],
+            "nullable": true
+          },
+          "version": {
+            "type": "number",
+            "nullable": true,
+            "example": 2
+          },
+          "suggestedActions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SuggestedActionDto"
+            }
+          }
+        },
+        "required": [
+          "reply",
+          "intent",
+          "requestId",
+          "currentStep",
+          "requestStatus",
+          "version"
+        ]
+      },
+      "Channel": {
+        "type": "string",
+        "enum": [
+          "WEB",
+          "WHATSAPP",
+          "MOBILE",
+          "CALL_CENTER"
+        ]
+      },
+      "LinkedIdentityDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-4000-8000-000000000002"
+          },
+          "provider": {
+            "example": "WHATSAPP",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Channel"
+              }
+            ]
+          },
+          "externalId": {
+            "type": "string",
+            "example": "sim:+12025550100"
+          },
+          "verifiedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time",
+            "example": null
+          },
+          "simulated": {
+            "type": "boolean",
+            "example": true,
+            "description": "Identidad de demostración aislada de los canales reales."
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "externalId",
+          "verifiedAt",
+          "simulated"
+        ]
+      },
+      "RequestIdentityLinkDto": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "example": "WHATSAPP",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Channel"
+              }
+            ]
+          }
+        },
+        "required": [
+          "provider"
+        ]
+      },
+      "IdentityLinkCodeDto": {
+        "type": "object",
+        "properties": {
+          "linkId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-4000-8000-000000000001"
+          },
+          "code": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{22}$",
+            "example": "EjemploSintetico_00001"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string",
+            "example": "2026-11-21T19:05:00.000Z"
+          }
+        },
+        "required": [
+          "linkId",
+          "code",
+          "expiresAt"
+        ]
+      },
+      "ConfirmIdentityLinkDto": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "example": "WHATSAPP",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Channel"
+              }
+            ]
+          },
+          "linkId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-4000-8000-000000000001"
+          },
+          "code": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{22}$",
+            "writeOnly": true,
+            "example": "EjemploSintetico_00001"
+          }
+        },
+        "required": [
+          "provider",
+          "linkId",
+          "code"
+        ]
+      },
+      "RegisterDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "maxLength": 254,
+            "example": "paciente@example.test"
+          },
+          "firstName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "example": "Alex"
+          },
+          "lastName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "example": "Ejemplo"
+          },
+          "password": {
+            "type": "string",
+            "format": "password",
+            "writeOnly": true,
+            "minLength": 12,
+            "maxLength": 128
+          },
+          "phone": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32,
+            "example": "+525500000000"
+          }
+        },
+        "required": [
+          "email",
+          "firstName",
+          "lastName",
+          "password"
+        ]
+      },
+      "PatientProfileDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-4000-8000-000000000002"
+          },
+          "firstName": {
+            "type": "string",
+            "example": "Alex"
+          },
+          "lastName": {
+            "type": "string",
+            "example": "Ejemplo"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "nullable": true,
+            "example": "paciente@example.test"
+          },
+          "phone": {
+            "type": "string",
+            "nullable": true,
+            "example": null
+          }
+        },
+        "required": [
+          "id",
+          "firstName",
+          "lastName",
+          "email",
+          "phone"
+        ]
+      },
+      "UserRole": {
+        "type": "string",
+        "enum": [
+          "PATIENT",
+          "ADVISOR",
+          "ADMIN"
+        ]
+      },
+      "AccountDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-4000-8000-000000000001"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "example": "paciente@example.test"
+          },
+          "role": {
+            "example": "PATIENT",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/UserRole"
+              }
+            ]
+          },
+          "isActive": {
+            "type": "boolean",
+            "example": true
+          },
+          "patientId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "example": "00000000-0000-4000-8000-000000000002"
+          },
+          "patient": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PatientProfileDto"
+              },
+              {
+                "type": "object",
+                "nullable": true,
+                "enum": [
+                  null
+                ]
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "role",
+          "isActive",
+          "patientId",
+          "patient"
+        ]
+      },
+      "LoginDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "maxLength": 254,
+            "example": "paciente@example.test"
+          },
+          "password": {
+            "type": "string",
+            "format": "password",
+            "writeOnly": true,
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ]
+      },
+      "PublicUserDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-4000-8000-000000000001"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "example": "paciente@example.test"
+          },
+          "role": {
+            "example": "PATIENT",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/UserRole"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "role"
+        ]
+      },
+      "LoginResponseDto": {
+        "type": "object",
+        "properties": {
+          "accessToken": {
+            "type": "string",
+            "description": "JWT firmado",
+            "example": "<jwt>"
+          },
+          "tokenType": {
+            "type": "string",
+            "enum": [
+              "Bearer"
+            ],
+            "example": "Bearer"
+          },
+          "expiresIn": {
+            "type": "number",
+            "description": "Vigencia en segundos",
+            "example": 1800
+          },
+          "user": {
+            "$ref": "#/components/schemas/PublicUserDto"
+          }
+        },
+        "required": [
+          "accessToken",
+          "tokenType",
+          "expiresIn",
+          "user"
+        ]
+      },
+      "CreateRequestDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "APPOINTMENT"
+            ],
+            "default": "APPOINTMENT"
+          }
+        }
+      },
+      "ServiceRequestStatus": {
+        "type": "string",
+        "enum": [
+          "DRAFT",
+          "IN_PROGRESS",
+          "PENDING_CONFIRMATION",
+          "COMPLETED",
+          "CANCELLED"
+        ]
+      },
+      "RequestContextDto": {
+        "type": "object",
+        "properties": {
+          "studyId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-4000-8000-000000000002"
+          },
+          "clinicId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-4000-8000-000000000003"
+          },
+          "scheduledAt": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2027-01-05T16:30:00.000Z"
+          },
+          "notes": {
+            "type": "string",
+            "maxLength": 500,
+            "example": "Prefiero el turno de la mañana."
+          }
+        }
+      },
+      "RequestSnapshotDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-4000-8000-000000000001"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "APPOINTMENT"
+            ],
+            "example": "APPOINTMENT"
+          },
+          "status": {
+            "example": "DRAFT",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ServiceRequestStatus"
+              }
+            ]
+          },
+          "currentStep": {
+            "type": "string",
+            "enum": [
+              "SELECT_STUDY",
+              "SELECT_CLINIC",
+              "SELECT_DATETIME",
+              "REVIEW",
+              "CONFIRMED"
+            ],
+            "example": "SELECT_STUDY"
+          },
+          "lastChannel": {
+            "example": "WEB",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Channel"
+              }
+            ]
+          },
+          "version": {
+            "type": "number",
+            "example": 1
+          },
+          "context": {
+            "example": {},
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RequestContextDto"
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-11-21T19:00:00.000Z"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-11-21T19:00:00.000Z"
+          },
+          "completedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "example": null
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "status",
+          "currentStep",
+          "lastChannel",
+          "version",
+          "context",
+          "createdAt",
+          "updatedAt",
+          "completedAt"
+        ]
+      },
+      "Object": {
+        "type": "object",
+        "properties": {}
+      },
+      "RequestPageDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RequestSnapshotDto"
+            }
+          },
+          "page": {
+            "type": "number",
+            "example": 1
+          },
+          "limit": {
+            "type": "number",
+            "example": 20
+          },
+          "hasMore": {
+            "type": "boolean",
+            "example": false
+          }
+        },
+        "required": [
+          "items",
+          "page",
+          "limit",
+          "hasMore"
+        ]
+      },
+      "UpdateRequestContextDto": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647,
+            "example": 1
+          },
+          "studyId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-4000-8000-000000000002"
+          },
+          "clinicId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-4000-8000-000000000003"
+          },
+          "scheduledAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "example": "2027-01-05T16:30:00.000Z"
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 500,
+            "example": "Prefiero el turno de la mañana."
+          }
+        },
+        "required": [
+          "version"
+        ]
+      },
+      "RequestVersionDto": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647,
+            "example": 1
+          }
+        },
+        "required": [
+          "version"
+        ]
+      },
+      "ClinicDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "example": "Demo Clínica Alameda"
+          },
+          "address": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 250,
+            "example": "Avenida Ejemplo 101"
+          },
+          "city": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "example": "Ciudad Ejemplo"
+          },
+          "state": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "example": "Estado Ejemplo"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-4000-8000-000000000101"
+          },
+          "isActive": {
+            "type": "boolean",
+            "example": true
+          }
+        },
+        "required": [
+          "name",
+          "address",
+          "city",
+          "state",
+          "id",
+          "isActive"
+        ]
+      },
+      "ClinicPageDto": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "number",
+            "example": 1
+          },
+          "limit": {
+            "type": "number",
+            "example": 20
+          },
+          "hasMore": {
+            "type": "boolean",
+            "example": false
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ClinicDto"
+            }
+          }
+        },
+        "required": [
+          "page",
+          "limit",
+          "hasMore",
+          "items"
+        ]
+      },
+      "CreateClinicDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "example": "Demo Clínica Alameda"
+          },
+          "address": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 250,
+            "example": "Avenida Ejemplo 101"
+          },
+          "city": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "example": "Ciudad Ejemplo"
+          },
+          "state": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "example": "Estado Ejemplo"
+          },
+          "isActive": {
+            "type": "boolean",
+            "default": true
+          }
+        },
+        "required": [
+          "name",
+          "address",
+          "city",
+          "state"
+        ]
+      },
+      "UpdateClinicDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "example": "Demo Clínica Alameda"
+          },
+          "address": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 250,
+            "example": "Avenida Ejemplo 101"
+          },
+          "city": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "example": "Ciudad Ejemplo"
+          },
+          "state": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "example": "Estado Ejemplo"
+          },
+          "isActive": {
+            "type": "boolean",
+            "default": true
+          }
+        }
+      },
+      "StudyDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "example": "Demo Glucosa"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-4000-8000-000000000201"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "example": "Estudio sintético de demostración."
+          },
+          "price": {
+            "type": "string",
+            "pattern": "^[0-9]+\\.[0-9]{2}$",
+            "example": "120.00"
+          },
+          "isActive": {
+            "type": "boolean",
+            "example": true
+          }
+        },
+        "required": [
+          "name",
+          "id",
+          "description",
+          "price",
+          "isActive"
+        ]
+      },
+      "StudyPageDto": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "number",
+            "example": 1
+          },
+          "limit": {
+            "type": "number",
+            "example": 20
+          },
+          "hasMore": {
+            "type": "boolean",
+            "example": false
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StudyDto"
+            }
+          }
+        },
+        "required": [
+          "page",
+          "limit",
+          "hasMore",
+          "items"
+        ]
+      },
+      "CreateStudyDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "example": "Demo Glucosa"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 1000,
+            "example": "Estudio sintético de demostración."
+          },
+          "price": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]{0,9})(\\.[0-9]{1,2})?$",
+            "example": "120.00"
+          },
+          "isActive": {
+            "type": "boolean",
+            "default": true
+          }
+        },
+        "required": [
+          "name",
+          "price"
+        ]
+      },
+      "UpdateStudyDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "example": "Demo Glucosa"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 1000,
+            "example": "Estudio sintético de demostración."
+          },
+          "price": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]{0,9})(\\.[0-9]{1,2})?$",
+            "example": "120.00"
+          },
+          "isActive": {
+            "type": "boolean",
+            "default": true
+          }
+        }
+      },
+      "ConfirmAppointmentDto": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647,
+            "example": 1
+          }
+        },
+        "required": [
+          "version"
+        ]
+      },
+      "StudySummaryDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-4000-8000-000000000201"
+          },
+          "name": {
+            "type": "string",
+            "example": "Demo Glucosa"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "ClinicSummaryDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-4000-8000-000000000101"
+          },
+          "name": {
+            "type": "string",
+            "example": "Demo Clínica Alameda"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "AppointmentStatus": {
+        "type": "string",
+        "enum": [
+          "PENDING",
+          "CONFIRMED",
+          "CANCELLED"
+        ]
+      },
+      "AppointmentDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-4000-8000-000000000004"
+          },
+          "requestId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-4000-8000-000000000001"
+          },
+          "study": {
+            "$ref": "#/components/schemas/StudySummaryDto"
+          },
+          "clinic": {
+            "$ref": "#/components/schemas/ClinicSummaryDto"
+          },
+          "scheduledAt": {
+            "format": "date-time",
+            "type": "string",
+            "example": "2027-01-05T16:30:00.000Z"
+          },
+          "status": {
+            "example": "CONFIRMED",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AppointmentStatus"
+              }
+            ]
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string",
+            "example": "2026-11-21T19:10:00.000Z"
+          }
+        },
+        "required": [
+          "id",
+          "requestId",
+          "study",
+          "clinic",
+          "scheduledAt",
+          "status",
+          "createdAt"
+        ]
+      },
+      "AppointmentPageDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AppointmentDto"
+            }
+          },
+          "page": {
+            "type": "number",
+            "example": 1
+          },
+          "limit": {
+            "type": "number",
+            "example": 20
+          },
+          "hasMore": {
+            "type": "boolean",
+            "example": false
+          }
+        },
+        "required": [
+          "items",
+          "page",
+          "limit",
+          "hasMore"
+        ]
+      },
+      "AssistanceCodeDto": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{22}$",
+            "example": "EjemploSintetico_00001"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string",
+            "example": "2026-11-21T19:05:00.000Z"
+          }
+        },
+        "required": [
+          "code",
+          "expiresAt"
+        ]
+      },
+      "ClaimAssistanceDto": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{22}$",
+            "writeOnly": true,
+            "example": "EjemploSintetico_00001"
+          }
+        },
+        "required": [
+          "code"
+        ]
+      },
+      "AssistanceGrantDto": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-4000-8000-000000000001"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string",
+            "example": "2026-11-21T19:31:00.000Z"
+          }
+        },
+        "required": [
+          "requestId",
+          "expiresAt"
+        ]
+      },
+      "AssistedSelectionDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-4000-8000-000000000201"
+          },
+          "name": {
+            "type": "string",
+            "example": "Demo Glucosa"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "AssistedPatientDto": {
+        "type": "object",
+        "properties": {
+          "firstName": {
+            "type": "string",
+            "example": "Alex"
+          },
+          "lastName": {
+            "type": "string",
+            "example": "Ejemplo"
+          }
+        },
+        "required": [
+          "firstName",
+          "lastName"
+        ]
+      },
+      "JourneyEntryDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-4000-8000-000000000009"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "REQUEST_CREATED",
+              "REQUEST_CONTEXT_UPDATED",
+              "REQUEST_PAUSED",
+              "REQUEST_RESUMED",
+              "CHANNEL_SWITCHED",
+              "REQUEST_STATUS_CHANGED",
+              "APPOINTMENT_CONFIRMED"
+            ],
+            "example": "APPOINTMENT_CONFIRMED"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string",
+            "example": "2026-11-21T19:10:00.000Z"
+          },
+          "channel": {
+            "example": "CALL_CENTER",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Channel"
+              }
+            ]
+          },
+          "actorRole": {
+            "type": "string",
+            "enum": [
+              "PATIENT",
+              "ADVISOR",
+              "ADMIN",
+              null
+            ],
+            "nullable": true,
+            "example": "ADVISOR"
+          },
+          "payload": {
+            "type": "object",
+            "additionalProperties": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "example": {
+              "appointmentId": "00000000-0000-4000-8000-000000000004",
+              "version": 3
+            }
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "createdAt",
+          "channel",
+          "actorRole",
+          "payload"
+        ]
+      },
+      "AssistedRequestDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-4000-8000-000000000001"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "APPOINTMENT"
+            ],
+            "example": "APPOINTMENT"
+          },
+          "status": {
+            "example": "DRAFT",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ServiceRequestStatus"
+              }
+            ]
+          },
+          "currentStep": {
+            "type": "string",
+            "enum": [
+              "SELECT_STUDY",
+              "SELECT_CLINIC",
+              "SELECT_DATETIME",
+              "REVIEW",
+              "CONFIRMED"
+            ],
+            "example": "SELECT_STUDY"
+          },
+          "lastChannel": {
+            "example": "WEB",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Channel"
+              }
+            ]
+          },
+          "version": {
+            "type": "number",
+            "example": 1
+          },
+          "context": {
+            "example": {},
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RequestContextDto"
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-11-21T19:00:00.000Z"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-11-21T19:00:00.000Z"
+          },
+          "completedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "example": null
+          },
+          "patient": {
+            "$ref": "#/components/schemas/AssistedPatientDto"
+          },
+          "study": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AssistedSelectionDto"
+              },
+              {
+                "type": "object",
+                "nullable": true,
+                "enum": [
+                  null
+                ]
+              }
+            ]
+          },
+          "clinic": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AssistedSelectionDto"
+              },
+              {
+                "type": "object",
+                "nullable": true,
+                "enum": [
+                  null
+                ]
+              }
+            ]
+          },
+          "recentEvents": {
+            "description": "Hasta diez eventos recientes, en orden cronológico.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JourneyEntryDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "status",
+          "currentStep",
+          "lastChannel",
+          "version",
+          "context",
+          "createdAt",
+          "updatedAt",
+          "completedAt",
+          "patient",
+          "study",
+          "clinic",
+          "recentEvents"
+        ]
+      },
+      "StatusDistributionDto": {
+        "type": "object",
+        "properties": {
+          "DRAFT": {
+            "type": "number",
+            "example": 2
+          },
+          "IN_PROGRESS": {
+            "type": "number",
+            "example": 1
+          },
+          "PENDING_CONFIRMATION": {
+            "type": "number",
+            "example": 0
+          },
+          "COMPLETED": {
+            "type": "number",
+            "example": 2
+          },
+          "CANCELLED": {
+            "type": "number",
+            "example": 0
+          }
+        },
+        "required": [
+          "DRAFT",
+          "IN_PROGRESS",
+          "PENDING_CONFIRMATION",
+          "COMPLETED",
+          "CANCELLED"
+        ]
+      },
+      "AdminOverviewDto": {
+        "type": "object",
+        "properties": {
+          "totalPatients": {
+            "type": "number",
+            "example": 3
+          },
+          "requestsCreated": {
+            "type": "number",
+            "example": 5
+          },
+          "openRequests": {
+            "type": "number",
+            "example": 3
+          },
+          "completedRequests": {
+            "type": "number",
+            "example": 2
+          },
+          "confirmedAppointments": {
+            "type": "number",
+            "example": 2
+          },
+          "requestsByStatus": {
+            "$ref": "#/components/schemas/StatusDistributionDto"
+          }
+        },
+        "required": [
+          "totalPatients",
+          "requestsCreated",
+          "openRequests",
+          "completedRequests",
+          "confirmedAppointments",
+          "requestsByStatus"
+        ]
+      },
+      "AdminRequestDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-4000-8000-000000000001"
+          },
+          "status": {
+            "example": "DRAFT",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ServiceRequestStatus"
+              }
+            ]
+          },
+          "currentStep": {
+            "type": "string",
+            "enum": [
+              "SELECT_STUDY",
+              "SELECT_CLINIC",
+              "SELECT_DATETIME",
+              "REVIEW",
+              "CONFIRMED"
+            ],
+            "example": "SELECT_STUDY"
+          },
+          "lastChannel": {
+            "example": "WEB",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Channel"
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-11-21T19:00:00.000Z"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-11-21T19:00:00.000Z"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "currentStep",
+          "lastChannel",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "AdminRequestPageDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminRequestDto"
+            }
+          },
+          "page": {
+            "type": "number",
+            "example": 1
+          },
+          "limit": {
+            "type": "number",
+            "example": 20
+          },
+          "hasMore": {
+            "type": "boolean",
+            "example": false
+          }
+        },
+        "required": [
+          "items",
+          "page",
+          "limit",
+          "hasMore"
+        ]
+      }
+    }
+  }
+}

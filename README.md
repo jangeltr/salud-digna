@@ -63,6 +63,7 @@ El comando carga tres clínicas ficticias y cinco estudios con precios sintétic
 
 Trabaja en ramas de alcance acotado y revisa los cambios en el contrato antes de integrar. Las aplicaciones consumidoras se apoyan exclusivamente en contratos documentados de la API. Usa datos sintéticos para el desarrollo y conserva las credenciales fuera de Git.
 
+- [Integración para los equipos frontend](docs/INTEGRACION-FRONTENDS.md)
 - [Arquitectura del backend](docs/architecture.md)
 - [Contratos de autenticación y creación de administradores](docs/api-auth.md)
 - [Catálogo de clínicas](docs/api-clinics.md)
@@ -71,3 +72,4 @@ Trabaja en ramas de alcance acotado y revisa los cambios en el contrato antes de
 - [Desarrollo e integración](docs/development.md)
 - [Despliegue futuro en Debian 13](docs/deployment.md)
 - [Instrucciones permanentes para Codex](AGENTS.md)
+- [Instrucciones para Claude](CLAUDE.md)

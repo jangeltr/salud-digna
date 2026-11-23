@@ -8,7 +8,7 @@ import { Prisma, type WhatsAppInbox } from '../generated/prisma/client';
 import { Channel, WhatsAppInboxStatus } from '../generated/prisma/enums';
 import { IdentityService } from '../identity/identity.service';
 import { PrismaService } from '../persistence/prisma.service';
-import { WhatsAppCloudApiClient, WhatsAppDeliveryError } from './whatsapp-cloud-api.client';
+import { WHATSAPP_SENDER, WhatsAppDeliveryError, type WhatsAppSender } from './whatsapp-sender';
 import { WHATSAPP_CONFIG, type WhatsAppConfig } from './whatsapp.config';
 import { asObject, conversationInput } from './whatsapp-input';
 
@@ -45,7 +45,7 @@ export class WhatsAppMessageProcessor implements OnModuleInit, OnModuleDestroy {
     private readonly prisma: PrismaService,
     private readonly identity: IdentityService,
     private readonly conversation: ConversationService,
-    private readonly graph: WhatsAppCloudApiClient,
+    @Inject(WHATSAPP_SENDER) private readonly sender: WhatsAppSender,
   ) {}
 
   onModuleInit(): void {
@@ -67,18 +67,19 @@ export class WhatsAppMessageProcessor implements OnModuleInit, OnModuleDestroy {
 
   private async processNext(): Promise<void> {
     const inbox = this.prisma.client.whatsAppInbox;
-    const phoneNumberId = this.config.phoneNumberId;
+    const { provider, recipientKey } = this.config;
+    const scope = { provider, recipientKey };
     const now = new Date();
     await inbox.updateMany({
-      where: { phoneNumberId, status: 'PREPARING', nextAttemptAt: { lte: now } },
+      where: { ...scope, status: 'PREPARING', nextAttemptAt: { lte: now } },
       data: { status: 'FAILED', lastError: 'preparation_interrupted', input: Prisma.DbNull, sender: null },
     });
     await inbox.updateMany({
-      where: { phoneNumberId, status: 'SENDING', nextAttemptAt: { lte: now }, attempts: { gte: MAX_DELIVERY_ATTEMPTS } },
+      where: { ...scope, status: 'SENDING', nextAttemptAt: { lte: now }, ...(provider === 'META' && { attempts: { gte: MAX_DELIVERY_ATTEMPTS } }) },
       data: { status: 'FAILED', lastError: 'delivery_interrupted', sender: null, reply: null },
     });
     const item = await inbox.findFirst({
-      where: { phoneNumberId, status: { in: ['PENDING', 'READY', 'SENDING'] }, nextAttemptAt: { lte: now } },
+      where: { ...scope, status: { in: ['PENDING', 'READY', 'SENDING'] }, nextAttemptAt: { lte: now } },
       orderBy: [{ nextAttemptAt: 'asc' }, { providerMessageId: 'asc' }],
     });
     if (!item) return;
@@ -87,12 +88,12 @@ export class WhatsAppMessageProcessor implements OnModuleInit, OnModuleDestroy {
     const status = preparing ? WhatsAppInboxStatus.PREPARING : WhatsAppInboxStatus.SENDING;
     const lease = new Date(Date.now() + LEASE_MS);
     const claimed = await inbox.updateMany({
-      where: { providerMessageId: item.providerMessageId, status: item.status, nextAttemptAt: item.nextAttemptAt },
+      where: { ...scope, providerMessageId: item.providerMessageId, status: item.status, nextAttemptAt: item.nextAttemptAt },
       data: { status, nextAttemptAt: lease, ...(!preparing && { attempts: { increment: 1 } }) },
     });
     if (!claimed.count) return;
 
-    const owned = { providerMessageId: item.providerMessageId, status, nextAttemptAt: lease };
+    const owned = { ...scope, providerMessageId: item.providerMessageId, status, nextAttemptAt: lease };
     if (Date.now() - item.receivedAt.getTime() >= WINDOW_MS) {
       await inbox.updateMany({ where: owned, data: {
         status: 'FAILED', lastError: 'service_window_expired', sender: null, reply: null, input: Prisma.DbNull,
@@ -119,13 +120,13 @@ export class WhatsAppMessageProcessor implements OnModuleInit, OnModuleDestroy {
     let outboundMessageId: string;
     try {
       if (!item.sender || !item.reply) throw new WhatsAppDeliveryError('missing_prepared_reply', false);
-      outboundMessageId = await this.graph.sendText(item.sender, item.reply);
+      outboundMessageId = await this.sender.sendText(item.sender, item.reply);
     } catch (error) {
       const attempts = item.attempts + 1;
       const retry = error instanceof WhatsAppDeliveryError && error.retryable && attempts < MAX_DELIVERY_ATTEMPTS;
       const lastError = error instanceof WhatsAppDeliveryError ? error.category : 'delivery_failed';
       await inbox.updateMany({ where: owned, data: retry
-        ? { status: 'READY', nextAttemptAt: new Date(Date.now() + attempts * 5000), lastError }
+        ? { status: 'READY', nextAttemptAt: new Date(Date.now() + Math.max(attempts * 5000, error instanceof WhatsAppDeliveryError ? error.retryAfterMs : 0)), lastError }
         : { status: 'FAILED', reply: null, sender: null, lastError },
       });
       return;

@@ -84,10 +84,10 @@ export class ConversationReplyDto {
   @ApiProperty({ type: String, format: 'uuid', nullable: true })
   requestId!: string | null;
 
-  @ApiProperty({ type: String, enum: RequestStep, nullable: true })
+  @ApiProperty({ type: String, enum: [...Object.values(RequestStep), null], nullable: true })
   currentStep!: string | null;
 
-  @ApiProperty({ enum: ServiceRequestStatus, enumName: 'ServiceRequestStatus', nullable: true })
+  @ApiProperty({ type: String, enum: [...Object.values(ServiceRequestStatus), null], nullable: true })
   requestStatus!: ServiceRequestStatus | null;
 
   @ApiProperty({ type: Number, nullable: true, example: 2 })

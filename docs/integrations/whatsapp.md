@@ -1,14 +1,15 @@
-# WhatsApp Cloud API
+# Integración de WhatsApp
 
-El adaptador de Meta funciona independientemente del simulador de conversaciones. El webhook verifica la entrega, normaliza mensajes de texto, guarda una entrada durable y responde HTTP 200. Un procesador local realiza la vinculación o delega en ConversationModule y envía la respuesta por Graph API. La clasificación de OpenAI, cuando está activada, usa el mismo proveedor y filtrado ya configurados en conversaciones.
+Meta y Twilio funcionan independientemente del simulador de conversaciones. El webhook del proveedor activo verifica la entrega, normaliza el mensaje de texto y lo guarda antes de devolver HTTP 200. El procesador comparte la vinculación y ConversationModule, y envía por el proveedor que recibió el mensaje. La clasificación de OpenAI, cuando está activada, usa el mismo proveedor y filtrado ya configurados en conversaciones.
 
 ## Configuración
 
-Configura `apps/api/.env` de forma privada y reinicia la API. Con `WHATSAPP_ENABLED=false` se omiten las rutas y el procesador. Al activar la integración, una variable requerida ausente o inválida impide arrancar con un error que indica el nombre de la variable.
+Configura `apps/api/.env` de forma privada y reinicia la API. Con `WHATSAPP_ENABLED=false` se omiten las rutas y el procesador. Al habilitarla se validan únicamente las variables del proveedor seleccionado. Un valor explícito de proveedor inválido o una configuración requerida incompleta impiden arrancar con un error de configuración. Cambia el proveedor y reinicia la API compilada para cambiar de integración.
 
 | Variable | Uso |
 | --- | --- |
 | `WHATSAPP_ENABLED` | `false` por defecto. Usa `true` para activar el módulo. |
+| `WHATSAPP_PROVIDER` | `meta` o `twilio`. Si falta, se usa `meta`. |
 | `WHATSAPP_VERIFY_TOKEN` | Valor privado compartido con Meta para verificar el callback GET. |
 | `WHATSAPP_APP_SECRET` | Secreto de la aplicación Meta para comprobar HMAC-SHA256. |
 | `WHATSAPP_ACCESS_TOKEN` | Token Bearer autorizado para enviar mensajes desde el número. |
@@ -17,7 +18,9 @@ Configura `apps/api/.env` de forma privada y reinicia la API. Con `WHATSAPP_ENAB
 
 Consulta el calendario de soporte antes de elegir o actualizar la versión. [Versiones de Graph API](https://developers.facebook.com/docs/graph-api/changelog/versions/)
 
-## Webhook
+Las variables `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID` y `WHATSAPP_GRAPH_API_VERSION` corresponden únicamente a Meta.
+
+## Webhook de Meta
 
 | Método y ruta | Comportamiento |
 | --- | --- |
@@ -36,9 +39,9 @@ Una vez vinculado, el paciente puede escribir «Continuar mi solicitud». Si hay
 
 ## Persistencia y recuperación
 
-Aplica la migración versionada de `WhatsAppInbox` con `pnpm --filter @salud-digna/api prisma:migrate:deploy` en el entorno autorizado. La clave primaria es el ID del mensaje de Meta. Las redeliveries del mismo ID se omiten aunque el mensaje haya fallado, para evitar repetir acciones, eventos y consumo de OpenAI.
+Aplica la migración versionada de `WhatsAppInbox` con `pnpm --filter @salud-digna/api prisma:migrate:deploy` en el entorno autorizado. La clave primaria combina proveedor e ID del mensaje (`wamid` en Meta y `MessageSid` en Twilio). La migración asigna `META` a las filas anteriores y conserva sus datos. Cada trabajador toma solo mensajes del proveedor y número configurados. Si cambias de proveedor con mensajes pendientes, puedes volver a la configuración anterior para drenarlos. Las redeliveries del mismo proveedor e ID se omiten aunque el mensaje haya fallado, para evitar repetir acciones, eventos y consumo de OpenAI.
 
-El procesador local persiste la respuesta preparada antes de enviarla. Reanuda entradas `PENDING` y respuestas `READY` tras un reinicio. Una preparación interrumpida pasa a `FAILED` al vencer su reserva de dos minutos porque podría haber aplicado una acción sin haber guardado la respuesta. El usuario puede consultar el estado y continuar con un nuevo mensaje. Para envío se permiten hasta tres intentos con espera incremental ante errores transitorios. Un envío interrumpido se vuelve a intentar con la respuesta preparada. Si Meta aceptó el envío y el proceso falló antes de guardar su resultado, podría entregarse una respuesta repetida.
+El procesador local persiste la respuesta preparada antes de enviarla. Reanuda entradas `PENDING` y respuestas `READY` tras un reinicio. Una preparación interrumpida pasa a `FAILED` al vencer su reserva de dos minutos porque podría haber aplicado una acción sin haber guardado la respuesta. El usuario puede consultar el estado y continuar con un nuevo mensaje. El envío con Meta admite hasta tres intentos con espera incremental ante errores transitorios. Un envío de Meta interrumpido se vuelve a intentar con la respuesta preparada. Si Meta aceptó el envío y el proceso falló antes de guardar su resultado, podría entregarse una respuesta repetida. Con Twilio se reintenta únicamente un rechazo HTTP 429, respetando `Retry-After` cuando indica segundos. Un timeout, una respuesta ambigua o un envío interrumpido quedan en `FAILED` para revisión sin repetir el POST.
 
 La bandeja conserva el texto entrante mientras se prepara la respuesta y el remitente mientras está pendiente el envío. Borra esos datos al terminar sus respectivas etapas o al fallar. Los estados terminales conservan IDs de proveedor y una categoría de error para diagnóstico. Para recuperar un fallo terminal, corrige la causa y solicita un nuevo mensaje; el mismo ID conserva su deduplicación. Los logs de la integración omiten texto, teléfono y credenciales.
 
@@ -47,3 +50,28 @@ La bandeja conserva el texto entrante mientras se prepara la respuesta y el remi
 Cuando se autorice la configuración externa, prepara una aplicación Meta con WhatsApp, una cuenta Business y un número registrado. Asigna a la credencial solo permisos necesarios para enviar desde ese número, configura un callback HTTPS accesible con la ruta anterior y suscríbelo al campo `messages`. Usa el mismo token de verificación en la aplicación y el backend, y valida el flujo con el número de prueba antes de habilitarlo para pacientes. [Guía de WhatsApp Business Platform](https://developers.facebook.com/documentation/business-messaging/whatsapp/overview)
 
 El cliente hace POST a `/{version}/{phoneNumberId}/messages` en Graph API. Envía únicamente respuestas de texto a mensajes entrantes dentro de una ventana conservadora de 24 horas contada a partir del mensaje. Meta puede restringir el envío según el estado de su ventana de atención. Las plantillas, campañas, varios números por instancia, métricas de entrega final y el reproceso de fallos terminales quedan fuera del MVP.
+
+
+## Twilio Programmable Messaging
+
+| Variable | Uso |
+| --- | --- |
+| `TWILIO_ACCOUNT_SID` | SID de la cuenta que recibe y envía los mensajes. |
+| `TWILIO_AUTH_TOKEN` | Auth Token privado de esa cuenta para la firma entrante y la autenticación del cliente HTTP. |
+| `TWILIO_WHATSAPP_FROM` | Remitente habilitado de Twilio en formato `whatsapp:+<número E.164>`. |
+| `TWILIO_WEBHOOK_URL` | URL HTTPS pública exacta del callback, por ejemplo `https://api.example.test/api/v1/webhooks/twilio/whatsapp`. |
+
+- `POST /api/v1/webhooks/twilio/whatsapp` acepta `application/x-www-form-urlencoded` hasta 256 KiB y devuelve TwiML vacío con HTTP 200 tras guardar el mensaje. Responde `401` si falla la firma y `415` si el formato no es el esperado. Se validan el SID de cuenta, destino y remitente. Se omiten notificaciones de entrega, medios y mensajes fuera del límite de texto. Twilio no incluye un timestamp en el callback entrante habitual, por lo que se registra la hora de recepción local. [Parámetros entrantes](https://www.twilio.com/docs/messaging/guides/webhook-request) · [Marca temporal](https://help.twilio.com/articles/46569585455003)
+- La firma `X-Twilio-Signature` usa el Auth Token y HMAC-SHA1 sobre la URL pública exacta y todos los campos del formulario ordenados. La comparación se hace en tiempo constante. Detrás de Nginx la URL configurada identifica el HTTPS público. Conserva la ruta y la query tal como las envía Twilio, sin reescrituras ni redirecciones. La API prescinde de `Host` y `X-Forwarded-*` para reconstruir la URL firmada. [Validación oficial de Twilio](https://www.twilio.com/docs/usage/security)
+- La respuesta sale por el recurso `Messages.json` de Programmable Messaging con `From`, `To` y `Body`. Un SID aceptado confirma la recepción por Twilio, y la entrega final sigue fuera de este alcance. [Messages API](https://www.twilio.com/docs/messaging/api/message-resource)
+
+### Activar WhatsApp Sandbox cuando la cuenta esté disponible
+
+1. En la consola clásica de Twilio, abre **Try WhatsApp**, acepta las condiciones del Sandbox y registra el número Sandbox como `TWILIO_WHATSAPP_FROM`.
+2. Configura `WHATSAPP_ENABLED=true`, `WHATSAPP_PROVIDER=twilio` y las cuatro variables de Twilio en la configuración privada. Aplica antes la migración en el entorno autorizado y reinicia el backend.
+3. En **Sandbox settings → When a message comes in**, configura el método POST con exactamente el valor de `TWILIO_WEBHOOK_URL`. Mantén las notificaciones de estado fuera de esta ruta.
+4. Inscribe cada teléfono de prueba con el mensaje `join <código de tu Sandbox>`. Desde el portal solicita el vínculo WhatsApp, canjéalo en el chat y continúa la solicitud con los comandos de arriba. Completa el flujo con la referencia de atención de Call Center.
+
+El Sandbox solo responde a participantes inscritos y se aplican las ventanas de atención de WhatsApp. Las plantillas y el inicio de conversaciones quedan fuera de este incremento. [Guía oficial del Sandbox](https://www.twilio.com/docs/whatsapp/sandbox)
+
+Ejecuta las comprobaciones focalizadas desde la raíz con `pnpm --filter @salud-digna/api test:whatsapp`. Usan datos sintéticos y no requieren una cuenta activa.

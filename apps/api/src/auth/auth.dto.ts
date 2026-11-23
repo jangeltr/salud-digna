@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiExtraModels, getSchemaPath, ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { IsEmail, IsString, Length, MaxLength, MinLength, ValidateIf } from 'class-validator';
 import { UserRole } from '../generated/prisma/enums';
@@ -83,6 +83,7 @@ class PatientProfileDto {
   phone!: string | null;
 }
 
+@ApiExtraModels(PatientProfileDto)
 export class AccountDto extends PublicUserDto {
   @ApiProperty({ example: true })
   isActive!: boolean;
@@ -90,7 +91,7 @@ export class AccountDto extends PublicUserDto {
   @ApiProperty({ type: String, format: 'uuid', nullable: true, example: '00000000-0000-4000-8000-000000000002' })
   patientId!: string | null;
 
-  @ApiProperty({ type: PatientProfileDto, nullable: true })
+  @ApiProperty({ oneOf: [{ $ref: getSchemaPath(PatientProfileDto) }, { type: 'object', nullable: true, enum: [null] }] })
   patient!: PatientProfileDto | null;
 }
 

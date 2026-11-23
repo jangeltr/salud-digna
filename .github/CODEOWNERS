@@ -1,0 +1,16 @@
+# GitHub usa el CODEOWNERS de la rama base.
+/apps/api/ @jangeltr
+/apps/operations/ @jangeltr
+/docs/openapi.json @jangeltr
+/AGENTS.md @jangeltr
+/CLAUDE.md @jangeltr
+/.github/ @jangeltr
+/packages/ @jangeltr
+/package.json @jangeltr
+/pnpm-lock.yaml @jangeltr
+/pnpm-workspace.yaml @jangeltr
+/.npmrc @jangeltr
+/.node-version @jangeltr
+/.nvmrc @jangeltr
+/.editorconfig @jangeltr
+/.gitignore @jangeltr
