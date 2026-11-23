@@ -63,4 +63,4 @@ Aplica las migraciones versionadas a la base autorizada con `pnpm --filter @salu
 
 ## Migración de WhatsApp
 
-La [migración de WhatsAppInbox](../apps/api/prisma/migrations/20261122180000_add_whatsapp_inbox/migration.sql) añade la bandeja de entrada local. El identificador de mensaje de Meta es la clave primaria de deduplicación. Consulta el [flujo y las reglas de retención](integrations/whatsapp.md).
+La [migración de WhatsAppInbox](../apps/api/prisma/migrations/20261122180000_add_whatsapp_inbox/migration.sql) añade la bandeja de entrada local. La [migración multiproveedor](../apps/api/prisma/migrations/20261122190000_add_whatsapp_provider/migration.sql) conserva las filas anteriores como `META` y amplía la clave primaria a proveedor e identificador de mensaje. Consulta el [flujo y las reglas de retención](integrations/whatsapp.md).

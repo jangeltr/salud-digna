@@ -12,7 +12,9 @@
     "prisma:migrate:dev": "prisma migrate dev",
     "prisma:migrate:deploy": "prisma migrate deploy",
     "auth:create-admin": "node dist/auth/create-admin.js",
-    "catalogs:seed-demo": "node dist/catalogs/seed-demo.js"
+    "catalogs:seed-demo": "node dist/catalogs/seed-demo.js",
+    "test:whatsapp": "pnpm run build && node --test --test-isolation=none test/whatsapp-providers.test.cjs",
+    "openapi:generate": "OPENAPI_EXPORT=true pnpm run build && node dist/openapi/export-openapi.js"
   },
   "dependencies": {
     "@nestjs/common": "11.2.7",

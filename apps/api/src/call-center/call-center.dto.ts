@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiExtraModels, getSchemaPath, ApiProperty } from '@nestjs/swagger';
 import { IsString, Matches } from 'class-validator';
 import { JourneyEntryDto } from '../journey/journey.dto';
 import { RequestSnapshotDto } from '../requests/requests.dto';
@@ -45,14 +45,15 @@ class AssistedSelectionDto {
   name!: string;
 }
 
+@ApiExtraModels(AssistedSelectionDto)
 export class AssistedRequestDto extends RequestSnapshotDto {
   @ApiProperty({ type: AssistedPatientDto })
   patient!: AssistedPatientDto;
 
-  @ApiProperty({ type: AssistedSelectionDto, nullable: true })
+  @ApiProperty({ oneOf: [{ $ref: getSchemaPath(AssistedSelectionDto) }, { type: 'object', nullable: true, enum: [null] }] })
   study!: AssistedSelectionDto | null;
 
-  @ApiProperty({ type: AssistedSelectionDto, nullable: true })
+  @ApiProperty({ oneOf: [{ $ref: getSchemaPath(AssistedSelectionDto) }, { type: 'object', nullable: true, enum: [null] }] })
   clinic!: AssistedSelectionDto | null;
 
   @ApiProperty({ type: [JourneyEntryDto], description: 'Hasta diez eventos recientes, en orden cronológico.' })

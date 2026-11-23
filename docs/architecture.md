@@ -16,7 +16,7 @@ El flujo [de Call Center](api-call-center.md) permite al paciente emitir una ref
 
 `ConversationModule` interpreta mensajes y consulta los servicios de solicitudes, citas y catálogos. Las selecciones estructuradas pasan por el mismo control de versión y la misma transacción de Requests. El simulador de desarrollo usa la sesión de paciente, registra el canal lógico WhatsApp con origen simulado y conserva el último canal real. El intérprete puede usar OpenAI con contexto operativo reducido, validación del resultado y alternativa determinista local. Consulta el [contrato de conversaciones](api-conversations.md) y la [integración con OpenAI](integrations/openai.md).
 
-`WhatsAppModule` recibe webhooks firmados de Meta y utiliza una bandeja durable para deduplicar mensajes y preparar respuestas fuera de la petición HTTP. Los remitentes vinculados continúan en ConversationModule. Consulta el [adaptador de WhatsApp](integrations/whatsapp.md).
+`WhatsAppModule` recibe webhooks firmados de Meta o Twilio y utiliza una bandeja durable para deduplicar mensajes y preparar respuestas fuera de la petición HTTP. Los remitentes vinculados continúan en ConversationModule. La cola separa mensajes por proveedor y usa el cliente correspondiente. Consulta el [adaptador de WhatsApp](integrations/whatsapp.md).
 
 ## Persistencia y eventos
 
