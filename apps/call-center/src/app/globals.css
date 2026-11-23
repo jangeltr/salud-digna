@@ -1,0 +1,99 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: light;
+  --ink: #182b26;
+  --muted: #4d625a;
+  --line: #dce7e1;
+  --green: #086342;
+  --pale: #e9f6ee;
+}
+
+body { @apply m-0 min-h-screen antialiased; color: var(--ink); background: #f5f8f6; font-family: system-ui, sans-serif; }
+button, a, input, select, textarea { @apply rounded-lg; }
+button { @apply inline-flex min-h-11 items-center justify-center gap-2 border px-3 py-2 text-sm font-semibold; background: white; border-color: var(--line); }
+button:not(:disabled) { cursor: pointer; }
+button:not(:disabled):hover { background: var(--pale); }
+:focus-visible { outline: 3px solid #08774f; outline-offset: 3px; }
+h1 { @apply text-3xl font-bold tracking-tight; }
+h2 { @apply text-base font-bold; }
+h3 { @apply text-sm font-bold; }
+.brand { @apply flex items-center gap-2 whitespace-nowrap text-xl; }
+.brand-mark { @apply grid size-9 place-items-center rounded-xl; color: white; background: var(--green); }
+.login { @apply grid min-h-screen md:grid-cols-2; }
+.login-brand { @apply flex flex-col gap-10 p-8 md:justify-between md:p-12; color: white; background: radial-gradient(ellipse at 92% 85%, #177452, #084c37 62%); }
+.login-brand .brand-mark { color: #084c37; background: white; }
+.login-intro { @apply grid gap-3 md:mb-[24vh]; }
+.login-intro h1 { @apply text-4xl md:text-6xl; }
+.login-intro p { color: #d7efe3; }
+.login-symbol { @apply mb-3 grid size-16 place-items-center rounded-2xl border border-white/25 bg-white/10; }
+.login-content { @apply grid place-items-center p-5 sm:p-8; }
+.login-form { @apply grid w-full max-w-md gap-5 rounded-2xl border bg-white p-5 sm:p-8; border-color: var(--line); }
+.login-form h2 { @apply text-2xl; }
+.fields { @apply grid min-w-0 gap-4; }
+.fields label { @apply grid gap-2 text-sm font-semibold; }
+.field-row { @apply grid min-w-0 gap-4 sm:grid-cols-2; }
+.fields input, .fields select, .fields textarea { @apply min-h-11 w-full border px-3 py-2 text-base; border-color: var(--line); }
+.fields :disabled { cursor: not-allowed; color: var(--muted); background: #f3f6f4; opacity: 1; }
+.fields .primary { color: white; background: var(--green); }
+.fields .primary:disabled { color: #38534a; background: #deebe4; }
+.preview-link, .back-link { @apply w-fit text-sm font-semibold underline underline-offset-4; color: var(--green); }
+.notice { @apply flex items-start gap-2 rounded-lg p-3 text-sm; color: #355247; background: var(--pale); }
+.notice svg { @apply mt-0.5 shrink-0; }
+.console { @apply grid min-h-screen md:grid-cols-[5.5rem_minmax(0,1fr)]; }
+.sidebar { @apply grid grid-cols-[1fr_auto] items-center gap-3 border-b bg-white p-3 md:flex md:flex-col md:border-r md:border-b-0; border-color: var(--line); }
+.sidebar-brand { @apply flex items-center gap-2 text-sm font-bold md:py-3; }
+.sidebar-brand > span { @apply md:sr-only; }
+.sidebar-title, .eyebrow { @apply text-sm font-semibold; color: var(--muted); }
+.sidebar nav { @apply col-span-2 row-start-2 grid w-full grid-cols-4 gap-1 md:grid-cols-1; }
+.nav-item { @apply flex-col gap-1 border-transparent px-0.5 text-xs sm:text-sm md:py-3 md:text-xs; }
+.nav-item[aria-current="page"] { color: var(--green); background: var(--pale); }
+.back-link { @apply inline-flex items-center gap-2 px-2 py-3 md:mt-auto md:flex-col md:gap-1 md:text-xs; }
+.workspace { @apply min-w-0; }
+.workspace-header { @apply flex flex-wrap items-center justify-between gap-3 border-b bg-white px-5 py-5 lg:px-8; border-color: var(--line); }
+.preview-tools { @apply flex flex-wrap items-center gap-3; }
+.preview-tools label { @apply flex flex-wrap items-center gap-2 text-sm font-semibold; }
+.preview-tools select { @apply min-h-11 border bg-white px-2; border-color: var(--line); }
+.status { @apply inline-flex rounded-full px-3 py-1 text-sm font-semibold; color: var(--green); background: var(--pale); }
+.workspace-grid { @apply grid gap-3 p-3 lg:grid-cols-[minmax(0,1fr)_17rem] xl:gap-4 xl:p-4; }
+.workspace-grid:has(.queue) { @apply lg:grid-cols-[12rem_minmax(0,1fr)_15rem] xl:grid-cols-[14rem_minmax(0,1fr)_17rem] 2xl:grid-cols-[16rem_minmax(0,1fr)_19rem]; }
+.column { @apply grid min-w-0 content-start gap-3 rounded-xl; }
+.panel { @apply grid gap-4 rounded-xl border bg-white p-4; border-color: var(--line); }
+.empty-state { @apply grid justify-items-center gap-2 px-3 py-8 text-center; }
+.empty-state p, .secondary, .context-data dd { @apply text-sm; color: var(--muted); }
+.empty-icon { @apply grid size-12 shrink-0 place-items-center rounded-xl; background: var(--pale); color: var(--green); }
+.channels { @apply flex flex-wrap gap-2; }
+.channels li { @apply inline-flex items-center gap-1 rounded-full border px-2 py-1 text-sm; color: var(--muted); border-color: var(--line); }
+.timeline { @apply grid min-h-56 flex-1 place-items-center rounded-lg border border-dashed; border-color: var(--line); background: #fafcfb; }
+.data-state[data-state="error"] .empty-icon { color: #8b2720; background: #fce9e7; }
+.data-state[data-state="loading"] .empty-icon { color: #235479; background: #e6f0fa; }
+.data-state[data-state="offline"] .empty-icon { color: #705217; background: #f8efd9; }
+.event-list { @apply grid gap-4; }
+.event { @apply flex items-start gap-3 border-t pt-4; border-color: var(--line); }
+.event article { @apply min-w-0 break-words rounded-lg p-3; background: #f5f8f6; }
+.event[data-kind="note"] article { background: #fbf4e4; }
+.event[data-kind="message"] article { background: var(--pale); }
+.event-description { @apply mt-1 whitespace-pre-wrap; }
+.profile { @apply flex items-center gap-2 text-sm font-semibold; }
+.context-data > div { @apply grid gap-1 border-t py-3 text-sm; border-color: var(--line); }
+.context-data dt { @apply font-semibold; }
+.action-list { @apply grid gap-2; }
+.action-list button { @apply justify-start; }
+.skip-link { @apply sr-only focus:not-sr-only focus:absolute focus:z-10 focus:m-2 focus:bg-white focus:p-3; }
+dialog { @apply m-auto max-h-[90dvh] max-w-md overflow-auto rounded-xl border bg-white p-5; width: calc(100% - 2rem); border-color: var(--line); color: var(--ink); }
+dialog::backdrop { background: rgb(16 36 28 / 55%); }
+dialog .fields { @apply mt-4; }
+.dialog-heading { @apply mb-3 flex items-center justify-between gap-3; }
+
+@media (min-width: 64rem) {
+  .console { height: 100dvh; min-height: 0; }
+  .workspace { display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; }
+  .workspace-grid { min-height: 0; }
+  .column { min-height: 0; overflow-y: auto; scrollbar-gutter: stable; }
+  .main-column:has(.timeline) { display: flex; flex-direction: column; }
+  .main-column:has(.timeline) > .panel { display: flex; flex: 1; flex-direction: column; }
+}
+
+@media (max-height: 36rem) and (min-width: 64rem) {
+  .console { height: auto; }
+}
