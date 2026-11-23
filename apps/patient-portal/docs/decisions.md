@@ -1,10 +1,10 @@
 # Decisiones del portal del paciente
 
-`apps/patient-portal/` es la web pública del paciente y también su aplicación móvil. Se construirá con Next.js, TypeScript y Tailwind como sitio web y como PWA instalable.
+`apps/patient-portal/` es la web pública del paciente y también su aplicación móvil. Usa Next.js, TypeScript y Tailwind CSS. Funcionará como sitio web y como PWA instalable.
 
 Este documento registra las decisiones del portal y el estado de la API del que dependen. El estado corresponde al contrato y a las guías publicados en `main` el 2026-11-22. El documento vive junto a la aplicación porque cada equipo mantiene la documentación de la suya, según la [guía de revisión de pull requests](../../../docs/revision-pull-requests.md).
 
-Este incremento reserva la estructura de carpetas. El código de aplicación y las dependencias llegarán en cambios posteriores.
+La base instalada contiene la configuración y una página inicial. La navegación, los componentes, las llamadas a la API y la PWA llegarán en cambios posteriores.
 
 ## Contrato
 
@@ -27,6 +27,36 @@ La URL base de integración es `https://api.salud-digna.app/api/v1` y las rutas 
 | `docs/` | Este documento. |
 
 Las carpetas y el código usan nombres en inglés alineados con los módulos de la API. La documentación y los textos para el paciente se escriben en español.
+
+## Base técnica
+
+El portal es el paquete `@salud-digna/patient-portal` del workspace. Usa Node.js 24 y pnpm 11.28.11, fijados en el `package.json` de la raíz. Las versiones se declaran exactas, sin rangos, y resuelven a las mismas que usan las otras aplicaciones Next.js del monorepo.
+
+| Paquete | Versión |
+| --- | --- |
+| `next` | 16.4.6 |
+| `react` y `react-dom` | 19.3.1 |
+| `typescript` | 5.9.3 |
+| `tailwindcss` y `@tailwindcss/postcss` | 4.3.5 |
+| `@types/node` | 24.19.2 |
+| `@types/react` y `@types/react-dom` | 19.3.0 |
+
+Los scripts siguen el patrón de las otras aplicaciones. Se ejecutan desde la raíz con `pnpm --filter @salud-digna/patient-portal <script>`.
+
+| Script | Comando | Uso |
+| --- | --- | --- |
+| `dev` | `next dev --hostname 127.0.0.1 --port 5173` | Servidor de desarrollo. |
+| `build` | `next build` | Compilación de producción. La ejecuta también la revisión de integración. |
+| `start` | `next start --hostname 127.0.0.1 --port 5173` | Sirve la compilación. |
+| `check` | `next typegen && tsc --noEmit` | Genera los tipos de rutas y comprueba TypeScript en modo estricto. |
+
+Configuración de `next.config.ts`:
+
+- `agentRules: false` evita que `next dev` escriba un bloque administrado en un `AGENTS.md` del portal.
+- `poweredByHeader: false` retira la cabecera `X-Powered-By`.
+- Todas las rutas responden con `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin` y `X-Frame-Options: DENY`.
+
+Tailwind CSS 4 se carga con `@tailwindcss/postcss` y `@import "tailwindcss"` en `app/globals.css`. El `.gitignore` local excluye `.next/` y `next-env.d.ts`.
 
 ## Decisiones
 
@@ -68,9 +98,9 @@ La línea de tiempo de `GET /api/v1/requests/{id}/journey` se muestra dentro de 
 
 La API carece de tiempo real. El portal consulta el estado por REST a intervalos y compara `version` para detectar cambios hechos desde otro canal. La guía pública indica recargar `GET /api/v1/requests/{id}` al volver a la web, en su sección «Demostración Web → WhatsApp → Call Center».
 
-### Puerto de desarrollo
+### Dirección de desarrollo
 
-El portal se sirve en `http://localhost:5173` durante el desarrollo. El puerto 3000, predeterminado de Next.js, es también el de la API local. Ese origen figura entre los que permite el ejemplo de configuración de la API, según [Desarrollo e integración](../../../docs/development.md). Las llamadas que salen del servidor de Next funcionan con independencia de CORS.
+El portal se sirve en `http://127.0.0.1:5173` durante el desarrollo. El puerto 3000, predeterminado de Next.js, es también el de la API local. El ejemplo de configuración de la API permite `http://localhost:5173`, que es un origen distinto, según [Desarrollo e integración](../../../docs/development.md). El portal prescinde de CORS porque sus llamadas a la API salen del servidor de Next.
 
 ## Lo que la API no ofrece
 
