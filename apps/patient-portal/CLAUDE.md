@@ -6,17 +6,17 @@ Las instrucciones anteriores valen para todo el monorepo. Lo que sigue aplica so
 
 ## Contexto
 
-App Next.js, TypeScript y Tailwind que funciona como sitio web y como PWA instalable. Las decisiones vigentes y sus motivos están en `docs/patient-portal.md`. Léelo antes de cambiar la sesión, el canal o el cliente de API, y actualízalo en el mismo cambio si una decisión cambia.
+App Next.js, TypeScript y Tailwind que funciona como sitio web y como PWA instalable. Las decisiones vigentes y sus motivos están en `apps/patient-portal/docs/decisions.md`. Léelo antes de cambiar la sesión, el canal o el cliente de API, y actualízalo en el mismo cambio si una decisión cambia.
 
 ## Alcance
 
-- Modifica solo `apps/patient-portal/` y `docs/patient-portal.md`. `apps/api/`, `apps/operations/` y `packages/` pertenecen a otros integrantes: se leen como referencia y se dejan intactos.
-- Pregunta antes de añadir dependencias o de tocar archivos compartidos de la raíz, como `pnpm-workspace.yaml`, `pnpm-lock.yaml`, `.gitignore` o `README.md`.
+- Modifica solo `apps/patient-portal/`. El resto del repositorio pertenece a otros integrantes o es compartido: se lee como referencia y se deja intacto.
+- Pregunta antes de añadir dependencias. Instalarlas modifica `pnpm-lock.yaml`, que está fuera del portal.
 - Trabaja en una rama y abre un pull request contra `main`. Los commits siguen el formato `tipo(patient-portal): descripción`, en inglés.
 
 ## Contrato con la API
 
-- La fuente del contrato son `docs/api-*.md`. Los tipos de `lib/api/` y las respuestas de `mocks/` coinciden con esos documentos en rutas, formas, enums y códigos de error.
+- El contrato es `docs/openapi.json`. Léelo en su ubicación, sin copiarlo al portal. `lib/api/` y `mocks/` usan solo operaciones y propiedades de ese archivo.
 - Toda llamada a la API sale del servidor de Next. El JWT vive en una cookie `HttpOnly` y queda fuera del código del navegador.
 - Las escrituras sobre una solicitud envían su `version`. Ante un `409`, vuelve a leer la solicitud antes de reintentar.
 - Si el portal necesita algo que el contrato no ofrece, repórtalo en lugar de simularlo con campos inventados.
