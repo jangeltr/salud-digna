@@ -10,7 +10,7 @@ import {
   ApiTooManyRequestsResponse,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-import { AuthAttemptsGuard } from './auth-attempts.guard';
+import { AuthAttemptsGuard, ReleaseSuccessfulAttempt } from './auth-attempts.guard';
 import { AccountDto, LoginDto, LoginResponseDto, RegisterDto } from './auth.dto';
 import { AuthService } from './auth.service';
 import { CurrentUser } from './authenticated-user';
@@ -40,6 +40,7 @@ export class AuthController {
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @UseGuards(AuthAttemptsGuard)
+  @ReleaseSuccessfulAttempt()
   @ApiOperation({ summary: 'Iniciar sesión con correo y contraseña' })
   @ApiOkResponse({ type: LoginResponseDto })
   @ApiBadRequestResponse({ description: 'Datos de inicio de sesión inválidos.' })

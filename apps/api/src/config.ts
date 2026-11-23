@@ -13,6 +13,10 @@ export function loadConfig() {
   if (!host) {
     throw new Error('API_HOST no puede estar vacío.');
   }
+  const trustLocalProxy = process.env.TRUST_LOCAL_PROXY === 'true';
+  if (trustLocalProxy && host !== '127.0.0.1') {
+    throw new Error('TRUST_LOCAL_PROXY=true requiere API_HOST=127.0.0.1.');
+  }
 
   const rawPort = (process.env.API_PORT ?? '3000').trim();
   const port = Number(rawPort);
@@ -32,5 +36,5 @@ export function loadConfig() {
       return url.origin;
     });
 
-  return { host, port, corsOrigins };
+  return { host, port, corsOrigins, trustLocalProxy };
 }

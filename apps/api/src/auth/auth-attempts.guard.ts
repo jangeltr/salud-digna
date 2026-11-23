@@ -1,8 +1,12 @@
-import { CanActivate, ExecutionContext, HttpException, HttpStatus, Injectable } from '@nestjs/common';
+import { CanActivate, ExecutionContext, HttpException, HttpStatus, Injectable, SetMetadata } from '@nestjs/common';
+import type { ServerResponse } from 'node:http';
 
 const WINDOW_MS = 15 * 60 * 1000;
 const MAX_ATTEMPTS = 10;
 const MAX_TRACKED_IPS = 10_000;
+const RELEASE_SUCCESSFUL_ATTEMPT = Symbol('RELEASE_SUCCESSFUL_ATTEMPT');
+
+export const ReleaseSuccessfulAttempt = () => SetMetadata(RELEASE_SUCCESSFUL_ATTEMPT, true);
 
 @Injectable()
 export class AuthAttemptsGuard implements CanActivate {
@@ -21,21 +25,29 @@ export class AuthAttemptsGuard implements CanActivate {
       this.sweepAt = now + 60_000;
     }
 
-    const entry = this.attempts.get(ip);
-    if (entry && entry.expiresAt > now) {
-      if (entry.count >= MAX_ATTEMPTS) {
-        this.reject(http, Math.ceil((entry.expiresAt - now) / 1000));
-      }
-
-      entry.count++;
-      return true;
-    }
-
+    let entry = this.attempts.get(ip);
     if (!entry && this.attempts.size >= MAX_TRACKED_IPS) {
       this.reject(http, Math.ceil((this.sweepAt - now) / 1000));
     }
 
-    this.attempts.set(ip, { count: 1, expiresAt: now + WINDOW_MS });
+    if (!entry || entry.expiresAt <= now) {
+      entry = { count: 0, expiresAt: now + WINDOW_MS };
+      this.attempts.set(ip, entry);
+    }
+    if (entry.count >= MAX_ATTEMPTS) {
+      this.reject(http, Math.ceil((entry.expiresAt - now) / 1000));
+    }
+
+    entry.count++;
+    if (Reflect.getMetadata(RELEASE_SUCCESSFUL_ATTEMPT, context.getHandler())) {
+      const reserved = entry;
+      const response = http.getResponse<ServerResponse>();
+      response.once('finish', () => {
+        if (response.statusCode !== HttpStatus.OK) return;
+        reserved.count--;
+        if (reserved.count === 0 && this.attempts.get(ip) === reserved) this.attempts.delete(ip);
+      });
+    }
     return true;
   }
 

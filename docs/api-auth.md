@@ -103,8 +103,22 @@ pnpm --filter @salud-digna/api auth:create-admin
 
 La CLI solicita correo, contraseña y confirmación con la entrada de contraseña oculta. Crea una cuenta `ADMIN` sin perfil asociado. Si el correo ya existe, devuelve un error y conserva la cuenta anterior. Usa la misma ruta de inicio de sesión para la cuenta creada.
 
+## Creación de un asesor de pruebas
+
+Usa una base local o de demostración previamente preparada y autorizada. Antes de ejecutar la CLI, verifica que la `DATABASE_URL` efectiva del proceso apunte a esa base. Mantén la configuración de conexión fuera de Git.
+
+Desde la raíz, ejecuta en una terminal interactiva.
+
+```sh
+pnpm --filter @salud-digna/api build
+pnpm --filter @salud-digna/api auth:create-advisor
+```
+
+La CLI solicita el correo de prueba, una contraseña de 12 a 128 caracteres y su confirmación. La contraseña se introduce con el eco desactivado. Usa una contraseña exclusiva para el entorno de prueba y compártela con el asesor autorizado por un canal privado. La CLI rechaza argumentos y correos duplicados, y crea exclusivamente cuentas `ADVISOR` sin perfil de paciente. El asesor inicia sesión mediante `POST /api/v1/auth/login`. El registro público sigue creando cuentas `PATIENT`.
+
 ## Límites del MVP y comprobación local
 
-- Registro e inicio de sesión comparten un máximo de 10 intentos por IP cada 15 minutos, incluidos los válidos. El contador tiene memoria acotada, se reinicia con el proceso y es independiente en cada instancia. Los clientes tras un proxy sin configuración de confianza o bajo una misma IP pueden compartir el límite. Usa TLS en producción.
+- Registro e inicio de sesión comparten hasta 10 intentos por IP en una ventana de 15 minutos. Cada login reserva un intento al ingresar y libera solo su propia reserva si la respuesta termina con HTTP 200. Los fallos, las solicitudes interrumpidas y todos los registros consumen cupo. Los intentos contra correos distintos comparten el mismo contador. Al agotarse el cupo, la API devuelve HTTP 429 con `Retry-After`. El canje de Call Center conserva su límite independiente, incluidos los canjes exitosos.
+- El contador vive en memoria acotada por proceso y se reinicia con él. Clientes tras la misma IP pública o que usan un intermediario servidor-servidor pueden compartir cupo. Consulta la [configuración de Nginx y Next.js](deployment.md#ip-del-cliente-detrás-de-nginx).
 - El correo aún no se verifica. OAuth, MFA, recuperación de contraseñas, refresh tokens y administración HTTP de cuentas quedan para incrementos posteriores.
 - Con PostgreSQL local migrado, inicia la API y abre Swagger UI. Registra una cuenta sintética con correo nuevo, inicia sesión y usa **Authorize** con el JWT para comprobar que `GET /me` devuelve su perfil. Retira el JWT y confirma que la misma ruta responde HTTP 401.
