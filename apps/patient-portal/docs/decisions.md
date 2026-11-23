@@ -4,7 +4,7 @@
 
 Este documento registra las decisiones del portal y el estado de la API del que dependen. El estado corresponde al contrato y a las guías publicados en `main` el 2026-11-22. El documento vive junto a la aplicación porque cada equipo mantiene la documentación de la suya, según la [guía de revisión de pull requests](../../../docs/revision-pull-requests.md).
 
-El portal ya tiene su carcasa: identidad, rutas, las dos navegaciones y el manifiesto de la PWA. Las pantallas muestran solo su título. Las llamadas a la API, el control de sesión y el service worker llegarán en cambios posteriores.
+El portal ya tiene su carcasa, con identidad, rutas, las dos navegaciones y el manifiesto de la PWA, además de registro, acceso y sesión contra la API. El resto de las pantallas muestra solo su título. El service worker llegará en un cambio posterior.
 
 ## Contrato
 
@@ -38,7 +38,7 @@ La excepción son los segmentos de URL. Van en español y sin acentos porque los
 | `(booking)` | `/tramite/[id]` |
 | `(account)` | `/mi-espacio`, `/continuar`, `/citas`, `/citas/[id]`, `/ayuda`, `/perfil` |
 
-Cada ruta muestra por ahora su título y el aviso «Disponible en un paso posterior». Ninguna llama a la API, usa datos de ejemplo ni controla la sesión.
+`/registro`, `/acceso` y `/perfil` ya funcionan contra la API. Las demás rutas muestran por ahora su título y el aviso «Disponible en un paso posterior», sin datos de ejemplo.
 
 ## Base técnica
 
@@ -52,6 +52,7 @@ El portal es el paquete `@salud-digna/patient-portal` del workspace. Usa Node.js
 | `tailwindcss` y `@tailwindcss/postcss` | 4.3.5 |
 | `@types/node` | 24.19.2 |
 | `@types/react` y `@types/react-dom` | 19.3.0 |
+| `openapi-typescript`, solo en desarrollo | 7.13.0 |
 
 Los scripts siguen el patrón de las otras aplicaciones. Se ejecutan desde la raíz con `pnpm --filter @salud-digna/patient-portal <script>`.
 
@@ -61,6 +62,7 @@ Los scripts siguen el patrón de las otras aplicaciones. Se ejecutan desde la ra
 | `build` | `next build` | Compilación de producción. La ejecuta también la revisión de integración. |
 | `start` | `next start --hostname 127.0.0.1 --port 5173` | Sirve la compilación. |
 | `check` | `next typegen && tsc --noEmit` | Genera los tipos de rutas y comprueba TypeScript en modo estricto. |
+| `api:types` | `openapi-typescript ../../docs/openapi.json --output lib/api/schema.d.ts` | Genera los tipos de la API a partir del contrato. Solo lee ese archivo. |
 
 Configuración de `next.config.ts`:
 
@@ -121,6 +123,52 @@ El portal aún no registra un service worker. Chrome dejó de exigirlo para inst
 El token dura `expiresIn` segundos. La API carece de renovación y de una operación de cierre de sesión. Al vencer, el paciente vuelve a iniciar sesión. Cerrar sesión en el portal elimina su cookie, y el token conserva su validez en la API hasta que vence. Consulta la misma sección de la guía pública y el [contrato de autenticación](../../../docs/api-auth.md), sección «Límites del MVP y comprobación local».
 
 Las guías piden enviar `Authorization: Bearer <accessToken>` y omiten dónde guardar el token. El portal lo guarda en una cookie `HttpOnly` de su propio origen. El código del navegador no puede leer el token y nunca llama a la API. El navegador habla con el portal, y el servidor de Next llama a la API con el token de la cookie. Los manejadores de `app/api/` y el cliente de `lib/api` se ejecutan solo en el servidor.
+
+**Cookie.** Tras `POST /api/v1/auth/login`, el portal guarda `accessToken` en una cookie `HttpOnly`, `SameSite=Lax`, `Path=/` y con `Max-Age` igual a `expiresIn`. En producción la cookie lleva además `Secure` y el nombre `__Host-portal-session`. En desarrollo se llama `portal-session`. El token queda fuera del HTML, de las props, de la URL y del almacenamiento del navegador. El borrado repite los mismos atributos, porque el navegador rechaza un `Set-Cookie` con prefijo `__Host-` que omita `Secure`.
+
+**Cierre de sesión.** Cerrar sesión borra la cookie del portal. La API carece de una operación para revocar el token, así que el token sigue siendo válido en la API hasta que vence. Quien lo hubiera copiado antes podría usarlo durante ese tiempo.
+
+**Rutas protegidas.** Las rutas de `(account)` y `(booking)` exigen sesión, en dos pasos que siguen la guía de autenticación de Next.js:
+
+1. `proxy.ts` hace una comprobación optimista. Si falta la cookie, redirige a `/acceso?destino=<ruta original>` sin llamar a la API.
+2. Cada página protegida llama a `requireAccount()`, de `lib/session/session.ts`, que valida la sesión en el servidor con `GET /api/v1/auth/me`. El portal nunca decodifica el token.
+
+Cuando la API responde `401`, la página redirige a `/api/session/expired`. Ese manejador vuelve a preguntar a la API, borra la cookie solo si la sesión ya es inválida y lleva a `/acceso` con el destino original. Hace falta porque un Server Component no puede borrar cookies. Si la API no responde, la página muestra «Servicio no disponible» y conserva la cookie.
+
+El destino solo puede ser una ruta interna. `safeDestination()` rechaza lo que no empiece por `/`, lo que empiece por `//`, las barras invertidas y las rutas de acceso, y usa `/mi-espacio` en su lugar.
+
+Al añadir una ruta a `(account)` o `(booking)` hay que registrar su prefijo en `lib/session/routes.ts` y llamar a `requireAccount()` en la página. Los grupos de rutas no aparecen en la URL, así que el proxy no puede deducirlos.
+
+**Mutaciones.** Registro, acceso y cierre de sesión son Server Actions. Next solo las acepta por `POST` y compara la cabecera `Origin` con `Host`: una petición de otro origen se rechaza antes de ejecutar la acción.
+
+**Encabezado.** El enlace cambia de «Acceso» a «Mi espacio» según exista la cookie, sin llamar a la API. Como el encabezado lee la cookie, todas las páginas se generan en cada petición y Next las sirve con `Cache-Control: private, no-cache, no-store, max-age=0, must-revalidate`.
+
+### Cliente de API y configuración
+
+`API_BASE_URL` es la única variable de entorno. Solo la lee el servidor, sin prefijo `NEXT_PUBLIC_`. `.env.example` documenta su nombre y el valor real va en `.env.local`, que Git ignora. `instrumentation.ts` la valida al arrancar: debe usar `https`, salvo en `localhost` y `127.0.0.1`. Con un valor inválido el servidor se detiene. `next build` funciona sin la variable, porque ninguna página llama a la API durante la compilación.
+
+`lib/api/client.ts` es el único punto de salida hacia la API y lleva `server-only`, así que un componente de cliente no puede importarlo. Cada llamada:
+
+- construye sus propias cabeceras y envía solo `Accept`, `Content-Type` y `Authorization`, sin reenviar nada del navegador;
+- tiene un tiempo de espera de 8 segundos y trata el fallo de red como «servicio no disponible»;
+- registra en el log solo el método, la ruta y el motivo del fallo, nunca tokens, contraseñas ni cuerpos;
+- descarta el cuerpo de los errores, de modo que el mensaje de la API nunca llega a la interfaz.
+
+Los tipos salen del contrato. `pnpm --filter @salud-digna/patient-portal api:types` lee `docs/openapi.json` y genera `lib/api/schema.d.ts` con `openapi-typescript`. Hay que repetirlo cuando cambie el contrato. `ApiPath` limita las rutas del cliente a las que existen en ese archivo.
+
+### Registro y acceso
+
+`/registro` pide nombre, apellidos, correo, contraseña de 12 a 128 caracteres y teléfono opcional, con los límites de `RegisterDto`. `/acceso` pide correo y contraseña. El portal valida los datos antes de llamar a la API, porque la API cuenta cada intento de registro y de acceso, también los fallidos.
+
+| Respuesta | Mensaje al paciente |
+| --- | --- |
+| `400` | Genérico, para revisar el formulario. |
+| `401` | Genérico, sin distinguir cuenta inexistente de contraseña incorrecta. |
+| `409` en registro | No se pudo crear la cuenta con ese correo. |
+| `429` | Demasiados intentos, con la espera que indica `Retry-After`. |
+| Sin respuesta o `5xx` | Servicio no disponible. |
+
+`/perfil` muestra en solo lectura los datos de `GET /api/v1/auth/me` y el botón para cerrar sesión.
 
 ### Confirmación de la cita y ayuda del asesor
 

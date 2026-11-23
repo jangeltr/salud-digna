@@ -18,6 +18,7 @@ export function InstalledNav() {
           <li key={href} className="flex-1">
             <NavLink
               href={href}
+              prefetch={false}
               className="flex min-h-14 items-center justify-center border-t-2 border-transparent px-1 text-sm font-medium text-muted [&[aria-current]]:border-brand [&[aria-current]]:font-semibold [&[aria-current]]:text-brand"
             >
               {label}

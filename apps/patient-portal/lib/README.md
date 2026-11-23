@@ -9,4 +9,21 @@ Código transversal sin interfaz.
 | `channel/` | Reservado para leer desde el código si el portal corre instalado. Hoy el cambio se resuelve con CSS. La API registra `WEB` en ambos casos. |
 | `session/` | Sesión del paciente, con el JWT en una cookie `HttpOnly` del origen del portal. |
 
+## api
+
+| Archivo | Contenido |
+| --- | --- |
+| `schema.d.ts` | Tipos generados desde `docs/openapi.json` con el script `api:types`. No se edita a mano. |
+| `config.ts` | Lee y valida `API_BASE_URL`. |
+| `client.ts` | Única salida hacia la API: cabeceras propias, tiempo de espera y registro sin datos sensibles. |
+| `auth.ts` | Operaciones de registro, acceso y consulta de la cuenta. |
+
+## session
+
+| Archivo | Contenido |
+| --- | --- |
+| `cookie.ts` | Nombre y atributos de la cookie de sesión, y su lectura, escritura y borrado. |
+| `routes.ts` | Prefijos de las rutas protegidas y validación del destino tras el acceso. |
+| `session.ts` | Comprueba la sesión con `GET /auth/me` y exige cuenta en las páginas protegidas. |
+
 Los motivos de cada decisión están en [docs/decisions.md](../docs/decisions.md).

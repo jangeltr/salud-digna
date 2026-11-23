@@ -9,3 +9,5 @@ Interfaz compartida entre los módulos de `features/` y las dos navegaciones del
 | `installed-nav.tsx` | Barra inferior del modo instalado. |
 | `nav-link.tsx` | Enlace de navegación que marca la ruta activa con `aria-current`. |
 | `page-placeholder.tsx` | Título y aviso de las pantallas aún sin contenido. |
+| `text-field.tsx` | Campo de formulario con etiqueta, ayuda y error accesibles. |
+| `service-unavailable.tsx` | Aviso cuando la API no responde. |

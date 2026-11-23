@@ -19,6 +19,8 @@ App Next.js, TypeScript y Tailwind que funciona como sitio web y como PWA instal
 - El contrato es `docs/openapi.json`. Léelo en su ubicación, sin copiarlo al portal. `lib/api/` y `mocks/` usan solo operaciones y propiedades de ese archivo.
 - Toda llamada a la API sale del servidor de Next. El JWT vive en una cookie `HttpOnly` y queda fuera del código del navegador.
 - Las escrituras sobre una solicitud envían su `version`. Ante un `409`, vuelve a leer la solicitud antes de reintentar.
+- Cada página nueva de `(account)` o `(booking)` llama a `requireAccount()` y registra su prefijo en `lib/session/routes.ts`.
+- Las pruebas locales usan un puerto distinto de 5173 y una API simulada. Contra la API desplegada, solo con autorización y contando cada llamada a registro y acceso.
 - Si el portal necesita algo que el contrato no ofrece, repórtalo en lugar de simularlo con campos inventados.
 
 ## Convenciones
