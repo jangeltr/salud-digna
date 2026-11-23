@@ -1,0 +1,84 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: light;
+  --ink: #1b2c26;
+  --muted: #52655d;
+  --line: #dbe6df;
+  --green: #086342;
+  --pale: #e9f6ee;
+}
+
+body { @apply m-0 min-h-screen antialiased; background: #f4f7f5; color: var(--ink); font-family: system-ui, sans-serif; }
+:focus-visible { outline: 3px solid #08774f; outline-offset: 3px; }
+h1 { @apply text-3xl font-bold tracking-tight sm:text-4xl; }
+h2 { @apply text-lg font-bold tracking-tight; }
+button { @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border bg-white px-3 py-2 text-sm font-semibold; border-color: var(--line); }
+button:not(:disabled) { cursor: pointer; }
+button:not(:disabled):hover { background: var(--pale); }
+:disabled { cursor: not-allowed; opacity: 1; }
+.brand { @apply flex items-center gap-1 whitespace-nowrap text-lg; }
+.brand > span { @apply mr-1 grid size-9 place-items-center rounded-xl text-white; background: var(--green); }
+.login { @apply grid min-h-dvh md:grid-cols-2; }
+.login-identity { @apply flex flex-col justify-center gap-8 p-7 text-white sm:p-12 md:gap-24; background: radial-gradient(ellipse at bottom right, #1a7655, #074831 72%); }
+.login-identity .brand > span { @apply bg-white; color: var(--green); }
+.login-identity h1 { @apply mt-4 mb-2 md:text-5xl; }
+.login-identity p { color: #def4e8; }
+.login-body { @apply grid place-items-center p-5 sm:p-10; }
+.login-card { @apply w-full max-w-md; }
+.text-link, .text-button { @apply w-fit font-semibold underline underline-offset-4; color: var(--green); }
+.notice { @apply flex items-start gap-2 rounded-lg p-3 text-sm; color: #345449; background: var(--pale); }
+.notice svg { @apply mt-0.5 shrink-0; }
+.console { @apply min-h-screen lg:grid lg:grid-cols-[13.5rem_minmax(0,1fr)]; }
+.sidebar { @apply flex flex-col gap-4 border-b bg-white p-4 lg:sticky lg:top-0 lg:h-dvh lg:overflow-auto lg:border-r lg:border-b-0; border-color: var(--line); }
+.sidebar nav { @apply grid gap-3; }
+.nav-group { @apply grid grid-cols-2 gap-1 sm:grid-cols-4 lg:grid-cols-1; }
+.nav-group > p { @apply col-span-full px-2 text-sm font-semibold; color: var(--muted); }
+.nav-item { @apply justify-start border-transparent px-2 text-left; }
+.nav-item svg { @apply shrink-0; }
+.nav-item[aria-current="page"] { background: var(--pale); color: var(--green); }
+.back-link { @apply inline-flex min-h-11 w-fit items-center gap-2 rounded-lg px-2 text-sm font-semibold lg:mt-auto; color: var(--green); }
+.workspace { @apply min-w-0; }
+.workspace-header { @apply flex flex-wrap items-center justify-between gap-4 border-b bg-white px-5 py-5 lg:px-8; border-color: var(--line); }
+.workspace-header p { @apply text-sm font-semibold; color: var(--muted); }
+.design-status { @apply rounded-full px-3 py-1.5 text-sm font-semibold; background: var(--pale); color: var(--green); }
+.workspace-content { @apply mx-auto grid max-w-[1500px] gap-4 p-4 sm:p-6 lg:p-8; }
+.panel { @apply grid min-w-0 gap-4 rounded-xl border bg-white p-4 sm:p-5; border-color: var(--line); }
+.metrics { @apply grid gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5; }
+.metric { @apply grid content-start gap-2 rounded-xl border bg-white p-4; border-color: var(--line); }
+.metric svg { color: var(--green); }
+.metric h2 { @apply text-sm; }
+.metric p { color: var(--muted); }
+.overview-grid { @apply grid min-w-0 gap-4 xl:grid-cols-[1.15fr_1fr]; }
+.empty { @apply grid justify-items-center gap-3 rounded-lg px-3 py-7 text-center text-sm; color: var(--muted); background: #f8fbf9; }
+.empty > span { @apply grid size-10 place-items-center rounded-xl; background: var(--pale); color: var(--green); }
+.channels { @apply flex flex-wrap gap-2; }
+.channels li { @apply inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-sm; border-color: var(--line); color: var(--muted); }
+.event-list { @apply grid gap-3; }
+.event-list li { @apply flex items-start gap-3 rounded-lg border p-3; border-color: var(--line); }
+.event-list svg { @apply shrink-0; color: var(--green); }
+.event-list h3 { @apply font-semibold; }
+.event-list time, .event-list p { @apply text-sm; color: var(--muted); }
+.table-scroll { @apply overflow-x-auto rounded-lg border; border-color: var(--line); }
+table { @apply w-full min-w-max border-collapse text-left text-sm; }
+th { @apply border-b bg-[#f3f7f4] px-4 py-3 font-semibold; border-color: var(--line); }
+td { @apply p-2; }
+.fields, .filters { @apply grid min-w-0 gap-3; }
+.filters { @apply items-end sm:grid-cols-[repeat(auto-fit,minmax(9rem,1fr))]; }
+.fields label, .filters label { @apply grid min-w-0 gap-1.5 text-sm font-semibold; }
+input:not([type="checkbox"]), select, textarea { @apply min-h-11 w-full min-w-0 rounded-lg border px-3 py-2 text-base; border-color: var(--line); }
+.fields :disabled, .filters :disabled { color: var(--muted); background: #f4f7f5; }
+.primary:disabled { background: #dcece3; color: #345449; }
+.field-pair { @apply grid gap-3 sm:grid-cols-2; }
+.fields .inline-field { @apply flex items-center gap-2; }
+.form-preview { @apply flex flex-wrap gap-2; }
+.role-list { @apply grid gap-3; }
+.role-list > div { @apply grid gap-2 rounded-lg border p-3; border-color: var(--line); }
+.role-list dt { @apply font-semibold; }
+.role-list code { @apply ml-1 rounded px-1.5 py-0.5 text-sm; color: var(--green); background: var(--pale); }
+.role-list dd { color: var(--muted); }
+.skip-link { @apply sr-only focus:not-sr-only focus:absolute focus:z-10 focus:m-2 focus:bg-white focus:p-3; }
+dialog { @apply m-auto max-h-[90dvh] max-w-md overflow-auto rounded-xl border bg-white p-5; width: calc(100% - 2rem); border-color: var(--line); color: var(--ink); }
+dialog::backdrop { background: rgb(16 36 28 / 55%); }
+dialog header { @apply mb-3 flex items-center justify-between gap-3; }
+dialog fieldset { @apply mt-4; }
