@@ -103,6 +103,19 @@ pnpm --filter @salud-digna/api auth:create-admin
 
 La CLI solicita correo, contraseña y confirmación con la entrada de contraseña oculta. Crea una cuenta `ADMIN` sin perfil asociado. Si el correo ya existe, devuelve un error y conserva la cuenta anterior. Usa la misma ruta de inicio de sesión para la cuenta creada.
 
+## Creación de un asesor de pruebas
+
+Usa una base local o de demostración previamente preparada y autorizada. Antes de ejecutar la CLI, verifica que la `DATABASE_URL` efectiva del proceso apunte a esa base. Mantén la configuración de conexión fuera de Git.
+
+Desde la raíz, ejecuta en una terminal interactiva.
+
+```sh
+pnpm --filter @salud-digna/api build
+pnpm --filter @salud-digna/api auth:create-advisor
+```
+
+La CLI solicita el correo de prueba, una contraseña de 12 a 128 caracteres y su confirmación. La contraseña se introduce con el eco desactivado. Usa una contraseña exclusiva para el entorno de prueba y compártela con el asesor autorizado por un canal privado. La CLI rechaza argumentos y correos duplicados, y crea exclusivamente cuentas `ADVISOR` sin perfil de paciente. El asesor inicia sesión mediante `POST /api/v1/auth/login`. El registro público sigue creando cuentas `PATIENT`.
+
 ## Límites del MVP y comprobación local
 
 - Registro e inicio de sesión comparten un máximo de 10 intentos por IP cada 15 minutos, incluidos los válidos. El contador tiene memoria acotada, se reinicia con el proceso y es independiente en cada instancia. Los clientes tras un proxy sin configuración de confianza o bajo una misma IP pueden compartir el límite. Usa TLS en producción.
