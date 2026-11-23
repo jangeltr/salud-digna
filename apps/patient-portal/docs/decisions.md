@@ -35,12 +35,12 @@ La excepción son los segmentos de URL. Van en español y sin acentos porque los
 | Grupo | Rutas |
 | --- | --- |
 | `(public)` | `/`, `/estudios`, `/estudios/[id]`, `/clinicas`, `/acceso`, `/registro` |
-| `(booking)` | `/tramite/[id]` |
+| `(booking)` | `/tramite/nuevo`, `/tramite/[id]` |
 | `(account)` | `/mi-espacio`, `/continuar`, `/citas`, `/citas/[id]`, `/ayuda`, `/perfil` |
 
-El inicio, `/estudios`, `/estudios/[id]`, `/clinicas`, `/registro`, `/acceso` y `/perfil` ya funcionan contra la API. Las demás rutas muestran por ahora su título y el aviso «Disponible en un paso posterior», sin datos de ejemplo.
+El inicio, el catálogo, `/registro`, `/acceso`, `/perfil`, `/tramite/nuevo`, `/tramite/[id]` y `/continuar` ya funcionan contra la API. `/mi-espacio`, `/citas`, `/citas/[id]` y `/ayuda` muestran por ahora su título y el aviso «Disponible en un paso posterior», sin datos de ejemplo.
 
-Los filtros de los listados viajan en la URL con nombres en español: `q` para el nombre, `ciudad` y `pagina`.
+Los filtros de los listados viajan en la URL con nombres en español: `q` para el nombre, `ciudad`, `pagina` y, en la rejilla de horarios, `dia`.
 
 ## Base técnica
 
@@ -216,6 +216,52 @@ La API carece de tiempo real. El portal consulta el estado por REST a intervalos
 
 El portal se sirve en `http://127.0.0.1:5173` durante el desarrollo. El puerto 3000, predeterminado de Next.js, es también el de la API local. El ejemplo de configuración de la API permite `http://localhost:5173`, que es un origen distinto, según [Desarrollo e integración](../../../docs/development.md). El portal prescinde de CORS porque sus llamadas a la API salen del servidor de Next.
 
+### Trámite de agendamiento
+
+El trámite sigue las reglas de la [guía pública](../../../docs/frontend-publico.md), sección «Catálogos, solicitudes y citas», y del [contrato de solicitudes](../../../docs/api-requests.md).
+
+**Inicio.** `/tramite/nuevo?estudio=<id>` solo consulta: lee `GET /api/v1/requests/pending` y, si hay trámites abiertos, ofrece continuarlos o empezar otro. El trámite se crea con `POST /api/v1/requests` únicamente cuando el paciente pulsa el botón, mediante una Server Action y con el botón bloqueado durante el envío. Si llegó un estudio válido, se guarda en el contexto y el portal abre `/tramite/<id>`. Cuando la respuesta de la creación es incierta, por un fallo de red o un `5xx`, el portal consulta los pendientes antes de permitir otro intento: si encuentra el trámite recién creado continúa con él, y si no puede consultarlos bloquea el botón y pide revisar los trámites.
+
+**Pantalla guiada por la API.** `/tramite/[id]` es una sola ruta. La pantalla la deciden `status` y `currentStep` de `GET /api/v1/requests/{id}`, nunca la URL ni datos guardados en el navegador.
+
+| Estado | Paso | Pantalla |
+| --- | --- | --- |
+| `DRAFT` | `SELECT_STUDY` | Elegir estudio. |
+| `IN_PROGRESS` | `SELECT_CLINIC` | Elegir clínica. |
+| `IN_PROGRESS` | `SELECT_DATETIME` | Elegir fecha y hora. |
+| `PENDING_CONFIRMATION` | `REVIEW` | Revisión, con las dos salidas. |
+| `COMPLETED` | `CONFIRMED` | Cita confirmada. |
+| `CANCELLED` | Cualquiera | Trámite cerrado. |
+
+**Volver a un paso anterior.** La API no permite vaciar el estudio ni la clínica, solo sustituirlos, así que el servidor nunca retrocede a esos pasos por sí mismo. El parámetro `cambiar`, con los valores `estudio`, `clinica` u `horario`, abre el selector de un dato que ya está elegido y avisa de lo que se pierde: cambiar el estudio borra la clínica y el horario, y cambiar la clínica borra el horario. El parámetro no puede adelantar pasos ni abrir la revisión: se ignora si el dato aún no existe o si el trámite está cerrado. Nada cambia hasta que el paciente elige otro valor.
+
+**Versiones.** Cada formulario envía la `version` que devolvió la API al pintar la página. Tras cualquier acción, el portal redirige a `/tramite/[id]`, que vuelve a leer el trámite: la pantalla refleja siempre lo guardado, también cuando la respuesta fue un error.
+
+**Continuidad.** La página muestra un aviso con `lastChannel` y `updatedAt`, por ejemplo «Dejaste este trámite en WhatsApp hace 2 horas», cuando la última actividad fue en otro canal o hace más de cinco minutos. «Guardar y continuar después» llama a `POST /api/v1/requests/{id}/pause` y lleva a `/continuar`. Desde esa lista, «Continuar este trámite» llama a `POST /api/v1/requests/{id}/resume` antes de abrirlo.
+
+**Horarios.** La API no ofrece disponibilidad, así que la rejilla es de demostración y se define en un solo archivo, `features/requests/schedule.config.ts`: 14 días naturales desde hoy, de 08:00 a 18:00 cada 30 minutos, con el último horario a las 17:30, en la zona `America/Mexico_City` y solo con horarios futuros. La pantalla lleva la etiqueta «Horarios de demostración». `scheduledAt` se envía en ISO 8601 con segundos y zona explícita, como `2026-11-26T10:00:00-06:00`. El servidor comprueba que el horario recibido pertenece a la rejilla antes de llamar a la API.
+
+**Revisión.** Muestra estudio, clínica, fecha y hora y precio, y admite una nota opcional de hasta 500 caracteres con el aviso de no incluir datos clínicos. Tiene dos salidas:
+
+- «Confirmar mi cita» llama a `POST /api/v1/requests/{id}/confirm`. Al terminar, la página muestra «Cita confirmada» con el enlace a `/citas/<id de la cita>`.
+- «Pedir ayuda a un asesor» llama a `POST /api/v1/requests/{id}/assistance-code`. El código se genera solo al pulsar el botón. Llega en la respuesta de la acción, nunca en la URL, y desaparece al recargar. La pantalla indica su vencimiento y que es de un solo uso.
+
+**Errores.**
+
+| Respuesta | Qué hace el portal |
+| --- | --- |
+| `409` | Vuelve a leer el trámite y muestra el estado actual con el aviso «Tu trámite cambió desde otro canal». El paciente debe repetir la acción sobre ese estado. |
+| `404` | Página de no encontrado, idéntica para un trámite inexistente y para uno ajeno. |
+| `401` | Flujo de sesión vencida: borra la cookie y lleva a `/acceso` con el trámite como destino. |
+| `400` | Mensaje genérico, sin el texto de la API. |
+| Sin respuesta o `5xx` | Aviso de servicio y vuelta al estado guardado. |
+
+Next entrega el `404` de una página dinámica como un documento mínimo que se completa con JavaScript. El estado HTTP es correcto, pero sin JavaScript la página queda en blanco. Ocurre igual en el detalle de un estudio.
+
+**Seguridad.** Todas las escrituras son Server Actions. Las llamadas del trámite llevan token, así que ninguna respuesta se guarda en caché, y el portal no usa almacenamiento del navegador.
+
+**Pendiente.** `/citas/[id]` y el historial de `GET /api/v1/requests/{id}/journey` aún no tienen pantalla.
+
 ## Lo que la API no ofrece
 
 | Función | Estado en la API | Fuente |
@@ -226,6 +272,8 @@ El portal se sirve en `http://127.0.0.1:5173` durante el desarrollo. El puerto 3
 | Edición de perfil | Sin operación. `GET /api/v1/auth/me` solo consulta. | `docs/openapi.json`. |
 | Tiempo real | Sin operación ni eventos publicados. | [Arquitectura](../../../docs/architecture.md), «Integración pública». |
 | Resultados | Sin operaciones ni estados. `COMPLETED` significa cita confirmada, con paso `CONFIRMED`. | Guía pública, tabla de estados. |
+| Vaciar el estudio o la clínica de un trámite | Sin operación. Solo `scheduledAt` y `notes` admiten `null`: el estudio y la clínica se sustituyen por otros. | `docs/openapi.json`, `UpdateRequestContextDto`. |
+| Consultar la cita de un trámite | Sin operación directa. El portal recorre `GET /api/v1/appointments` y compara `requestId`. | `docs/openapi.json`. |
 
 El portal deja estas funciones fuera hasta que exista un contrato acordado.
 

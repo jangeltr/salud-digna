@@ -36,6 +36,15 @@ async function requestedPath(): Promise<string> {
 }
 
 /**
+ * Lleva al flujo de sesión vencida. Un Server Component no puede borrar cookies:
+ * lo hace el manejador de /api/session/expired antes de ir a /acceso.
+ */
+export async function expireSession(): Promise<never> {
+  const destination = await requestedPath();
+  redirect(`/api/session/expired?destino=${encodeURIComponent(destination)}`);
+}
+
+/**
  * Exige una sesión válida para renderizar una página protegida.
  * Devuelve null cuando la API no responde, para que la página muestre el aviso de servicio.
  */
@@ -43,11 +52,17 @@ export async function requireAccount(): Promise<Account | null> {
   const session = await getSession();
   if (session.status === "authenticated") return session.account;
   if (session.status === "unavailable") return null;
+  if (session.status === "expired") await expireSession();
 
-  const destination = await requestedPath();
-  if (session.status === "expired") {
-    // Un Server Component no puede borrar cookies. Lo hace este manejador antes de ir a /acceso.
-    redirect(`/api/session/expired?destino=${encodeURIComponent(destination)}`);
-  }
-  redirect(signInUrl(destination));
+  redirect(signInUrl(await requestedPath()));
+}
+
+/** Como `requireAccount`, y además entrega el token para las llamadas de datos de la página. */
+export async function requireSession(): Promise<{ account: Account; token: string } | null> {
+  const account = await requireAccount();
+  if (!account) return null;
+
+  const token = await readSessionToken();
+  if (!token) redirect(signInUrl(await requestedPath()));
+  return { account, token };
 }

@@ -18,6 +18,7 @@ Código transversal sin interfaz.
 | `client.ts` | Única salida hacia la API: cabeceras propias, tiempo de espera y registro sin datos sensibles. |
 | `auth.ts` | Operaciones de registro, acceso y consulta de la cuenta. |
 | `catalog.ts` | Lectura pública de estudios y clínicas, con caché de 30 segundos. |
+| `requests.ts` | Trámites y citas del paciente. Todas las llamadas llevan token y nunca se guardan en caché. |
 
 ## session
 

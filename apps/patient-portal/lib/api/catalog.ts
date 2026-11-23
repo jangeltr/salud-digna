@@ -35,6 +35,15 @@ export const getStudy = cache((id: string) =>
   }),
 );
 
+export const getClinic = cache((id: string) =>
+  apiRequest<Clinic>({
+    method: "GET",
+    path: "/clinics/{id}",
+    params: { id },
+    revalidate: CATALOG_REVALIDATE_SECONDS,
+  }),
+);
+
 export function listClinics(query: CatalogQuery) {
   return apiRequest<ClinicPage>({
     method: "GET",

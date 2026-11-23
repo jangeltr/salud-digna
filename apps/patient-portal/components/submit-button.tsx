@@ -15,10 +15,11 @@ export function SubmitButton({ children, pendingLabel, className }: SubmitButton
   return (
     <button
       type="submit"
-      aria-disabled={pending || undefined}
+      // Bloqueado mientras dura el envío, para que un segundo clic no repita la petición.
+      disabled={pending}
       className={
         className ??
-        "inline-flex min-h-11 items-center justify-center rounded-lg bg-brand px-4 font-semibold text-canvas hover:bg-brand-strong aria-disabled:opacity-70"
+        "inline-flex min-h-11 items-center justify-center rounded-lg bg-brand px-4 font-semibold text-canvas hover:bg-brand-strong disabled:opacity-70"
       }
     >
       {pending ? pendingLabel : children}

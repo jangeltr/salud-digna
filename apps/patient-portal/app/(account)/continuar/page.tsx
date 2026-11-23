@@ -1,12 +1,48 @@
 import type { Metadata } from "next";
-import { PagePlaceholder } from "@/components/page-placeholder";
 import { ServiceUnavailable } from "@/components/service-unavailable";
-import { requireAccount } from "@/lib/session/session";
+import { EmptyState } from "@/features/catalog/empty-state";
+import { Pagination } from "@/features/catalog/pagination";
+import { PAGE_SIZE, listHref, readPage } from "@/features/catalog/params";
+import { NoticeBanner } from "@/features/requests/parts";
+import { PendingList } from "@/features/requests/pending-list";
+import { readNotice } from "@/features/requests/steps";
+import { listPendingRequests } from "@/lib/api/requests";
+import { expireSession, requireSession } from "@/lib/session/session";
 
 export const metadata: Metadata = { title: "Continuar" };
 
-export default async function ResumePage() {
-  if (!(await requireAccount())) return <ServiceUnavailable />;
+const PATH = "/continuar";
 
-  return <PagePlaceholder title="Continuar" />;
+export default async function ResumePage({ searchParams }: PageProps<"/continuar">) {
+  const query = await searchParams;
+  const page = readPage(query.pagina);
+  const notice = readNotice(query.aviso);
+  const hrefFor = (target: number) => listHref(PATH, { pagina: target });
+
+  const session = await requireSession();
+  if (!session) return <ServiceUnavailable retryHref={hrefFor(page)} />;
+
+  const result = await listPendingRequests(session.token, page, PAGE_SIZE);
+  if (!result.ok) {
+    if (result.status === 401) await expireSession();
+    return <ServiceUnavailable retryHref={hrefFor(page)} />;
+  }
+
+  const { items, hasMore } = result.data;
+
+  return (
+    <>
+      <h1 className="text-2xl font-bold tracking-tight">Continuar</h1>
+      <p className="mt-2 text-muted">Tus trámites abiertos, también los que empezaste por WhatsApp o con un asesor.</p>
+      {notice ? <NoticeBanner notice={notice} /> : null}
+      {items.length > 0 ? (
+        <PendingList requests={items} />
+      ) : (
+        <EmptyState resetHref={page > 1 ? PATH : "/estudios"} resetLabel={page > 1 ? "Volver al inicio de la lista" : "Buscar un estudio"}>
+          {page > 1 ? "No hay más trámites en esta página." : "No tienes trámites abiertos."}
+        </EmptyState>
+      )}
+      <Pagination page={page} hasMore={hasMore} hrefFor={hrefFor} />
+    </>
+  );
 }

@@ -14,14 +14,19 @@ type SearchFormProps = {
   /** Nombre accesible del formulario. */
   label: string;
   fields: Field[];
+  /** Parámetros que deben conservarse en la URL al buscar. */
+  hidden?: Record<string, string | undefined>;
 };
 
 /** Formulario GET: los filtros viajan en la URL y funciona también sin JavaScript. */
-export function SearchForm({ action, label, fields }: SearchFormProps) {
+export function SearchForm({ action, label, fields, hidden }: SearchFormProps) {
   const idPrefix = `buscar-${action.replace(/\W+/g, "") || "inicio"}`;
 
   return (
     <Form action={action} role="search" aria-label={label} className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-end">
+      {Object.entries(hidden ?? {}).map(([name, value]) =>
+        value ? <input key={name} type="hidden" name={name} value={value} /> : null,
+      )}
       {fields.map(({ name, label: fieldLabel, placeholder, defaultValue }) => (
         <div key={name} className="flex-1">
           <label htmlFor={`${idPrefix}-${name}`} className="block text-sm font-semibold">
