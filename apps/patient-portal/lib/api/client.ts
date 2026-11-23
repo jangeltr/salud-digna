@@ -19,11 +19,16 @@ export type ApiResult<Data> = ApiSuccess<Data> | ApiFailure;
 type ApiRequest = {
   method: "GET" | "POST" | "PATCH";
   path: ApiPath;
+  /** Valores para los segmentos entre llaves de la ruta, como `{id}`. */
+  params?: Record<string, string>;
+  query?: Record<string, string | number | undefined>;
   token?: string;
   body?: unknown;
+  /** Segundos que puede reutilizarse una respuesta pública. Se ignora si la petición lleva token. */
+  revalidate?: number;
 };
 
-// El registro omite tokens, contraseñas y cuerpos: solo método, ruta y motivo.
+// El registro omite tokens, contraseñas, cuerpos y parámetros: solo método, ruta del contrato y motivo.
 function report(method: string, path: string, reason: string) {
   console.error(`[api] ${method} ${path}: ${reason}`);
 }
@@ -33,19 +38,39 @@ function parseRetryAfter(value: string | null): number | undefined {
   return Number(value);
 }
 
-export async function apiRequest<Data>({ method, path, token, body }: ApiRequest): Promise<ApiResult<Data>> {
+function buildUrl({ path, params, query }: Pick<ApiRequest, "path" | "params" | "query">): string {
+  const resolved = path.replace(/\{(\w+)\}/g, (_match, name: string) => {
+    const value = params?.[name];
+    if (value === undefined) throw new Error(`Falta el parámetro de ruta ${name}.`);
+    return encodeURIComponent(value);
+  });
+
+  const search = new URLSearchParams();
+  for (const [name, value] of Object.entries(query ?? {})) {
+    if (value !== undefined && value !== "") search.set(name, String(value));
+  }
+
+  return getApiBaseUrl() + resolved + (search.size > 0 ? `?${search}` : "");
+}
+
+export async function apiRequest<Data>(request: ApiRequest): Promise<ApiResult<Data>> {
+  const { method, path, token, body, revalidate } = request;
+
   // Las cabeceras se construyen aquí. Nada de lo que envía el navegador llega a la API.
   const headers = new Headers({ Accept: "application/json" });
   if (body !== undefined) headers.set("Content-Type", "application/json");
   if (token) headers.set("Authorization", `Bearer ${token}`);
 
+  // Solo se reutilizan lecturas públicas. Con token la respuesta nunca se guarda.
+  const cacheable = method === "GET" && !token && revalidate !== undefined;
+
   let response: Response;
   try {
-    response = await fetch(getApiBaseUrl() + path, {
+    response = await fetch(buildUrl(request), {
       method,
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
-      cache: "no-store",
+      ...(cacheable ? { next: { revalidate } } : { cache: "no-store" as const }),
       redirect: "error",
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });

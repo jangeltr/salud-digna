@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
+import { LinkPending } from "@/components/link-pending";
 
 type NavLinkProps = {
   href: string;
@@ -17,8 +18,14 @@ export function NavLink({ href, className, prefetch, children }: NavLinkProps) {
   const current = pathname === href ? "page" : pathname.startsWith(`${href}/`) ? "true" : undefined;
 
   return (
-    <Link href={href} prefetch={prefetch} aria-current={current} className={className}>
+    <Link
+      href={href}
+      prefetch={prefetch}
+      aria-current={current}
+      className={`${className ?? ""} has-[[data-pending]]:opacity-60`}
+    >
       {children}
+      <LinkPending />
     </Link>
   );
 }

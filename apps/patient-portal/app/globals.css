@@ -58,6 +58,11 @@
 }
 
 @layer base {
+  /* El recuadro de foco aparece solo cuando el navegador considera que hace falta: teclado. */
+  :focus:not(:focus-visible) {
+    outline: none;
+  }
+
   :focus-visible {
     outline: 3px solid var(--brand);
     outline-offset: 2px;
@@ -81,7 +86,7 @@
     transform: translateY(-200%);
   }
 
-  .skip-link:focus {
+  .skip-link:focus-visible {
     transform: none;
   }
 }

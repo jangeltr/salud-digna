@@ -17,6 +17,7 @@ Código transversal sin interfaz.
 | `config.ts` | Lee y valida `API_BASE_URL`. |
 | `client.ts` | Única salida hacia la API: cabeceras propias, tiempo de espera y registro sin datos sensibles. |
 | `auth.ts` | Operaciones de registro, acceso y consulta de la cuenta. |
+| `catalog.ts` | Lectura pública de estudios y clínicas, con caché de 30 segundos. |
 
 ## session
 

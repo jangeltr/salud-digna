@@ -38,7 +38,9 @@ La excepción son los segmentos de URL. Van en español y sin acentos porque los
 | `(booking)` | `/tramite/[id]` |
 | `(account)` | `/mi-espacio`, `/continuar`, `/citas`, `/citas/[id]`, `/ayuda`, `/perfil` |
 
-`/registro`, `/acceso` y `/perfil` ya funcionan contra la API. Las demás rutas muestran por ahora su título y el aviso «Disponible en un paso posterior», sin datos de ejemplo.
+El inicio, `/estudios`, `/estudios/[id]`, `/clinicas`, `/registro`, `/acceso` y `/perfil` ya funcionan contra la API. Las demás rutas muestran por ahora su título y el aviso «Disponible en un paso posterior», sin datos de ejemplo.
+
+Los filtros de los listados viajan en la URL con nombres en español: `q` para el nombre, `ciudad` y `pagina`.
 
 ## Base técnica
 
@@ -106,7 +108,7 @@ Todas las combinaciones superan el 4.5:1 del nivel AA. El portal usa las fuentes
 
 El portal tiene dos navegaciones y ambas están siempre en el HTML. En el navegador se ve el encabezado con Estudios, Clínicas y Acceso. En modo instalado se oculta ese menú y aparece una barra inferior con Inicio, que lleva a `/mi-espacio`, Continuar, Citas y Ayuda. El cambio depende solo de la media query `display-mode: standalone`, sin JavaScript.
 
-El diseño parte del móvil. Las barras respetan las áreas seguras con `env(safe-area-inset-*)` y `viewport-fit=cover`, y los enlaces miden al menos 44 px de alto. Cada `nav` lleva su etiqueta, hay un enlace «Saltar al contenido» y el foco es visible. El enlace de la página abierta lleva `aria-current="page"`, y el de su sección lleva `aria-current="true"` cuando se está en una página interior. `components/nav-link.tsx` es un Client Component porque `usePathname` lo exige.
+El diseño parte del móvil. Las barras respetan las áreas seguras con `env(safe-area-inset-*)` y `viewport-fit=cover`, y los enlaces miden al menos 44 px de alto. Cada `nav` lleva su etiqueta y hay un enlace «Saltar al contenido». El recuadro de foco usa `:focus-visible`: aparece al navegar con teclado y no al hacer clic en enlaces o botones. Los campos de texto lo muestran también al hacer clic, porque así define el navegador esa pseudoclase. El enlace de la página abierta lleva `aria-current="page"`, y el de su sección lleva `aria-current="true"` cuando se está en una página interior. `components/nav-link.tsx` es un Client Component porque `usePathname` lo exige.
 
 ### PWA
 
@@ -139,7 +141,7 @@ El destino solo puede ser una ruta interna. `safeDestination()` rechaza lo que n
 
 Al añadir una ruta a `(account)` o `(booking)` hay que registrar su prefijo en `lib/session/routes.ts` y llamar a `requireAccount()` en la página. Los grupos de rutas no aparecen en la URL, así que el proxy no puede deducirlos.
 
-**Mutaciones.** Registro, acceso y cierre de sesión son Server Actions. Next solo las acepta por `POST` y compara la cabecera `Origin` con `Host`: una petición de otro origen se rechaza antes de ejecutar la acción.
+**Mutaciones.** Registro, acceso y cierre de sesión son Server Actions. Next solo las acepta por `POST` y compara la cabecera `Origin` con `Host`: una petición de otro origen se rechaza antes de ejecutar la acción. Next responde `500` en ese caso. `proxy.ts` repite antes la misma comparación y responde `403`, sin sustituir la comprobación de Next, que sigue activa. Si algún día se configura `serverActions.allowedOrigins`, el proxy debe aceptar los mismos orígenes.
 
 **Encabezado.** El enlace cambia de «Acceso» a «Mi espacio» según exista la cookie, sin llamar a la API. Como el encabezado lee la cookie, todas las páginas se generan en cada petición y Next las sirve con `Cache-Control: private, no-cache, no-store, max-age=0, must-revalidate`.
 
@@ -169,6 +171,26 @@ Los tipos salen del contrato. `pnpm --filter @salud-digna/patient-portal api:typ
 | Sin respuesta o `5xx` | Servicio no disponible. |
 
 `/perfil` muestra en solo lectura los datos de `GET /api/v1/auth/me` y el botón para cerrar sesión.
+
+### Catálogo
+
+`/estudios` y `/clinicas` listan `GET /api/v1/studies` y `GET /api/v1/clinics`. El portal envía solo los parámetros del contrato: `page`, `limit` y `q`. Muestra 12 tarjetas por página y pagina con `hasMore`. `/estudios/[id]` muestra `GET /api/v1/studies/{id}` y enlaza a `/tramite/nuevo?estudio=<id>` para agendar.
+
+**Validación.** El servidor recorta `q` y `ciudad` a 100 caracteres, que es el máximo del contrato, y acepta `pagina` entre 1 y 10 000. Cualquier otro valor vuelve a la primera página. El identificador del detalle debe ser un UUID: si no lo es, el portal responde «no encontrado» sin llamar a la API. Un `400` o un `404` de la API también se muestran como «no encontrado».
+
+**Textos y precio.** Los textos de la API se muestran siempre como texto, escapados por React. El precio llega como cadena decimal y solo se le da formato de pesos mexicanos al mostrarlo.
+
+**Filtro por ciudad.** El contrato no filtra por ciudad. Con ese filtro, el portal recorre el listado de la API en páginas de 100, compara la ciudad sin distinguir mayúsculas ni acentos y pagina sobre las coincidencias. Se detiene en cuanto tiene las necesarias para la página pedida. El enfoque tiene límites:
+
+- revisa como máximo 500 clínicas, y avisa en pantalla cuando llega a ese tope porque puede faltar alguna;
+- una búsqueda puede costar hasta cinco llamadas a la API, y más cuanto más avanzada sea la página;
+- compara el texto libre de `city`, así que «CDMX» no encuentra «Ciudad de México».
+
+La solución de fondo es un parámetro de ciudad en la API.
+
+**Caché.** Las respuestas públicas del catálogo se reutilizan durante 30 segundos con la opción `next.revalidate` de `fetch`. Next solo guarda respuestas `200`, así que un fallo de la API no queda en caché. Las peticiones con token usan siempre `cache: "no-store"`.
+
+**Carga, vacío y error.** Los botones de búsqueda y los enlaces muestran «Buscando…» o «Cargando…» mientras dura la navegación, con `useFormStatus` y `useLinkStatus`. El portal prescinde de `loading.tsx` a propósito: con ese archivo la respuesta empieza con `200` antes de consultar la API, y el detalle de un estudio inexistente dejaría de responder `404`. Además, los listados seguirían cargando para siempre en un navegador sin JavaScript. Una lista vacía ofrece quitar los filtros. Si la API no responde, la página muestra «Servicio no disponible» con un enlace para reintentar la misma URL.
 
 ### Confirmación de la cita y ayuda del asesor
 
@@ -212,4 +234,5 @@ El portal deja estas funciones fuera hasta que exista un contrato acordado.
 | Pendiente | Efecto en el portal |
 | --- | --- |
 | Sugerencia: distinguir `MOBILE` de `WEB` | Sin ella, el uso instalado queda registrado como `WEB` y el historial no muestra el cambio entre ambos. |
+| Sugerencia: filtrar clínicas por ciudad en `GET /clinics` | Sin ella, el portal filtra en su servidor con el tope de 500 clínicas descrito en «Catálogo». |
 | Límite de registro e inicio de sesión por IP | Ambas operaciones comparten 10 intentos por IP cada 15 minutos, según el contrato de autenticación. Todas las llamadas llegan desde el servidor del portal, así que los pacientes compartirían ese límite. |
