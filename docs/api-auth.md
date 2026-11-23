@@ -118,6 +118,7 @@ La CLI solicita el correo de prueba, una contraseña de 12 a 128 caracteres y su
 
 ## Límites del MVP y comprobación local
 
-- Registro e inicio de sesión comparten un máximo de 10 intentos por IP cada 15 minutos, incluidos los válidos. El contador tiene memoria acotada, se reinicia con el proceso y es independiente en cada instancia. Los clientes tras un proxy sin configuración de confianza o bajo una misma IP pueden compartir el límite. Usa TLS en producción.
+- Registro e inicio de sesión comparten hasta 10 intentos por IP en una ventana de 15 minutos. Cada login reserva un intento al ingresar y libera solo su propia reserva si la respuesta termina con HTTP 200. Los fallos, las solicitudes interrumpidas y todos los registros consumen cupo. Los intentos contra correos distintos comparten el mismo contador. Al agotarse el cupo, la API devuelve HTTP 429 con `Retry-After`. El canje de Call Center conserva su límite independiente, incluidos los canjes exitosos.
+- El contador vive en memoria acotada por proceso y se reinicia con él. Clientes tras la misma IP pública o que usan un intermediario servidor-servidor pueden compartir cupo. Consulta la [configuración de Nginx y Next.js](deployment.md#ip-del-cliente-detrás-de-nginx).
 - El correo aún no se verifica. OAuth, MFA, recuperación de contraseñas, refresh tokens y administración HTTP de cuentas quedan para incrementos posteriores.
 - Con PostgreSQL local migrado, inicia la API y abre Swagger UI. Registra una cuenta sintética con correo nuevo, inicia sesión y usa **Authorize** con el JWT para comprobar que `GET /me` devuelve su perfil. Retira el JWT y confirma que la misma ruta responde HTTP 401.

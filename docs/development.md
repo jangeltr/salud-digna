@@ -33,6 +33,7 @@ pnpm --filter @salud-digna/api start
 | `NODE_ENV` | `development` | Acepta `development`, `test` o `production`. |
 | `API_HOST` | `127.0.0.1` | Dirección de escucha. |
 | `API_PORT` | `3000` | Puerto TCP entre 1 y 65535. |
+| `TRUST_LOCAL_PROXY` | `false` | Activa la confianza en el primer salto IPv4 por `127.0.0.1`. Requiere `API_HOST=127.0.0.1` y un proxy local que sobrescriba las cabeceras reenviadas. |
 | `CORS_ORIGINS` | Lista vacía | Orígenes HTTP(S) separados por comas, sin rutas ni comodines. Las credenciales de CORS están desactivadas. El archivo de ejemplo permite `http://localhost:5173` y `http://localhost:5174`. |
 | `DATABASE_URL` | Vacía | URL de PostgreSQL para la API y Prisma CLI. |
 | `SHADOW_DATABASE_URL` | Vacía | URL de la base auxiliar dedicada para `prisma:migrate:dev`. |

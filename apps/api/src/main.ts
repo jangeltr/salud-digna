@@ -6,12 +6,14 @@ import { SwaggerModule } from '@nestjs/swagger';
 import { API_PREFIX, createOpenApiDocument } from './openapi/openapi-document';
 import { AppModule } from './app.module';
 import { loadConfig } from './config';
+import { trustLocalProxy } from './config/trust-local-proxy';
 import { TWILIO_WEBHOOK_PATH, WHATSAPP_WEBHOOK_PATH, selectedWhatsAppProvider, whatsappEnabled } from './whatsapp/whatsapp.config';
 
 async function bootstrap() {
-  const { host, port, corsOrigins } = loadConfig();
+  const { host, port, corsOrigins, trustLocalProxy: behindLocalProxy } = loadConfig();
   const enabled = whatsappEnabled();
   const app = await NestFactory.create<NestExpressApplication>(AppModule.configure(), { rawBody: enabled });
+  if (behindLocalProxy) app.set('trust proxy', trustLocalProxy);
   if (enabled) {
     const webhookPath = selectedWhatsAppProvider() === 'meta' ? WHATSAPP_WEBHOOK_PATH : TWILIO_WEBHOOK_PATH;
     app.useBodyParser('raw', {
