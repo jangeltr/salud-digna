@@ -23,6 +23,6 @@ App Next.js, TypeScript y Tailwind que funciona como sitio web y como PWA instal
 
 ## Convenciones
 
-- Carpetas y código en inglés, con los nombres de dominio de la API. Textos para el paciente y documentación en español.
+- Carpetas y código en inglés, con los nombres de dominio de la API. Textos para el paciente y documentación en español. Los segmentos de URL bajo `app/` van en español y sin acentos.
 - `app/` compone rutas. La lógica de cada dominio vive en `features/` y lo transversal en `lib/`.
 - El servidor de desarrollo usa el puerto 5173.
