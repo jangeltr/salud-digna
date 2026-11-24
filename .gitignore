@@ -14,3 +14,4 @@ coverage/
 .aws/
 
 /apps/api/src/generated/prisma/
+/apps/orchestrator/src/generated/prisma/

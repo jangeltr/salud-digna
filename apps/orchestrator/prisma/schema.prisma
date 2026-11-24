@@ -1,0 +1,203 @@
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "cjs"
+  importFileExtension = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum PatientIdentifierType {
+  PATIENT_ID
+  CUSTOMER_ID
+  CURP
+  RFC
+  NSS
+  PHONE
+}
+
+enum PatientIdentifierStatus {
+  PENDING
+  VERIFIED
+  REVOKED
+}
+
+enum JourneyStatus {
+  DRAFT
+  IN_PROGRESS
+  PENDING_CONFIRMATION
+  COMPLETED
+  CANCELLED
+}
+
+enum AccessAuditAction {
+  READ_CONTEXT
+  READ_TIMELINE
+  UPDATE_CONTEXT
+  CHANGE_JOURNEY_STATUS
+  LINK_IDENTIFIER
+  VERIFY_IDENTIFIER
+  REVOKE_IDENTIFIER
+}
+
+enum AccessAuditOutcome {
+  ALLOWED
+  DENIED
+}
+
+enum ChannelScope {
+  EVENTS_PUBLISH
+  JOURNEYS_READ
+}
+
+enum JourneyGrantOperation {
+  PUBLISH_EVENT
+  READ_JOURNEY
+}
+
+model PatientSubject {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  identifiers  PatientIdentifier[]
+  journeys     Journey[]
+  accessAudits AccessAudit[]
+}
+
+model PatientIdentifier {
+  id                   String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  patientSubjectId     String                  @db.Uuid
+  sourceChannelId      String                  @db.Uuid
+  type                 PatientIdentifierType
+  namespace            String                  @db.VarChar(100)
+  lookupDigest         Bytes                   @db.ByteA
+  verifiedLookupDigest Bytes?                  @db.ByteA
+  status               PatientIdentifierStatus @default(PENDING)
+  createdAt            DateTime                @default(now()) @db.Timestamptz(3)
+  verificationMethod   String?                 @db.VarChar(64)
+  verificationRef      String?                 @db.VarChar(128)
+  verifiedAt           DateTime?               @db.Timestamptz(3)
+  validUntil           DateTime?               @db.Timestamptz(3)
+  revokedAt            DateTime?               @db.Timestamptz(3)
+
+  patientSubject PatientSubject @relation(fields: [patientSubjectId], references: [id], onDelete: Restrict)
+  sourceChannel  Channel        @relation(fields: [sourceChannelId], references: [id], onDelete: Restrict)
+
+  @@unique([patientSubjectId, type, namespace, lookupDigest], map: "patient_identifier_subject_key")
+  @@unique([type, namespace, verifiedLookupDigest], map: "patient_identifier_verified_key")
+  @@index([sourceChannelId])
+}
+
+model Channel {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code      String   @unique @db.VarChar(64)
+  name      String   @db.VarChar(120)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  identifiers  PatientIdentifier[]
+  events       JourneyEvent[]
+  accessAudits AccessAudit[]
+  credentials  ChannelCredential[]
+  accessGrants JourneyAccessGrant[]
+}
+
+model ChannelCredential {
+  keyId        String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  channelId    String         @db.Uuid
+  secretDigest Bytes          @db.ByteA
+  scopes       ChannelScope[] @default([])
+  createdAt    DateTime       @default(now()) @db.Timestamptz(3)
+  expiresAt    DateTime?      @db.Timestamptz(3)
+  revokedAt    DateTime?      @db.Timestamptz(3)
+
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Restrict)
+
+  @@index([channelId])
+}
+
+model Journey {
+  id               String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  patientSubjectId String        @db.Uuid
+  type             String        @db.VarChar(64)
+  status           JourneyStatus @default(DRAFT)
+  createdAt        DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime      @updatedAt @db.Timestamptz(3)
+  closedAt         DateTime?     @db.Timestamptz(3)
+
+  patientSubject PatientSubject  @relation(fields: [patientSubjectId], references: [id], onDelete: Restrict)
+  context        JourneyContext?
+  events         JourneyEvent[]
+  accessAudits   AccessAudit[]
+  accessGrants   JourneyAccessGrant[]
+
+  @@index([patientSubjectId, updatedAt, id])
+}
+
+model JourneyAccessGrant {
+  id         String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  journeyId  String                  @db.Uuid
+  channelId  String                  @db.Uuid
+  digest     Bytes                   @unique @db.ByteA
+  actorRef   String                  @db.VarChar(128)
+  operations JourneyGrantOperation[] @default([])
+  createdAt  DateTime                @default(now()) @db.Timestamptz(3)
+  expiresAt  DateTime                @db.Timestamptz(3)
+  revokedAt  DateTime?               @db.Timestamptz(3)
+
+  journey Journey @relation(fields: [journeyId], references: [id], onDelete: Restrict)
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Restrict)
+
+  @@index([channelId, journeyId, expiresAt])
+  @@index([journeyId])
+}
+
+model JourneyContext {
+  journeyId    String   @id @db.Uuid
+  currentStep  String   @db.VarChar(64)
+  version      Int      @default(1)
+  externalRefs Json     @default("{}") @db.JsonB
+  updatedAt    DateTime @updatedAt @db.Timestamptz(3)
+
+  journey Journey @relation(fields: [journeyId], references: [id], onDelete: Restrict)
+}
+
+model JourneyEvent {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  journeyId       String   @db.Uuid
+  producerId      String   @db.Uuid
+  externalEventId String   @db.VarChar(128)
+  type            String   @db.VarChar(64)
+  schemaVersion   Int
+  occurredAt      DateTime @db.Timestamptz(3)
+  receivedAt      DateTime @default(now()) @db.Timestamptz(3)
+  payload         Json     @db.JsonB
+
+  journey  Journey @relation(fields: [journeyId], references: [id], onDelete: Restrict)
+  producer Channel @relation(fields: [producerId], references: [id], onDelete: Restrict)
+
+  @@unique([producerId, externalEventId])
+  @@index([journeyId, occurredAt, id])
+}
+
+model AccessAudit {
+  id               String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  channelId        String?            @db.Uuid
+  patientSubjectId String?            @db.Uuid
+  journeyId        String?            @db.Uuid
+  actorRef         String?            @db.VarChar(128)
+  action           AccessAuditAction
+  outcome          AccessAuditOutcome
+  reasonCode       String?            @db.VarChar(64)
+  createdAt        DateTime           @default(now()) @db.Timestamptz(3)
+
+  channel        Channel?        @relation(fields: [channelId], references: [id], onDelete: Restrict)
+  patientSubject PatientSubject? @relation(fields: [patientSubjectId], references: [id], onDelete: Restrict)
+  journey        Journey?        @relation(fields: [journeyId], references: [id], onDelete: Restrict)
+
+  @@index([journeyId, createdAt, id])
+  @@index([patientSubjectId, createdAt, id])
+  @@index([channelId, createdAt, id])
+}
