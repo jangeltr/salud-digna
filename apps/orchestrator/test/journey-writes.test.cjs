@@ -11,7 +11,12 @@ const { JourneyWritesService } = require('../dist/journeys/journey-writes.servic
 const journeyId = '00000000-0000-4000-8000-000000000001';
 const studyId = '00000000-0000-4000-8000-000000000002';
 const channelId = '00000000-0000-4000-8000-000000000003';
-const request = { authenticatedChannel: { id: channelId }, journeyAccess: { journeyId, actorRef: 'demo-session' } };
+const key = Buffer.alloc(32, 7).toString('base64url');
+const request = {
+  headers: { 'idempotency-key': key },
+  authenticatedChannel: { id: channelId },
+  journeyAccess: { journeyId, actorRef: 'demo-session' },
+};
 const body = {
   journeyId, externalEventId: 'test-001', occurredAt: '2026-11-24T06:30:00.000Z', schemaVersion: 1,
   type: 'JOURNEY_CONTEXT_UPDATED', payload: { expectedVersion: 1, studyId },
@@ -23,7 +28,8 @@ function fixture({ existing, contextStatus = 'DRAFT', changed = 1 } = {}) {
   const write = (entity, result) => async (input) => { writes.push([entity, input]); return result; };
   const tx = {
     journey: { create: write('journey', { id: journeyId, status: 'DRAFT' }), update: write('state') },
-    journeyAccessGrant: { create: write('grant') },
+    journeyAccessGrant: { create: write('grant', { id: 'initial-grant' }) },
+    journeyCreationRequest: { findUnique: async () => null, createMany: write('operation', { count: 1 }) },
     accessAudit: { create: write('audit') },
     journeyContext: {
       findUnique: async () => ({ version: 1, currentStep: 'SELECT_STUDY', externalRefs: {}, journey: {
@@ -53,14 +59,17 @@ test('creates an isolated subject, initial event and expiring grant scoped to th
   const { controller, writes } = fixture();
   assert.deepEqual(Reflect.getMetadata(GUARDS_METADATA, controller.create), [ChannelAuthGuard]);
   assert.throws(() => controller.create({}, { type: 'APPOINTMENT' }), hasStatus(401));
-  assert.throws(() => controller.create(request, { type: 'APPOINTMENT', patientId: journeyId }), hasStatus(400));
+  assert.throws(() => controller.create({ ...request, headers: {} }, { type: 'APPOINTMENT' }), hasStatus(400));
+  await assert.rejects(controller.create(request, { type: 'APPOINTMENT', patientId: journeyId }), hasStatus(400));
   const result = await controller.create(request, { type: 'APPOINTMENT' });
   assert.equal(result.status, 'DRAFT');
   assert.equal(result.id, journeyId);
-  assert.deepEqual(writes.map(([entity]) => entity), ['journey', 'initial', 'grant', 'audit']);
+  assert.deepEqual(writes.map(([entity]) => entity), ['journey', 'grant', 'operation', 'initial', 'audit']);
   assert.deepEqual(writes[0][1].data.patientSubject, { create: {} });
-  assert.equal(writes[1][1].data.type, 'JOURNEY_CREATED');
-  const grant = writes[2][1].data;
+  assert.equal(writes[3][1].data.type, 'JOURNEY_CREATED');
+  const grant = writes[1][1].data;
+  assert.deepEqual(writes[2][1].data.keyDigest, Uint8Array.from(createHash('sha256').update(Buffer.from(key, 'base64url')).digest()));
+  assert.equal(writes[2][1].data.initialGrantId, 'initial-grant');
   assert.equal(grant.channelId, channelId);
   assert.equal(grant.journeyId, journeyId);
   assert.equal(grant.expiresAt - grant.createdAt, 300_000);

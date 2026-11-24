@@ -1,4 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 
 function objectWithKeys(input: unknown, keys: string[]): Record<string, unknown> {
   if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).some((key) => !keys.includes(key))) {
@@ -14,9 +15,17 @@ function readUuid(value: unknown): string {
   return value.toLowerCase();
 }
 
-export function validateJourneyCreation(input: unknown): void {
-  const body = objectWithKeys(input, ['type']);
-  if (body.type !== 'APPOINTMENT') throw new BadRequestException();
+export function readCreationKey(value: string | string[] | undefined): Uint8Array<ArrayBuffer> {
+  if (typeof value !== 'string' || !/^[\w-]{43}$/.test(value)) throw new BadRequestException();
+  const bytes = Buffer.from(value, 'base64url');
+  if (bytes.length !== 32 || bytes.toString('base64url') !== value) throw new BadRequestException();
+  return Uint8Array.from(createHash('sha256').update(bytes).digest());
+}
+
+export function creationRequestDigest(input: unknown): Uint8Array<ArrayBuffer> | undefined {
+  if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).length !== 1 ||
+      !Object.hasOwn(input, 'type') || (input as { type: unknown }).type !== 'APPOINTMENT') return undefined;
+  return Uint8Array.from(createHash('sha256').update('{"type":"APPOINTMENT"}').digest());
 }
 
 interface EventBase {

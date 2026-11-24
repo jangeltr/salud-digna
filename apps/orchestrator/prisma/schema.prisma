@@ -102,6 +102,7 @@ model Channel {
   accessAudits AccessAudit[]
   credentials  ChannelCredential[]
   accessGrants JourneyAccessGrant[]
+  creationRequests JourneyCreationRequest[]
 }
 
 model ChannelCredential {
@@ -149,9 +150,23 @@ model JourneyAccessGrant {
 
   journey Journey @relation(fields: [journeyId], references: [id], onDelete: Restrict)
   channel Channel @relation(fields: [channelId], references: [id], onDelete: Restrict)
+  creationRequest JourneyCreationRequest?
 
   @@index([channelId, journeyId, expiresAt])
   @@index([journeyId])
+}
+
+model JourneyCreationRequest {
+  channelId      String        @db.Uuid
+  keyDigest      Bytes         @db.ByteA
+  requestDigest  Bytes         @db.ByteA
+  initialGrantId String        @unique @db.Uuid
+  initialStatus  JourneyStatus
+
+  channel      Channel            @relation(fields: [channelId], references: [id], onDelete: Restrict)
+  initialGrant JourneyAccessGrant @relation(fields: [initialGrantId], references: [id], onDelete: Restrict)
+
+  @@id([channelId, keyDigest])
 }
 
 model JourneyContext {

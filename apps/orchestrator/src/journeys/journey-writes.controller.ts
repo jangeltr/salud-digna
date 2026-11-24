@@ -1,8 +1,8 @@
-import { Body, Controller, Header, NotFoundException, Post, Req, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Header, NotFoundException, Post, Req, UnauthorizedException } from '@nestjs/common';
 import { RequireChannelScopes } from '../channel-auth/channel-auth.guard';
 import { ChannelScope, JourneyGrantOperation } from '../generated/prisma/enums';
 import { RequireJourneyAccess, type JourneyAccessRequest } from '../journey-access/journey-access.guard';
-import { readJourneyEvent, validateJourneyCreation } from './journey-write-input';
+import { creationRequestDigest, readCreationKey, readJourneyEvent } from './journey-write-input';
 import { JourneyWritesService } from './journey-writes.service';
 
 @Controller()
@@ -14,8 +14,9 @@ export class JourneyWritesController {
   @RequireChannelScopes(ChannelScope.EVENTS_PUBLISH)
   create(@Req() request: JourneyAccessRequest, @Body() body: unknown) {
     if (!request.authenticatedChannel) throw new UnauthorizedException();
-    validateJourneyCreation(body);
-    return this.writes.createAppointment(request.authenticatedChannel.id);
+    if ((request.headersDistinct?.['idempotency-key']?.length ?? 0) > 1) throw new BadRequestException();
+    const keyDigest = readCreationKey(request.headers['idempotency-key']);
+    return this.writes.createAppointment(request.authenticatedChannel.id, keyDigest, creationRequestDigest(body));
   }
 
   @Post('events')

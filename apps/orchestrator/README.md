@@ -127,6 +127,15 @@ estado y contexto y los encabezados requeridos por los backends de canal.
 El [contrato de escritura](docs/journey-writes.md) describe la creación
 de trámites, la publicación de avances y el traspaso de la demo.
 
+`POST /api/v1/journeys` requiere `Idempotency-Key` de 32 bytes aleatorios en
+base64url sin relleno. Conserva la clave para los reintentos de la misma
+operación y genera otra para cada trámite nuevo. Un reintento recupera el
+ID y estado inicial y puede recibir un permiso nuevo dentro de la vigencia
+original. La misma clave con un cuerpo distinto devuelve `409` en ese canal.
+Coordina el cambio con los backends de canal y aplica la
+[migración incremental](prisma/migrations/20261124075314_add_journey_creation_idempotency/migration.sql)
+antes de desplegar esta versión.
+
 ## Prisma
 
 Puedes validar el esquema y generar el cliente sin `DATABASE_URL` ni conexión
