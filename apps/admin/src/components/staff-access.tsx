@@ -1,14 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { omnichannelRequest, type OmnichannelApi } from "./omnichannel-panel";
 import { ApiError, apiWith, errorMessage, type Api } from "./orchestrator";
 
-type Session = { accessToken: string; expiresIn: number; user: { role: string } };
+type Session = { instanceId: string; accessToken: string; expiresIn: number; user: { role: string } };
 
 export function StaffAccess({ role, login, children }: {
   role: "ADVISOR" | "ADMIN";
   login: (form: ReactNode) => ReactNode;
-  children: (api: Api, exit: () => void) => ReactNode;
+  children: (api: Api, exit: () => void, omni: OmnichannelApi) => ReactNode;
 }) {
   const busy = useRef(false);
   const [loading, setLoading] = useState(false);
@@ -34,11 +35,11 @@ export function StaffAccess({ role, login, children }: {
     const values = new FormData(form);
     form.reset();
     try {
-      const result = await apiWith()<Session>("auth/login", {
+      const result = await apiWith()<Omit<Session, "instanceId">>("auth/login", {
         email: String(values.get("email")).trim(), password: values.get("password"),
       });
       if (result.user.role !== role) throw new ApiError(403);
-      setSession(result);
+      setSession({ ...result, instanceId: crypto.randomUUID() });
     } catch (error) {
       setMessage(errorMessage(error));
     } finally {
@@ -60,7 +61,9 @@ export function StaffAccess({ role, login, children }: {
         throw error;
       }
     };
-    return children(api, () => { setSession(null); setMessage(""); });
+    const omni: OmnichannelApi = (body) => omnichannelRequest(session.accessToken, session.instanceId, body);
+    return children(api, () => {
+      void omni({ action: "close" }).catch(() => {}); setSession(null); setMessage(""); }, omni);
   }
 
   return login(<form className="fields" onSubmit={signIn}>

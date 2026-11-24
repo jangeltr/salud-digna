@@ -6,12 +6,14 @@ import { Brand, Empty, EmptyTable, Panel, Pending } from "./ui";
 import { ChannelLegend, Journey } from "./journey";
 import { registries, Registry } from "./registry";
 import { LiveDashboard, LiveSupervision, RequestJourney, type RequestRow } from "./live-monitoring";
+import { OmnichannelPanel, type OmnichannelApi } from "./omnichannel-panel";
 import type { Api } from "./orchestrator";
 
 const operations = [
   { name: "Dashboard", icon: LayoutDashboard },
   { name: "Supervisión", icon: ClipboardList },
   { name: "Patient Journey", icon: Route },
+  { name: "Recorrido API general", icon: Route },
   { name: "Centro de Orquestación", icon: Activity },
   { name: "Integraciones", icon: Network },
   { name: "Auditoría", icon: ListChecks },
@@ -111,7 +113,7 @@ function Audit() {
   );
 }
 
-export function AdminConsole({ api, exit }: { api?: Api; exit?: () => void }) {
+export function AdminConsole({ api, exit, omni, enabled = false }: { api?: Api; exit?: () => void; omni?: OmnichannelApi; enabled?: boolean }) {
   const [section, setSection] = useState<Section>("Dashboard");
   const [selected, setSelected] = useState<RequestRow>();
   const renderNavigation = (items: typeof operations | typeof management) => items.map(({ name, icon: Icon }) => (
@@ -139,13 +141,17 @@ export function AdminConsole({ api, exit }: { api?: Api; exit?: () => void }) {
         </header>
         <div className="workspace-content">
           {section === "Dashboard" && (api
-            ? <LiveDashboard api={api} openSupervision={() => setSection("Supervisión")} />
+            ? <><p>Indicadores de la API general.</p><LiveDashboard api={api} openSupervision={() => setSection("Supervisión")} /></>
             : <Dashboard openSupervision={() => setSection("Supervisión")} />)}
           {section === "Supervisión" && (api
-            ? <LiveSupervision api={api} openJourney={(row) => { setSelected(row); setSection("Patient Journey"); }} />
+            ? <LiveSupervision api={api} openJourney={(row) => { setSelected(row); setSection("Recorrido API general"); }} />
             : <Supervision openJourney={() => setSection("Patient Journey")} />)}
-          {section === "Patient Journey" && (api ? <RequestJourney api={api} selected={selected} /> : <Journey events={[]} />)}
-          {section === "Centro de Orquestación" && (api ? <RequestJourney api={api} center /> :
+          {section === "Recorrido API general" && (api ? <RequestJourney api={api} selected={selected} /> : <Journey events={[]} />)}
+          {omni && <div hidden={section !== "Patient Journey" && section !== "Centro de Orquestación"}>
+            <OmnichannelPanel api={omni} enabled={enabled} frame={(content) => <Panel title="Seguimiento por trámite">{content}</Panel>} />
+          </div>}
+          {section === "Patient Journey" && !omni && <Journey events={[]} />}
+          {section === "Centro de Orquestación" && !omni && (
             <Panel title="Eventos por trámite"><Pending>Consulta disponible con sesión administrativa.</Pending></Panel>)}
           {section === "Integraciones" && <Panel title="Canales registrados">
             <EmptyTable title="Integraciones" columns={["Canal", "Estado", "Última actividad"]}>Directorio y estado de canales pendientes de integración.</EmptyTable>
