@@ -40,6 +40,8 @@ enum AccessAuditAction {
   LINK_IDENTIFIER
   VERIFY_IDENTIFIER
   REVOKE_IDENTIFIER
+  ISSUE_CONTINUITY_CODE
+  REDEEM_CONTINUITY_CODE
 }
 
 enum AccessAuditOutcome {
@@ -151,9 +153,23 @@ model JourneyAccessGrant {
   journey Journey @relation(fields: [journeyId], references: [id], onDelete: Restrict)
   channel Channel @relation(fields: [channelId], references: [id], onDelete: Restrict)
   creationRequest JourneyCreationRequest?
+  continuityCodes ContinuityCode[]
 
   @@index([channelId, journeyId, expiresAt])
   @@index([journeyId])
+}
+
+model ContinuityCode {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  digest        Bytes     @unique @db.ByteA
+  sourceGrantId String    @db.Uuid
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+  expiresAt     DateTime  @db.Timestamptz(3)
+  consumedAt    DateTime? @db.Timestamptz(3)
+
+  sourceGrant JourneyAccessGrant @relation(fields: [sourceGrantId], references: [id], onDelete: Restrict)
+
+  @@index([sourceGrantId])
 }
 
 model JourneyCreationRequest {

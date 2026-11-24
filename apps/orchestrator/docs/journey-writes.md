@@ -127,14 +127,15 @@ Consulta el [contrato de lectura](journey-queries.md) para las demás
 consultas autorizadas.
 
 Un canal distinto utiliza su propia API key y un permiso emitido
-específicamente para ese canal, trámite, actor y operaciones. Para trámites
-ficticios del Hackatec, un operador local autorizado comprueba la atención
-y emite ese permiso mediante la
-[CLI de demostración](../README.md#permisos-de-demostración-para-hackatec).
+específicamente para ese canal, trámite y operaciones. El canal de origen
+puede delegar la atención mediante un
+[código de continuidad](continuity-codes.md). La
+[CLI de demostración](../README.md#permisos-de-demostración-para-hackatec)
+permite el aprovisionamiento manual para trámites ficticios.
 Compartir el permiso del primer canal produce `404` en el segundo.
 
 La creación y el registro de avances operativos están implementados. En la
-demo, el [aprovisionamiento de identidad y permisos](patient-identity.md)
-entre canales es manual y exclusivo de pacientes ficticios. Quedan
+demo, el [aprovisionamiento de identidad](patient-identity.md)
+es manual y exclusivo de pacientes ficticios. Quedan
 pendientes la prueba de identidad firmada por la autoridad central, la
 renovación autorizada de permisos y la confirmación de citas centrales.

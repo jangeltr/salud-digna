@@ -68,11 +68,12 @@ acreditar al mismo sujeto y actor, aunque se renueve la afirmación. Los
 trámites provisionales existentes carecen de vinculación retrospectiva.
 
 El listado autoriza únicamente el descubrimiento de resúmenes del sujeto.
-Para continuar un trámite en otro canal, un operador confirma esa atención
-y aprovisiona un permiso independiente con la
+Para continuar un trámite en otro canal, el canal de origen puede emitir
+un [código de continuidad](continuity-codes.md) sobre esa atención. En la
+demo, un operador también puede aprovisionar un permiso independiente con la
 [CLI de permisos](../README.md#permisos-de-demostración-para-hackatec),
 usando el UUID de la lista, el canal receptor, su actor y las operaciones
 necesarias. Contexto, historial y publicación mantienen los scopes y
 `X-Journey-Grant` existentes. La afirmación no sustituye ese permiso.
-La emisión automática y la prueba firmada por la autoridad central quedan
-pendientes del contrato entre sistemas.
+La emisión automática de afirmaciones de identidad y la prueba firmada por
+la autoridad central quedan pendientes del contrato entre sistemas.

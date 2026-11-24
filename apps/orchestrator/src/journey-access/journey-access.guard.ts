@@ -19,6 +19,7 @@ export interface JourneyAccessRequest extends ChannelRequest {
   params?: { journeyId?: string };
   body?: unknown;
   journeyAccess?: {
+    readonly grantId: string;
     readonly journeyId: string;
     readonly actorRef: string;
     readonly operation: JourneyGrantOperation;
@@ -27,6 +28,7 @@ export interface JourneyAccessRequest extends ChannelRequest {
 
 const RequiredJourneyOperation = Reflector.createDecorator<{
   operation: JourneyGrantOperation;
+  additional: JourneyGrantOperation[];
   source: 'params' | 'body';
 }>();
 const channelScopeByOperation: Record<JourneyGrantOperation, ChannelScope> = {
@@ -60,7 +62,7 @@ export class JourneyAccessGuard implements CanActivate {
 
     const requirement = this.reflector.get(RequiredJourneyOperation, context.getHandler());
     if (!requirement) throw new NotFoundException();
-    const { operation, source } = requirement;
+    const { operation, source, additional } = requirement;
     const body = request.body;
     const rawId = source === 'body'
       ? body && typeof body === 'object' && Object.hasOwn(body, 'journeyId') && (body as { journeyId: unknown }).journeyId
@@ -76,6 +78,7 @@ export class JourneyAccessGuard implements CanActivate {
     const grant = await this.prisma.client.journeyAccessGrant.findUnique({
       where: { digest: Uint8Array.from(digest) },
       select: {
+        id: true,
         digest: true,
         channelId: true,
         actorRef: true,
@@ -91,11 +94,11 @@ export class JourneyAccessGuard implements CanActivate {
     if (!grant || grant.digest.length !== digest.length || !timingSafeEqual(grant.digest, digest) ||
         grant.channelId !== channel.id || grant.journey?.id !== journeyId || !grant.actorRef.trim() ||
         grant.expiresAt.getTime() <= Date.now() || grant.revokedAt ||
-        !grant.operations.includes(operation)) {
+        !grant.operations.includes(operation) || !additional.every((item) => grant.operations.includes(item))) {
       throw new NotFoundException();
     }
 
-    request.journeyAccess = { journeyId, actorRef: grant.actorRef, operation };
+    request.journeyAccess = { grantId: grant.id, journeyId, actorRef: grant.actorRef, operation };
     return true;
   }
 }
@@ -103,10 +106,11 @@ export class JourneyAccessGuard implements CanActivate {
 export function RequireJourneyAccess(
   operation: JourneyGrantOperation,
   source: 'params' | 'body' = 'params',
+  ...additional: JourneyGrantOperation[]
 ): MethodDecorator {
   return applyDecorators(
-    RequireChannelScopes(channelScopeByOperation[operation]),
-    RequiredJourneyOperation({ operation, source }),
+    RequireChannelScopes(channelScopeByOperation[operation], ...additional.map((item) => channelScopeByOperation[item])),
+    RequiredJourneyOperation({ operation, source, additional }),
     UseGuards(JourneyAccessGuard),
   );
 }
