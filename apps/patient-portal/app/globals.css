@@ -1,1 +1,81 @@
 @import "tailwindcss";
+
+/* Paleta propia del portal. Las combinaciones de texto y fondo cumplen contraste AA. */
+:root {
+  color-scheme: light;
+  --canvas: #ffffff;
+  --surface: #f6f6fb;
+  --line: #d7d7e4;
+  --ink: #1c1b2e;
+  --muted: #55546b;
+  --brand: #3730a3;
+  --brand-strong: #312e81;
+  --brand-soft: #e0e7ff;
+  --success: #0f766e;
+  --success-soft: #ccfbf1;
+  --warning: #854d0e;
+  --warning-soft: #fef3c7;
+  --danger: #b91c1c;
+  --danger-soft: #fee2e2;
+}
+
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-line: var(--line);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-brand: var(--brand);
+  --color-brand-strong: var(--brand-strong);
+  --color-brand-soft: var(--brand-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+}
+
+/* Áreas seguras del dispositivo. */
+@utility safe-x {
+  padding-left: max(1rem, env(safe-area-inset-left));
+  padding-right: max(1rem, env(safe-area-inset-right));
+}
+
+@utility safe-top {
+  padding-top: env(safe-area-inset-top);
+}
+
+@layer base {
+  /* El recuadro de foco aparece solo cuando el navegador considera que hace falta: teclado. */
+  :focus:not(:focus-visible) {
+    outline: none;
+  }
+
+  :focus-visible {
+    outline: 3px solid var(--brand);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  .skip-link {
+    position: fixed;
+    top: calc(env(safe-area-inset-top) + 0.5rem);
+    left: max(0.5rem, env(safe-area-inset-left));
+    z-index: 60;
+    display: inline-flex;
+    min-height: 2.75rem;
+    align-items: center;
+    padding: 0 1rem;
+    border-radius: 0.5rem;
+    background: var(--canvas);
+    color: var(--brand);
+    font-weight: 600;
+    transform: translateY(-200%);
+  }
+
+  .skip-link:focus-visible {
+    transform: none;
+  }
+}
