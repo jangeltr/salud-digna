@@ -29,6 +29,7 @@ Desde el 2026-11-24 el portal es solo web. El proyecto cambió de arquitectura: 
 - Los eventos llevan la versión que vio el paciente. Ante el error `conflict`, vuelve a consultar el trámite antes de reintentar.
 - Cada adaptador del trámite declara sus capacidades. Las pantallas muestran solo lo que declara `requestCapabilities` y cada acción lo comprueba otra vez en el servidor.
 - La clave del canal y los permisos de trámite del orquestador son secretos: quedan fuera de logs, errores, respuestas, cookies y disco. Los permisos viven solo en memoria.
+- Un código de continuidad es una credencial de un solo uso. Se muestra al paciente en la respuesta de la acción y nada más: no viaja en la URL ni se guarda en el navegador, en el registro o en un log.
 - En modo orquestador, toda lectura o escritura de un trámite comprueba antes en el registro del canal Web que pertenece al paciente de la sesión.
 - El contrato de la API general es `docs/openapi.json`. Léelo en su ubicación, sin copiarlo al portal. `lib/adapters/` y `mocks/` usan solo operaciones y propiedades de ese archivo.
 - Toda llamada a un servicio sale del servidor de Next. El JWT vive en una cookie `HttpOnly` y queda fuera del código del navegador.

@@ -3,9 +3,10 @@
 import "server-only";
 import { redirect } from "next/navigation";
 import { isUuid } from "@/features/catalog/params";
-import { requestCapabilities, requestNotifier, requestQuery } from "@/lib/composition";
+import { generalData, requestCapabilities, requestNotifier, requestQuery } from "@/lib/composition";
 import type { Result } from "@/lib/domain/errors";
 import type { Receipt } from "@/lib/domain/ports";
+import { refundAttempt, takeAttempt } from "@/lib/session/attempts";
 import { clearSessionCookie } from "@/lib/session/cookie";
 import { signInUrl } from "@/lib/session/routes";
 import { hasSessionCookie } from "@/lib/session/session";
@@ -114,10 +115,11 @@ export async function startRequest(_previous: StartState, formData: FormData): P
       return { message: "No pudimos crear el trámite. Inténtalo de nuevo." };
     }
     if (!requestCapabilities.patientListing) {
-      // Sin lista por paciente no hay cómo comprobar si el trámite se creó. No se reintenta: decide el paciente.
+      // Sin lista por paciente no hay cómo comprobar si el trámite se creó. El adaptador ya reenvió
+      // la creación una vez y guarda su clave: el siguiente intento recupera el mismo trámite.
       return {
         message:
-          "El servicio no respondió y no pudimos confirmar si el trámite se creó. Si se creó, quedó sin registrar en el portal y no podrás retomarlo aquí. Puedes empezar otro trámite.",
+          "El servicio no respondió y no pudimos confirmar si el trámite se creó. Vuelve a intentarlo en unos segundos: si ya se había creado, continuarás con ese mismo y no se duplicará.",
       };
     }
 
@@ -260,4 +262,94 @@ export async function requestAssistance(_previous: AssistanceState, formData: Fo
   if (result.error.kind === "not-found" || result.error.kind === "access-expired") redirect(requestPath(id));
   if (result.error.kind === "conflict") redirect(requestPath(id, "cambio"));
   return { message: ASSISTANCE_FAILED };
+}
+
+export type ContinuityState = {
+  message?: string;
+  /** El código vive solo en esta respuesta: no viaja en la URL ni se guarda. */
+  code?: string;
+  /** Hora de vencimiento ya formateada en la zona de la rejilla. */
+  expiresAt?: string;
+  /** Tiempo que le queda al código al emitirlo, en palabras. */
+  remaining?: string;
+};
+
+const CONTINUITY_FAILED = "No pudimos generar el código. Inténtalo de nuevo en unos segundos.";
+
+function timeLeft(expiresAt: string): string {
+  const seconds = Math.round((Date.parse(expiresAt) - Date.now()) / 1000);
+  if (!Number.isFinite(seconds) || seconds < 60) return "en menos de un minuto";
+  const minutes = Math.round(seconds / 60);
+  return minutes === 1 ? "en un minuto" : `en unos ${minutes} minutos`;
+}
+
+/** «Continuar en otro canal»: pide un código de continuidad. Solo se ejecuta cuando el paciente pulsa el botón. */
+export async function requestContinuityCode(_previous: ContinuityState, formData: FormData): Promise<ContinuityState> {
+  const id = field(formData, "id");
+  if (!isUuid(id)) redirect(PENDING_PATH);
+  if (!(await hasSessionCookie())) redirect(signInUrl(requestPath(id)));
+  requireSupport(requestCapabilities.continuityCodes, id);
+
+  const result = await requestNotifier.notify({ type: "continuity-requested", eventId: newEventId(), requestId: id });
+  if (result.ok) {
+    const { continuity } = result.data;
+    if (!continuity) return { message: CONTINUITY_FAILED };
+    return { code: continuity.code, expiresAt: formatClock(continuity.expiresAt), remaining: timeLeft(continuity.expiresAt) };
+  }
+  if (result.error.kind === "session") await endSession(requestPath(id));
+  // La página responde «no encontrado» o explica que el trámite necesita un permiso nuevo.
+  if (result.error.kind === "not-found" || result.error.kind === "access-expired") redirect(requestPath(id));
+  return { message: CONTINUITY_FAILED };
+}
+
+export type RedeemState = { message?: string };
+
+/** Intentos fallidos de canje que se toleran por paciente. El orquestador admite diez por minuto a todo el canal. */
+const REDEEM_LIMIT = { limit: 5, windowMs: 10 * 60_000 };
+const CODE_MAX = 32;
+
+// Un solo mensaje para el código mal escrito, desconocido, vencido, ya usado o emitido en este mismo canal.
+const REDEEM_INVALID = "El código no es válido, venció o ya se usó. Pide uno nuevo en el canal donde está tu trámite.";
+const REDEEM_BLOCKED = "Demasiados intentos. Espera unos minutos antes de probar otro código.";
+const REDEEM_BUSY = "Hay demasiados canjes en este momento. Espera un minuto e inténtalo de nuevo.";
+const REDEEM_UNCERTAIN =
+  "No pudimos comprobar el código. Si el canje llegó a hacerse, ese código ya no sirve: pide otro en el canal donde está tu trámite.";
+
+/** «Tengo un código de continuidad»: trae a este canal un trámite que está en otro. */
+export async function redeemContinuityCode(_previous: RedeemState, formData: FormData): Promise<RedeemState> {
+  if (!(await hasSessionCookie())) redirect(signInUrl(PENDING_PATH));
+  if (!requestCapabilities.continuityCodes) redirect(PENDING_PATH);
+
+  // El límite es por paciente, así que cubre todas sus sesiones.
+  const profile = await generalData.getProfile();
+  if (!profile.ok) {
+    if (profile.error.kind === "session") await endSession(PENDING_PATH);
+    return { message: REDEEM_UNCERTAIN };
+  }
+  const attempts = `continuity-redeem:${profile.data.accountId}`;
+  if (!takeAttempt(attempts, REDEEM_LIMIT)) return { message: REDEEM_BLOCKED };
+
+  const code = field(formData, "codigo");
+  if (code.length > CODE_MAX) return { message: REDEEM_INVALID };
+
+  const result = await requestNotifier.notify({ type: "continuity-redeemed", eventId: newEventId(), code });
+  if (result.ok) {
+    refundAttempt(attempts);
+    redirect(requestPath(result.data.requestId));
+  }
+
+  switch (result.error.kind) {
+    case "session":
+      return endSession(PENDING_PATH);
+    case "invalid":
+    case "not-found":
+      return { message: REDEEM_INVALID };
+    case "rate-limited":
+      // El límite que saltó es el del canal entero, no el de este paciente.
+      refundAttempt(attempts);
+      return { message: REDEEM_BUSY };
+    default:
+      refundAttempt(attempts);
+      return { message: REDEEM_UNCERTAIN };
+  }
 }

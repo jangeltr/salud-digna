@@ -33,7 +33,24 @@ export function toFailure({ status, retryAfter }: OrchestratorFailure): Failure 
   }
 }
 
-/** Al crear un trámite no hay permiso que pueda faltar: un `404` es un rechazo que el portal no distingue. */
+/**
+ * Al crear un trámite, `401`, `403` y `404` son rechazos seguros: no se creó nada.
+ * Se traducen a `rejected`, no a `unavailable`, para que nadie los tome por un resultado incierto.
+ */
 export function toCreationFailure(result: OrchestratorFailure): Failure {
-  return result.status === 404 ? failure("rejected") : toFailure(result);
+  const { status } = result;
+  return status === 401 || status === 403 || status === 404 ? failure("rejected") : toFailure(result);
+}
+
+/**
+ * Al canjear un código no hay trámite ni permiso previos: el `404` cubre el código desconocido,
+ * vencido, ya usado o emitido por este mismo canal. Es `not-found`.
+ */
+export function toRedeemFailure(result: OrchestratorFailure): Failure {
+  return result.status === 404 ? failure("not-found") : toFailure(result);
+}
+
+/** Sin respuesta útil o con `5xx` no se sabe si la operación llegó a aplicarse. */
+export function isUncertain(result: OrchestratorFailure): boolean {
+  return result.status === null || result.status >= 500;
 }

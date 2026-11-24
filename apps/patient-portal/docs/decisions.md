@@ -101,7 +101,7 @@ Tailwind CSS 4 se carga con `@tailwindcss/postcss` y `@import "tailwindcss"` en 
 | Servicio | Qué atiende | Contrato |
 | --- | --- | --- |
 | API general | Datos del paciente, catálogo y acceso. Es la API actual. | `docs/openapi.json`. |
-| Orquestador | Recibe de cada canal mensajes JSON con los cambios del trámite. Cada canal le consulta el último estado registrado de un trámite. | `apps/orchestrator/docs/journey-writes.md` y `journey-queries.md`. Sin OpenAPI. |
+| Orquestador | Recibe de cada canal mensajes JSON con los cambios del trámite. Cada canal le consulta el último estado registrado de un trámite. | `apps/orchestrator/docs/journey-writes.md`, `journey-queries.md` y `continuity-codes.md`. Sin OpenAPI. |
 
 El portal es el simulador del canal Web. Hacia el orquestador tiene dos módulos: notificar y consultar. `REQUESTS_BACKEND` decide quién los atiende: las operaciones `/requests` de la API actual, por defecto, o el orquestador.
 
@@ -147,10 +147,12 @@ El portal es el simulador del canal Web. Hacia el orquestador tiene dos módulos
 | `help-requested` | «Pedir ayuda a un asesor» | `POST /requests/{id}/assistance-code` |
 | `confirmation-requested` | «Enviar a confirmación» | Ninguna: la API actual pasa sola a pendiente de confirmación. |
 | `request-cancelled` | «Cancelar trámite» | Ninguna: el contrato no ofrece cancelar. |
+| `continuity-requested` | «Generar código de continuidad» | Ninguna: la API actual no tiene códigos de continuidad. |
+| `continuity-redeemed` | «Continuar con este código» | Ninguna. |
 
 Cada evento lleva un `eventId` único, que la acción genera al ejecutarse, el identificador del trámite y, de forma opcional, la versión que vio el paciente en `expectedVersion`. Empezar un trámite desde un estudio emite dos eventos: `request-started` y `study-chosen`. Un evento que el adaptador activo no soporta devuelve `rejected` sin llamar a ningún servicio.
 
-La notificación devuelve un acuse, no el estado del trámite: el identificador del trámite, la versión resultante si el servicio la informa y, en `help-requested`, el código de asistencia. Después de cada evento la página vuelve a consultar el trámite. Con el error `unavailable` el resultado es incierto, así que el portal consulta los pendientes antes de permitir otro intento.
+La notificación devuelve un acuse, no el estado del trámite: el identificador del trámite, la versión resultante si el servicio la informa, en `help-requested` el código de asistencia y en `continuity-requested` el código de continuidad. Después de cada evento la página vuelve a consultar el trámite. Con el error `unavailable` el resultado es incierto, así que el portal consulta los pendientes antes de permitir otro intento.
 
 **El adaptador heredado.** `lib/adapters/legacy-requests` traduce cada evento a la operación de la tabla. Acepta el `eventId` y lo ignora, porque la API actual no tiene dónde recibirlo. La API actual exige la versión en cada escritura: si el evento no la trae, el adaptador lee antes la vigente.
 
@@ -170,14 +172,14 @@ La notificación devuelve un acuse, no el estado del trámite: el identificador 
 
 **Fecha.** 2026-11-24.
 
-**Contrato.** `apps/orchestrator/docs/journey-writes.md`, `journey-queries.md` y `data-model.md`, y `apps/orchestrator/README.md`, tal como están en `main` en el commit `4958614`, que es el que integra esta rama. El orquestador no publica un OpenAPI, así que este adaptador no tiene tipos generados: `mapping.ts` comprueba la forma de cada respuesta antes de usarla.
-
-`main` publicó después tres commits que cambian el contrato y que esta rama aún no integra. El adaptador ya envía la cabecera `Idempotency-Key`, que el primero hace obligatoria. El resto está en «Cambios del contrato publicados después».
+**Contrato.** `apps/orchestrator/docs/journey-writes.md`, `journey-queries.md`, `continuity-codes.md`, `patient-identity.md` y `data-model.md`, y `apps/orchestrator/README.md`, tal como están en `main` en el commit `ff989cc`, que esta rama integra. El orquestador no publica un OpenAPI, así que este adaptador no tiene tipos generados: `mapping.ts` comprueba la forma de cada respuesta antes de usarla.
 
 **Decisiones del propietario del portal.**
 
 - Lo que el orquestador no soporta se oculta. El portal no guarda la fecha ni la nota por su cuenta y no crea copias del trámite en la API general.
-- La adopción de trámites iniciados en otro canal y la carpeta de traspaso quedan para después.
+- Un trámite de otro canal entra al portal con un código de continuidad. No hay carpeta de traspaso.
+- Una creación con resultado incierto se reenvía con la misma clave de idempotencia.
+- El listado de trámites por paciente del orquestador no se integra todavía. «Identidad del paciente» explica qué haría falta.
 
 **Selección.** `REQUESTS_BACKEND` decide quién atiende `RequestNotifier` y `RequestQuery`: `legacy`, por defecto, o `orchestrator`. `lib/composition.ts` lee la variable al cargar el servidor. Acceso, perfil y catálogo siguen en la API general en los dos modos. Un valor distinto de esos dos detiene el arranque.
 
@@ -192,18 +194,19 @@ La notificación devuelve un acuse, no el estado del trámite: el identificador 
 | `patientConfirmation`, confirmación por el paciente | Sí | No | Ningún evento lleva el trámite a `COMPLETED`. |
 | `cancellation`, cancelación | No | Sí | `JOURNEY_STATUS_CHANGED` a `CANCELLED`. La API general no tiene operación. |
 | `history`, historial | No | Sí | `GET /journeys/:journeyId/history`. |
-| `patientListing`, lista por paciente | Sí | No | Sin consulta de los trámites de un paciente. |
-
-`patientListing` es una capacidad añadida a las siete pedidas. De ella dependen el texto de `/continuar` y lo que ocurre tras un inicio de trámite con resultado incierto.
+| `continuityCodes`, códigos de continuidad | No | Sí | `continuity-codes.md`. La API general no los tiene. |
+| `patientListing`, lista por paciente | Sí | No | La consulta por paciente del orquestador exige una afirmación de identidad que el portal no puede obtener. |
 
 **Eventos.**
 
 | Evento | Llamada al orquestador |
 | --- | --- |
-| `request-started` | `POST /journeys` con `{"type":"APPOINTMENT"}` y la cabecera `Idempotency-Key`, derivada del `eventId`. El cuerpo no admite ningún otro campo. |
+| `request-started` | `POST /journeys` con `{"type":"APPOINTMENT"}` y la cabecera `Idempotency-Key`. |
 | `study-chosen`, `clinic-chosen` | `POST /events` con `JOURNEY_CONTEXT_UPDATED`. |
 | `confirmation-requested` | `POST /events` con `JOURNEY_STATUS_CHANGED` a `PENDING_CONFIRMATION`. |
 | `request-cancelled` | `POST /events` con `JOURNEY_STATUS_CHANGED` a `CANCELLED`. |
+| `continuity-requested` | `POST /journeys/:journeyId/continuity-codes`, sin cuerpo. |
+| `continuity-redeemed` | `POST /continuity-codes/redeem` con `{"code":"…"}`. |
 | Los otros seis | Ninguna. El adaptador devuelve `rejected` sin llamar. |
 
 Cada `POST /events` lleva el `eventId` como `externalEventId`, `schemaVersion: 1`, `expectedVersion` con la versión que vio el paciente y `occurredAt` en UTC con milisegundos. Antes de publicar un estudio o una clínica, el adaptador comprueba en el catálogo de la API general que existe: el orquestador guarda referencias opacas y no las valida.
@@ -216,17 +219,37 @@ Cada `POST /events` lleva el `eventId` como `externalEventId`, `schemaVersion: 1
 | --- | --- |
 | `400` | `invalid`. |
 | `401` y `403` | `unavailable`. Hablan de la clave del canal, no del paciente: su sesión sigue abierta. |
+| `401`, `403` y `404` al crear un trámite | `rejected`. No se creó nada, así que el aviso al paciente no habla de resultado incierto. |
 | `404` | `access-expired`, y olvida el permiso. Solo se llama por trámites que el registro atribuye al paciente. |
+| `404` al canjear un código | `not-found`: código desconocido, vencido, ya usado o emitido por este mismo canal. |
 | `409` | Vuelve a leer el contexto y devuelve `conflict`. Si la versión no cambió, deja constancia en el log. |
+| `429` | `rate-limited`. El orquestador limita el canje a diez intentos por minuto para todo el canal. |
 | Tiempo de espera agotado en `POST /events` | Un único reenvío con el mismo cuerpo, byte a byte. Si también falla, `unavailable`. |
-| Tiempo de espera agotado en `POST /journeys` | Sin reenvío. `unavailable`. |
-| Sin respuesta o `5xx` | `unavailable`. |
+| Sin respuesta o `5xx` en `POST /journeys` | Un único reenvío con la misma `Idempotency-Key`. Si también falla, `unavailable`. |
+| Sin respuesta o `5xx` en el resto | `unavailable`. |
 
-**Cabeceras secretas.** `Authorization`, `X-Journey-Grant` e `Idempotency-Key` se escriben en un solo lugar, `client.ts`, y no salen de esa función. La clave del canal y los permisos viajan dentro de `Secret`, que devuelve una marca si alguien lo convierte a texto, a JSON o lo inspecciona. El log registra solo el método, la ruta del contrato y el motivo: nunca cabeceras, cuerpos ni identificadores. El cliente rechaza las redirecciones, que reenviarían las cabeceras a otro destino. Ningún resultado que llega a páginas o acciones contiene un permiso.
+**Creación idempotente.** `POST /journeys` exige `Idempotency-Key`: 32 bytes en base64url. El adaptador la deriva con SHA-256 del `eventId`, que la acción genera al azar. Reenviar la misma petición con la misma clave devuelve el mismo trámite y, mientras el permiso inicial siga vigente, un permiso nuevo.
 
-**Registro del canal Web.** El orquestador no ofrece consultar los trámites de un paciente, así que el portal anota los que inicia. `registry.ts` los guarda en `web-channel-registry.json`, dentro de `PORTAL_DATA_DIR`. Por defecto es `.data/` en el portal, que Git ignora.
+- Si el primer envío queda sin respuesta útil, el adaptador lo repite una vez.
+- Si el segundo tampoco responde, guarda la clave en memoria, por paciente, durante cinco minutos. El siguiente intento de ese paciente la reutiliza: recupera el trámite si llegó a crearse y lo crea si no. No hay duplicado ni trámite huérfano.
+- Tras un reenvío el acuse va sin versión: la respuesta repite el estado inicial aunque el trámite haya avanzado.
+- Un reintento tardío puede llegar sin permiso. El trámite se anota igual y aparece como «Necesita un permiso nuevo».
 
-- Contiene, por identificador de cuenta, el identificador de cada trámite, cuándo lo registró el portal y cuándo supo que quedó cerrado. Nunca permisos ni claves.
+**Códigos de continuidad.** Un código permite seguir un trámite en otro canal. Tiene doce caracteres, es de un solo uso y vence a los cinco minutos como máximo, nunca después del permiso con el que se emitió.
+
+- **Emitir.** «Continuar en otro canal» aparece desde que el trámite tiene un estudio. El código se pide solo al pulsar el botón. Llega en la respuesta de la acción y se muestra con su vencimiento: no viaja en la URL ni en una cookie, y no se guarda en el navegador, en el registro ni en el servidor. Al recargar la página desaparece. Cada pulsación emite un código distinto.
+- **Canjear.** `/continuar` tiene el campo «Tengo un código de continuidad». Al canjearlo, el trámite se añade al registro del paciente de la sesión y el permiso queda solo en memoria.
+- **Validación.** El servidor quita espacios y guiones, pasa a mayúsculas y corrige las letras que el alfabeto excluye por parecerse a un número: O pasa a 0, e I y L pasan a 1. Lo que no tenga forma de código no llega al orquestador.
+- **Mensaje único.** Código mal escrito, desconocido, vencido, ya usado o emitido en este mismo canal muestran el mismo texto. Lo escrito no vuelve en la página.
+- **Límite de intentos.** Cinco canjes fallidos por paciente cada diez minutos, contados en memoria por `lib/session/attempts.ts`. Se cuenta por cuenta, así que cubre todas las sesiones del paciente. Un canje correcto y los avisos `429` o `5xx` del orquestador no gastan intentos.
+- **El código es la autorización.** No prueba la identidad de quien lo trae: el trámite pasa al registro de quien lo canjea con sesión.
+- **Mismo canal.** El orquestador no deja canjear en Web un código emitido en Web. Un trámite propio con el permiso vencido solo se recupera con un código emitido en otro canal.
+
+**Cabeceras secretas.** `Authorization`, `X-Journey-Grant` e `Idempotency-Key` se escriben en un solo lugar, `client.ts`, y no salen de esa función. La clave del canal y los permisos viajan dentro de `Secret`, que devuelve una marca si alguien lo convierte a texto, a JSON o lo inspecciona. El log registra solo el método, la ruta del contrato y el motivo: nunca cabeceras, cuerpos, códigos ni identificadores. El cliente rechaza las redirecciones, que reenviarían las cabeceras a otro destino. Ningún resultado que llega a páginas o acciones contiene un permiso.
+
+**Registro del canal Web.** El portal anota los trámites que inicia y los que adopta con un código. `registry.ts` los guarda en `web-channel-registry.json`, dentro de `PORTAL_DATA_DIR`. Por defecto es `.data/` en el portal, que Git ignora.
+
+- Contiene, por identificador de cuenta, el identificador de cada trámite, cuándo lo registró el portal y cuándo supo que quedó cerrado. Nunca permisos, claves ni códigos.
 - La escritura es atómica: el contenido completo va a un archivo temporal de la misma carpeta y sustituye al registro con un renombrado.
 - La carpeta se crea con permisos `0700` y el archivo con `0600`. En Windows los permisos los fija la carpeta.
 - Las escrituras pasan por una cola, de una en una. La copia en memoria solo cambia si el archivo quedó escrito.
@@ -242,20 +265,31 @@ Cada `POST /events` lleva el `eventId` como `externalEventId`, `schemaVersion: 1
 | --- | --- |
 | `/tramite/nuevo` | Texto del flujo sin horario. La lista de abiertos sale del registro. |
 | `/tramite/[id]` | Estudio, clínica y revisión. Sin horario, nota, «Guardar y continuar después», confirmación directa ni ayuda de asesor. |
+| Continuar en otro canal | Desde que hay estudio: botón «Generar código de continuidad», el código, su vencimiento y «Copiar código». |
 | Revisión | Resumen y botón «Enviar a confirmación». |
 | Pendiente de confirmación | Título «Pendiente de confirmación», resumen, folio del trámite con botón de copiar y «Puedes continuar por WhatsApp o Call Center.». |
 | Cancelar | Enlace «Cancelar trámite». El formulario que cancela solo existe en la página tras pedirlo, con `?cancelar=1`. |
-| `/continuar` | Lista del registro. Con permiso vigente, el estado del trámite. Sin él, «Necesita un permiso nuevo», con folio y fecha de registro y sin datos del trámite. |
+| `/continuar` | Lista del registro. Con permiso vigente, el estado del trámite. Sin él, «Necesita un permiso nuevo», con folio y fecha de registro y sin datos del trámite. Debajo, el campo «Tengo un código de continuidad». |
 | `/tramite/[id]/historial` | Línea de tiempo con el tipo de evento en español, el canal que lo produjo y la fecha. En modo heredado responde `404`. |
 
-El folio es el identificador del trámite. Mientras el trámite está pendiente de confirmación, el paciente puede cambiar el estudio o la clínica: el orquestador lo devuelve a revisión.
+El folio es el identificador del trámite. Mientras el trámite está pendiente de confirmación, el paciente puede cambiar el estudio o la clínica: el orquestador lo devuelve a revisión. El aviso «Copiado.» vale solo para la pantalla en la que se pulsó: desaparece al cambiar la ruta o sus parámetros, por ejemplo al abrir la confirmación de cancelar.
+
+**Identidad del paciente.** `patient-identity.md` añade `GET /journeys`, que lista hasta cien trámites de un paciente, y la creación identificada. Las dos exigen la cabecera `X-Patient-Assertion`. El portal no lo integra porque le falta lo siguiente:
+
+- Una forma de obtener la afirmación. Hoy solo la emite un operador con una CLI local, para pacientes ficticios, ligada a un canal y a una sesión, y vence a los cinco minutos. El contrato deja pendiente su emisión automática.
+- La correspondencia entre la cuenta de la API general y el identificador institucional del paciente. La API general no ofrece ese identificador.
+- Guardar la afirmación en el servidor, ligada a la sesión, y fuera de los logs.
+
+Aun con el listado, el portal solo vería resúmenes: identificador, tipo, estado y fechas. Para abrir un trámite haría falta igualmente un permiso, que llega con un código de continuidad.
+
+**Prueba contra los servicios reales.** El 2026-11-24 se hizo un recorrido contra la API general y el orquestador desplegados, con la cuenta de prueba: un acceso, un trámite creado, estudio, código de continuidad, clínica, historial y cancelación. El trámite pasó por cuatro versiones: la 1 al crearse en `DRAFT`, la 2 en `IN_PROGRESS` y `SELECT_CLINIC`, la 3 en `REVIEW` y la 4 al quedar `CANCELLED`. Todas las respuestas tuvieron la forma, los códigos y la cabecera `Cache-Control: no-store` que describe el contrato. El canal del portal figura en el historial con el código `demo-web`. No se probaron contra el servicio real el canje, la paginación del historial, el envío a confirmación ni las respuestas de error.
 
 **Qué quedó terminado.**
 
 - Selección de adaptador y capacidades, con las pantallas y las acciones de los dos modos.
 - Cliente HTTP del orquestador, con sus cabeceras fuera de logs, errores y respuestas.
-- Los cuatro eventos de la tabla, la lectura del trámite y el historial paginado.
-- Reenvío idéntico tras un tiempo de espera agotado, relectura del contexto tras un `409` y traducción de `401` y `403`.
+- Crear el trámite con reenvío idempotente, estudio, clínica, envío a confirmación, cancelación, lectura e historial paginado.
+- Emitir y canjear códigos de continuidad, con validación, mensaje único y límite de intentos.
 - Registro en archivo, permisos en memoria, error `access-expired` y comprobación de pertenencia.
 - Un orquestador simulado y una suite para este modo, fuera del repositorio.
 
@@ -263,15 +297,12 @@ El folio es el identificador del trámite. Mientras el trámite está pendiente 
 
 | Provisional | Por qué |
 | --- | --- |
-| El registro del canal Web | Sustituye a la consulta por paciente, que el orquestador no ofrece. Un trámite iniciado en otro canal no aparece en el portal. |
-| «Necesita un permiso nuevo» | El permiso dura cinco minutos y el contrato deja pendiente su renovación. Pasado ese tiempo, el portal no puede leer ni cambiar el trámite, y hoy no tiene cómo recibir otro permiso. |
+| El registro del canal Web | Sustituye a la consulta por paciente, que el portal no puede usar. Un trámite de otro canal solo aparece tras canjear un código. |
+| «Necesita un permiso nuevo» | El permiso dura cinco minutos y el contrato deja pendiente su renovación. Pasado ese tiempo, el portal solo recupera el trámite con un código emitido en otro canal. |
 | El flujo sin fecha, nota ni cita | El contrato no los cubre. El trámite termina en «Pendiente de confirmación» y la cita oficial no se crea desde el portal. |
 | El último canal y los nombres de canal | El orquestador no informa del último canal. En el historial, el canal se reconoce por su código: `web`, `whatsapp` o `call` dentro del nombre. Cualquier otro se muestra tal cual. |
-| Un solo proceso | Registro y permisos viven en el proceso del portal. |
-
-**Riesgo: crear un trámite con resultado incierto.** El identificador y el permiso de un trámite nuevo llegan solo en la respuesta de `POST /journeys`. Si esa respuesta se pierde, el trámite pudo crearse en el orquestador, pero el portal no conoce su identificador ni su permiso: queda huérfano. El portal no reintenta por su cuenta, por decisión de su propietario. Informa al paciente de que no pudo confirmar la creación y le deja decidir si empieza otro. Cada intento nuevo del paciente lleva otra clave de idempotencia y puede dejar otro trámite huérfano. El mensaje es el mismo cuando el orquestador rechaza la clave del canal, porque `401` y `403` se traducen a `unavailable`: en ese caso no se creó nada.
-
-En el contrato del commit `4958614` la creación no era idempotente y el trámite huérfano era irrecuperable. Desde `672965a` lo es: reenviar el mismo cuerpo con la misma `Idempotency-Key` devuelve el mismo trámite y, si el permiso inicial sigue vigente, un permiso nuevo. El adaptador ya envía una clave estable por evento, así que activar ese reenvío eliminaría el riesgo. Queda sin activar hasta que el propietario lo decida.
+| Un solo proceso | Registro, permisos, claves de creación pendientes y contador de intentos viven en el proceso del portal. |
+| Límite de canje del canal | Los diez canjes por minuto del orquestador son de todo el canal Web. Unas pocas sesiones pueden agotarlos para todos. |
 
 **Ambigüedades del contrato y cómo se resolvieron.**
 
@@ -285,25 +316,52 @@ En el contrato del commit `4958614` la creación no era idempotente y el trámit
 | Los pasos `SELECT_DATETIME` y `CONFIRMED` se pueden leer, pero ningún evento los produce. | Si llegan, la pantalla indica que el paso continúa en otro canal y muestra el folio. |
 | `journey-writes.md` dice que un cambio de contexto deja el trámite `IN_PROGRESS`. `data-model.md` añade que desde `PENDING_CONFIRMATION` se vuelve a `IN_PROGRESS` si cambian datos. | El portal permite cambiar estudio o clínica en un trámite pendiente. |
 | El orquestador no comprueba que el estudio y la clínica existan. | El adaptador lo comprueba en el catálogo antes de publicar. |
-| `Idempotency-Key` pide 32 bytes aleatorios generados por el canal y conservados para los reintentos. | La clave es el SHA-256 del `eventId`, que la acción genera al azar. Así el mismo evento lleva siempre la misma clave sin guardarla aparte. |
+| `Idempotency-Key` pide 32 bytes aleatorios generados por el canal y conservados para los reintentos. | La clave es el SHA-256 del `eventId`, que la acción genera al azar. Tras un resultado incierto se conserva en memoria, por paciente, cinco minutos. |
+| El contrato dice que el código tiene «12 caracteres Base32», sin fijar el alfabeto. | El ejemplo del contrato usa cifras que el Base32 estándar no tiene. El portal usa el alfabeto sin I, L, O ni U y corrige esas letras al canjear. |
+| El contrato no dice si un intento de canje mal formado cuenta para el límite del canal. | El portal filtra antes lo que no tiene forma de código, para no gastar el límite compartido. |
+| Un código acredita autorización, no identidad. | Quien lo canjea con sesión añade el trámite a su registro, aunque otro paciente lo hubiera iniciado. |
 
-**Cambios del contrato publicados después.** Están en `main` y esta rama aún no los integra.
+**Preguntas para el equipo del orquestador.**
 
-| Commit | Qué añade | Estado en el portal |
-| --- | --- | --- |
-| `672965a` | `Idempotency-Key` obligatoria en `POST /journeys`: sin ella responde `400`. Un reintento con la misma clave devuelve el mismo trámite. | Cabecera adoptada. El reenvío automático está sin activar. |
-| `644f8ee` | `GET /journeys` y creación identificada, con la cabecera `X-Patient-Assertion`. La afirmación la emite un operador para pacientes ficticios y vence a los cinco minutos. | Sin usar. Permitiría listar los trámites del paciente sin depender solo del registro. |
-| `ff989cc` | Códigos de continuidad. `POST /journeys/:journeyId/continuity-codes` emite un código de 12 caracteres y `POST /continuity-codes/redeem` lo canjea en otro canal por un permiso de cinco minutos. El canal emisor no puede canjear los suyos. | Sin usar. Podría sustituir al folio en la pantalla de pendiente de confirmación y permitiría adoptar trámites de otro canal. |
+1. **Permiso.** Sigue abierta. Los códigos de continuidad cubren el paso a otro canal, pero el canal emisor no puede canjear los suyos y el contrato deja pendiente la renovación. ¿Cómo recupera el canal Web un trámite propio pasados los cinco minutos sin pasar por otro canal?
+2. **Fecha.** Sigue abierta. ¿`JOURNEY_CONTEXT_UPDATED` aceptará `scheduledAt`? Sin fecha, la API general no puede crear la cita.
+3. **Confirmación.** Sigue abierta. ¿Quién crea la cita oficial y cómo se informa `COMPLETED` y `appointmentId` al orquestador?
+4. **Paciente.** Respondida en parte. `GET /journeys` lista los trámites de un paciente y los códigos de continuidad llevan un trámite de un canal a otro. Falta saber cómo obtiene el portal la afirmación de identidad de un paciente sin la CLI del operador.
+5. **Acceso.** Respondida para la demo: el portal tiene URL y clave, y su canal figura como `demo-web`. Falta la lista de códigos de los demás canales.
 
-**Preguntas abiertas para el equipo del orquestador.** Las dos primeras notas indican lo que los commits posteriores ya responden.
+**Puesta en marcha.** Define en `.env.local` `REQUESTS_BACKEND=orchestrator`, `ORCHESTRATOR_BASE_URL` y `ORCHESTRATOR_API_KEY`. La clave tiene la forma `<keyId>.<secret>`, sin el prefijo `Bearer`, y necesita los scopes `EVENTS_PUBLISH` y `JOURNEYS_READ`: emitir un código exige los dos. `PORTAL_DATA_DIR` es opcional. Con un valor ausente o inválido, el servidor registra el motivo al arrancar, sin el valor, y responde `500` a todas las peticiones.
 
-1. **Permiso.** ¿Cómo obtiene el canal Web un permiso nuevo para un trámite propio pasados los cinco minutos? ¿Solo con la CLI de demostración? ¿Cómo llega al backend del portal? Los códigos de continuidad cubren el paso a otro canal, pero el canal emisor no puede canjear los suyos y el contrato sigue dejando pendiente la renovación.
-2. **Fecha.** ¿`JOURNEY_CONTEXT_UPDATED` aceptará `scheduledAt`? Sin fecha, la API general no puede crear la cita.
-3. **Confirmación.** ¿Quién crea la cita oficial y cómo se informa `COMPLETED` y `appointmentId` al orquestador?
-4. **Paciente.** ¿Cómo encuentra un canal los trámites de un paciente? En la demo, ¿cómo conoce el paciente el identificador de un trámite iniciado en otro canal? `GET /journeys` con `X-Patient-Assertion` y los códigos de continuidad lo cubren en parte: falta saber cómo obtiene el portal la afirmación de un paciente sin pasar por la CLI del operador.
-5. **Acceso.** ¿Qué URL usará el backend del portal, cuál es el código de canal del portal y quién entrega la clave con los scopes `EVENTS_PUBLISH` y `JOURNEYS_READ`? ¿Qué códigos tienen los demás canales?
+### Publicación del portal
 
-**Puesta en marcha.** Define en `.env.local` `REQUESTS_BACKEND=orchestrator`, `ORCHESTRATOR_BASE_URL` y `ORCHESTRATOR_CHANNEL_KEY`. La clave tiene la forma `<keyId>.<secret>`, sin el prefijo `Bearer`, y necesita los dos scopes. `PORTAL_DATA_DIR` es opcional. Con un valor ausente o inválido, el servidor registra el motivo al arrancar, sin el valor, y responde `500` a todas las peticiones.
+**Fecha.** 2026-11-24. Revisión hecha sobre la compilación de producción, sin publicar nada.
+
+**Lo que necesita el servidor.**
+
+| Requisito | Detalle |
+| --- | --- |
+| Proceso | `next build` y después `next start`, escuchando solo en `127.0.0.1`, detrás de un proxy inverso que termine TLS. |
+| Una sola instancia | Registro, permisos, claves de creación pendientes y contador de intentos viven en el proceso. Con dos instancias, cada una vería trámites y permisos distintos. |
+| Variables | `API_BASE_URL`, `REQUESTS_BACKEND`, `ORCHESTRATOR_BASE_URL`, `ORCHESTRATOR_API_KEY` y `PORTAL_DATA_DIR`, inyectadas desde la configuración privada del servicio. Ninguna lleva el prefijo `NEXT_PUBLIC_`. |
+| `PORTAL_DATA_DIR` | Fuera de la carpeta del código, para que un despliegue nuevo no la borre. Propiedad del usuario del servicio, con permisos `0700`. Contiene qué cuenta tiene qué trámites: hay que incluirla en los respaldos y excluirla de cualquier carpeta servida. |
+| Proxy | Debe conservar el `Host` original o enviar `X-Forwarded-Host`, y sobrescribir las cabeceras de reenvío del cliente. Sin el host correcto, el portal rechaza todos los formularios con `403`. |
+| HTTPS | Obligatorio para el navegador: la cookie de sesión lleva `Secure` y el prefijo `__Host-`. |
+
+**Seguridad antes de exponerlo.** «Bloqueante» significa que conviene resolverlo antes de abrir el portal a público general.
+
+| Hallazgo | Clase |
+| --- | --- |
+| El límite de acceso y registro de la API general es por IP, diez intentos cada quince minutos, y todas las peticiones salen del servidor del portal. Cualquiera puede agotar el cupo y dejar a todos los pacientes sin poder entrar. El portal no tiene un límite propio. | Bloqueante |
+| El registro está abierto: cualquiera crea una cuenta y, con ella, trámites en el orquestador sin tope. | Bloqueante si la URL es pública |
+| Sin `Strict-Transport-Security`. Debe añadirlo el proxy o el portal. | Mejora |
+| Sin `Content-Security-Policy` ni `Permissions-Policy`. El portal no usa HTML sin escapar, `eval` ni almacenamiento del navegador. | Mejora |
+| Sin `noindex` ni `robots.txt`: un prototipo con datos sintéticos podría indexarse. | Mejora |
+| `GET /api/session/expired` borra la cookie sin comprobar el origen. Un sitio ajeno puede cerrar la sesión de un paciente, sin más efecto. | Mejora |
+| No hay tope de códigos de continuidad emitidos ni de trámites abiertos por paciente. | Mejora |
+| Los diez canjes por minuto del orquestador son de todo el canal Web. El límite por paciente del portal lo mitiga, pero no lo evita. | Mejora |
+| Cerrar sesión borra la cookie, pero el token sigue siendo válido en la API general hasta que vence. La API no ofrece revocarlo. | Mejora |
+| Sin página de error propia: una excepción muestra el aviso genérico de Next, sin trazas. | Mejora |
+
+Lo comprobado y correcto: cookie `__Host-` con `Secure`, `HttpOnly` y `SameSite=Lax`; `403` ante un origen ajeno o nulo; todas las rutas protegidas redirigen a `/acceso` sin sesión y una cookie inventada se borra; las acciones comprueban la sesión; el trámite ajeno responde igual que el inexistente; los mensajes de los servicios nunca llegan a la interfaz; `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff` y `Referrer-Policy` están presentes; las páginas no se almacenan en caché. `pnpm audit` no encontró avisos en las dependencias del portal.
 
 ### Canal de origen
 
@@ -370,7 +428,7 @@ Al añadir una ruta a `(account)` o `(booking)` hay que registrar su prefijo en 
 
 ### Cliente de API y configuración
 
-`API_BASE_URL` es obligatoria. `REQUESTS_BACKEND`, `ORCHESTRATOR_BASE_URL`, `ORCHESTRATOR_CHANNEL_KEY` y `PORTAL_DATA_DIR` solo importan en modo orquestador y se describen en «Adaptador del orquestador». Todas las lee solo el servidor, sin prefijo `NEXT_PUBLIC_`. `.env.example` documenta los nombres y los valores reales van en `.env.local`, que Git ignora. Sobre `API_BASE_URL`: `instrumentation.ts` la valida al arrancar con `checkConfiguration()`, de `lib/composition.ts`: debe usar `https`, salvo en `localhost` y `127.0.0.1`. Con un valor inválido, el servidor registra el error al arrancar y responde `500` a todas las peticiones. `next build` funciona sin la variable, porque ninguna página llama a la API durante la compilación.
+`API_BASE_URL` es obligatoria. `REQUESTS_BACKEND`, `ORCHESTRATOR_BASE_URL`, `ORCHESTRATOR_API_KEY` y `PORTAL_DATA_DIR` solo importan en modo orquestador y se describen en «Adaptador del orquestador». Todas las lee solo el servidor, sin prefijo `NEXT_PUBLIC_`. `.env.example` documenta los nombres y los valores reales van en `.env.local`, que Git ignora. Sobre `API_BASE_URL`: `instrumentation.ts` la valida al arrancar con `checkConfiguration()`, de `lib/composition.ts`: debe usar `https`, salvo en `localhost` y `127.0.0.1`. Con un valor inválido, el servidor registra el error al arrancar y responde `500` a todas las peticiones. `next build` funciona sin la variable, porque ninguna página llama a la API durante la compilación.
 
 `lib/adapters/general-api/client.ts` es el único punto de salida hacia la API y lleva `server-only`, así que un componente de cliente no puede importarlo. Cada llamada:
 
@@ -507,7 +565,7 @@ El portal deja estas funciones fuera hasta que exista un contrato acordado.
 | Sugerencia: filtrar clínicas por ciudad en `GET /clinics` | Sin ella, el portal filtra en su servidor con el tope de 500 clínicas descrito en «Catálogo». |
 | Límite de registro e inicio de sesión por IP | Ambas operaciones comparten 10 intentos por IP cada 15 minutos, según el contrato de autenticación. Todas las llamadas llegan desde el servidor del portal, así que los pacientes compartirían ese límite. |
 
-Las preguntas abiertas para el equipo del orquestador están en «Adaptador del orquestador».
+Las preguntas para el equipo del orquestador están en «Adaptador del orquestador», y lo pendiente antes de publicar, en «Publicación del portal».
 
 ## Decisiones retiradas
 

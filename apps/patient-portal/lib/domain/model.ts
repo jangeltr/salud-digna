@@ -140,3 +140,9 @@ export type Appointment = {
 
 /** Código que el paciente dicta al asesor. Es de un solo uso. */
 export type AssistanceCode = { code: string; expiresAt: string };
+
+/**
+ * Código para continuar el trámite en otro canal. Es una credencial de un solo uso:
+ * quien lo canjea puede seguir con el trámite. No se guarda en ningún sitio.
+ */
+export type ContinuityCode = { code: string; expiresAt: string };

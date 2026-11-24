@@ -8,6 +8,7 @@ import { findAppointment, loadSelections } from "@/features/requests/data";
 import {
   AccessExpired,
   CancelSection,
+  ContinuitySection,
   OtherChannelStep,
   PendingConfirmationStep,
   SubmitStep,
@@ -152,6 +153,10 @@ export default async function RequestPage({ params, searchParams }: PageProps<"/
           <RequestForm action={pauseAndLeave} request={request} label="Guardar y continuar después" secondary />
           <p className="mt-2 text-sm text-muted">Tu avance queda guardado. Podrás retomarlo aquí, por WhatsApp o con un asesor.</p>
         </div>
+      ) : null}
+
+      {open && capabilities.continuityCodes && request.selections.studyId ? (
+        <ContinuitySection requestId={request.id} />
       ) : null}
 
       {open && capabilities.cancellation ? (

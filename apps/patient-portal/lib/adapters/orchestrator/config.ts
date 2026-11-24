@@ -11,13 +11,13 @@ export function readOrchestratorBaseUrl(value = process.env.ORCHESTRATOR_BASE_UR
 // El contrato describe la clave como `<keyId>.<secret>`. Solo se comprueba esa forma, sin fijar longitudes.
 const CHANNEL_KEY = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
 
-/** Lee ORCHESTRATOR_CHANNEL_KEY. Los mensajes de error omiten su valor. */
-export function readChannelKey(value = process.env.ORCHESTRATOR_CHANNEL_KEY): Secret {
+/** Lee ORCHESTRATOR_API_KEY, la clave del canal Web. Los mensajes de error omiten su valor. */
+export function readChannelKey(value = process.env.ORCHESTRATOR_API_KEY): Secret {
   if (!value) {
-    throw new Error("Falta ORCHESTRATOR_CHANNEL_KEY. Defínela en .env.local con la clave del canal Web.");
+    throw new Error("Falta ORCHESTRATOR_API_KEY. Defínela en .env.local con la clave del canal Web.");
   }
   if (!CHANNEL_KEY.test(value)) {
-    throw new Error("ORCHESTRATOR_CHANNEL_KEY debe tener la forma <keyId>.<secret>, sin el prefijo Bearer ni espacios.");
+    throw new Error("ORCHESTRATOR_API_KEY debe tener la forma <keyId>.<secret>, sin el prefijo Bearer ni espacios.");
   }
   return new Secret(value);
 }

@@ -6,6 +6,7 @@ import { PAGE_SIZE, listHref, readPage } from "@/features/catalog/params";
 import { LockedList } from "@/features/requests/handoff";
 import { NoticeBanner } from "@/features/requests/parts";
 import { PendingList } from "@/features/requests/pending-list";
+import { RedeemForm } from "@/features/requests/redeem-form";
 import { readNotice } from "@/features/requests/steps";
 import { requestCapabilities, requestQuery } from "@/lib/composition";
 import { expireSession, requireAccount } from "@/lib/session/session";
@@ -38,7 +39,9 @@ export default async function ResumePage({ searchParams }: PageProps<"/continuar
       <p className="mt-2 text-muted">
         {requestCapabilities.patientListing
           ? "Tus trámites abiertos, también los que empezaste por WhatsApp o con un asesor."
-          : "Los trámites abiertos que empezaste en este portal."}
+          : requestCapabilities.continuityCodes
+            ? "Los trámites abiertos que empezaste en este portal o trajiste con un código de continuidad."
+            : "Los trámites abiertos que empezaste en este portal."}
       </p>
       {notice ? <NoticeBanner notice={notice} /> : null}
       {items.length > 0 ? <PendingList requests={items} /> : null}
@@ -49,6 +52,18 @@ export default async function ResumePage({ searchParams }: PageProps<"/continuar
         </EmptyState>
       )}
       <Pagination page={page} hasMore={hasMore} hrefFor={hrefFor} />
+      {requestCapabilities.continuityCodes ? (
+        <section aria-labelledby="canjear" className="mt-10 border-t border-line pt-6">
+          <h2 id="canjear" className="text-lg font-semibold">
+            Tengo un código de continuidad
+          </h2>
+          <p className="mt-1 text-sm text-muted">
+            Si empezaste un trámite por WhatsApp o Call Center, pide allí un código y escríbelo aquí para seguir en el
+            portal.
+          </p>
+          <RedeemForm />
+        </section>
+      ) : null}
     </>
   );
 }

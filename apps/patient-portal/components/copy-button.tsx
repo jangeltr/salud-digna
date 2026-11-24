@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname, useSearchParams } from "next/navigation";
 import { useState } from "react";
 
 type CopyButtonProps = {
@@ -8,20 +9,28 @@ type CopyButtonProps = {
   label: string;
 };
 
+type Outcome = { status: "copied" | "failed"; location: string };
+
 /**
  * Copia un texto al portapapeles y lo anuncia. Sin JavaScript el botón no hace nada:
  * por eso el texto se muestra siempre al lado, seleccionable.
+ *
+ * El aviso vale solo para la pantalla en la que se pulsó: al cambiar la ruta o sus parámetros,
+ * por ejemplo al abrir la confirmación de cancelar, desaparece. Todas las páginas del portal
+ * se generan en cada petición, así que `useSearchParams` no necesita un límite de `Suspense`.
  */
 export function CopyButton({ value, label }: CopyButtonProps) {
-  const [status, setStatus] = useState<"idle" | "copied" | "failed">("idle");
+  const location = `${usePathname()}?${useSearchParams()}`;
+  const [outcome, setOutcome] = useState<Outcome | null>(null);
+  const status = outcome && outcome.location === location ? outcome.status : "idle";
 
   async function copy() {
     try {
       await navigator.clipboard.writeText(value);
-      setStatus("copied");
+      setOutcome({ status: "copied", location });
     } catch {
       // Sin permiso o sin contexto seguro: el paciente puede seleccionar el texto y copiarlo a mano.
-      setStatus("failed");
+      setOutcome({ status: "failed", location });
     }
   }
 
@@ -38,7 +47,7 @@ export function CopyButton({ value, label }: CopyButtonProps) {
         {status === "copied" ? (
           <span className="text-success">Copiado.</span>
         ) : status === "failed" ? (
-          <span className="text-danger">No se pudo copiar. Selecciona el folio y cópialo.</span>
+          <span className="text-danger">No se pudo copiar. Selecciona el texto y cópialo.</span>
         ) : null}
       </span>
     </>

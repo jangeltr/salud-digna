@@ -2,6 +2,7 @@ import Link from "next/link";
 import { CopyButton } from "@/components/copy-button";
 import type { BookingRequest, LockedRequest } from "@/lib/domain/model";
 import { cancelRequest, requestConfirmation } from "./actions";
+import { ContinuityForm } from "./continuity-form";
 import type { SelectionDetails } from "./data";
 import { RequestForm, secondaryButton } from "./parts";
 import { Summary } from "./review";
@@ -25,6 +26,25 @@ export function Folio({ requestId }: { requestId: string }) {
       <p className="mt-1 mb-3 font-mono text-lg font-bold break-all select-all">{requestId}</p>
       <CopyButton value={requestId} label="Copiar folio" />
     </div>
+  );
+}
+
+/**
+ * «Continuar en otro canal»: emite un código de continuidad para seguir con este trámite
+ * en WhatsApp o Call Center. Se ofrece desde que el trámite tiene un estudio.
+ */
+export function ContinuitySection({ requestId }: { requestId: string }) {
+  return (
+    <section aria-labelledby="continuidad" className="mt-10 border-t border-line pt-6">
+      <h2 id="continuidad" className="text-lg font-semibold">
+        Continuar en otro canal
+      </h2>
+      <p className="mt-1 mb-3 text-sm text-muted">
+        Genera un código y úsalo en WhatsApp o Call Center para seguir con este trámite. Dura cinco minutos como máximo
+        y sirve una sola vez.
+      </p>
+      <ContinuityForm requestId={requestId} />
+    </section>
   );
 }
 
@@ -141,7 +161,7 @@ export function LockedList({ requests }: { requests: LockedRequest[] }) {
       {requests.map((request) => (
         <li key={request.id} className="rounded-lg border border-line bg-canvas p-4">
           <h3 className="text-lg font-semibold">Necesita un permiso nuevo</h3>
-          <p className="mt-1 text-sm">Trámite empezado en este portal el {formatDateTime(request.registeredAt)}.</p>
+          <p className="mt-1 text-sm">Trámite registrado en este portal el {formatDateTime(request.registeredAt)}.</p>
           <p className="mt-1 text-sm text-muted">
             Folio: <span className="font-mono break-all select-all">{request.id}</span>
           </p>

@@ -4,13 +4,18 @@ import type { Secret } from "./secret";
 
 const TIMEOUT_MS = 8_000;
 
-/** Rutas de `journey-writes.md` y `journey-queries.md`, sin el prefijo /api/v1 que ya incluye ORCHESTRATOR_BASE_URL. */
+/**
+ * Rutas de `journey-writes.md`, `journey-queries.md` y `continuity-codes.md`,
+ * sin el prefijo /api/v1 que ya incluye ORCHESTRATOR_BASE_URL.
+ */
 export type OrchestratorPath =
   | "/journeys"
   | "/events"
   | "/journeys/:journeyId"
   | "/journeys/:journeyId/context"
-  | "/journeys/:journeyId/history";
+  | "/journeys/:journeyId/history"
+  | "/journeys/:journeyId/continuity-codes"
+  | "/continuity-codes/redeem";
 
 export type OrchestratorSuccess = { ok: true; status: number; data: unknown };
 
@@ -36,8 +41,8 @@ export type OrchestratorRequest = {
   body?: string;
 };
 
-// El registro omite la clave del canal, los permisos, las claves de idempotencia, los cuerpos
-// y los identificadores: solo método, ruta del contrato y motivo.
+// El registro omite la clave del canal, los permisos, las claves de idempotencia, los códigos
+// de continuidad, los cuerpos y los identificadores: solo método, ruta del contrato y motivo.
 function report(method: string, path: string, reason: string) {
   console.error(`[orquestador] ${method} ${path}: ${reason}`);
 }

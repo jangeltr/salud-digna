@@ -8,7 +8,7 @@ import type { components } from "../general-api/schema";
 import type { Snapshot } from "./mapping";
 
 type Schemas = components["schemas"];
-type ExistingRequestEvent = Exclude<RequestEvent, { type: "request-started" }>;
+type ExistingRequestEvent = Exclude<RequestEvent, { type: "request-started" | "continuity-redeemed" }>;
 type ContextChanges = Omit<Schemas["UpdateRequestContextDto"], "version">;
 
 /** Las operaciones que devuelven el trámite informan su versión en el acuse. */
@@ -111,7 +111,10 @@ export const legacyRequestNotifier: RequestNotifier = {
 
       case "confirmation-requested":
       case "request-cancelled":
-        // La API actual pasa sola a pendiente de confirmación y su contrato no ofrece cancelar.
+      case "continuity-requested":
+      case "continuity-redeemed":
+        // La API actual pasa sola a pendiente de confirmación, y su contrato no ofrece cancelar
+        // ni códigos de continuidad.
         return failure("rejected");
     }
   },

@@ -46,15 +46,15 @@ Adaptador heredado y modo por defecto. Implementa la notificación y la consulta
 | `mapping.ts` | Traduce el trámite y la cita de la API al modelo del portal. |
 | `notifier.ts` | Implementa `RequestNotifier`: convierte cada evento de negocio en la operación que hoy lo registra. |
 | `query.ts` | Implementa `RequestQuery`: trámites pendientes, un trámite y su cita. |
-| `capabilities.ts` | Lo que soporta: todo menos cancelación e historial. |
+| `capabilities.ts` | Lo que soporta: todo menos cancelación, historial y códigos de continuidad. |
 
 ## adapters/orchestrator
 
-Adaptador del orquestador, activo con `REQUESTS_BACKEND=orchestrator`. Se rige por `apps/orchestrator/docs/journey-writes.md` y `journey-queries.md`. El orquestador no publica un OpenAPI, así que aquí no hay tipos generados.
+Adaptador del orquestador, activo con `REQUESTS_BACKEND=orchestrator`. Se rige por `apps/orchestrator/docs/journey-writes.md`, `journey-queries.md` y `continuity-codes.md`. El orquestador no publica un OpenAPI, así que aquí no hay tipos generados.
 
 | Archivo | Contenido |
 | --- | --- |
-| `config.ts` | Lee y valida `ORCHESTRATOR_BASE_URL`, `ORCHESTRATOR_CHANNEL_KEY` y `PORTAL_DATA_DIR`. |
+| `config.ts` | Lee y valida `ORCHESTRATOR_BASE_URL`, `ORCHESTRATOR_API_KEY` y `PORTAL_DATA_DIR`. |
 | `secret.ts` | Envoltorio de la clave del canal y de los permisos, que impide que acaben en un log o en una respuesta. |
 | `client.ts` | Única salida hacia el orquestador. Escribe `Authorization` y `X-Journey-Grant`, que no salen de ahí. |
 | `failures.ts` | Única traducción de los códigos HTTP del orquestador a errores del portal. |
@@ -62,9 +62,9 @@ Adaptador del orquestador, activo con `REQUESTS_BACKEND=orchestrator`. Se rige p
 | `grants.ts` | Permisos de trámite, solo en memoria, por paciente y trámite. |
 | `registry.ts` | Registro del canal Web en un archivo JSON: qué trámites inició cada paciente. Sin permisos ni claves. |
 | `access.ts` | Comprobación previa a toda lectura o escritura: sesión, pertenencia en el registro y permiso vigente. |
-| `notifier.ts` | Implementa `RequestNotifier`: crear el trámite, estudio, clínica, envío a confirmación y cancelación. |
+| `notifier.ts` | Implementa `RequestNotifier`: crear el trámite con reenvío idempotente, estudio, clínica, envío a confirmación, cancelación, y emitir y canjear códigos de continuidad. |
 | `query.ts` | Implementa `RequestQuery`: lista del registro, un trámite y su historial. |
-| `capabilities.ts` | Lo que soporta: cancelación e historial, sin horario, nota, pausa, ayuda de asesor ni confirmación directa. |
+| `capabilities.ts` | Lo que soporta: cancelación, historial y códigos de continuidad, sin horario, nota, pausa, ayuda de asesor ni confirmación directa. |
 
 ## session
 
@@ -73,6 +73,7 @@ Adaptador del orquestador, activo con `REQUESTS_BACKEND=orchestrator`. Se rige p
 | `cookie.ts` | Nombre y atributos de la cookie de sesión, y su lectura, escritura y borrado. |
 | `routes.ts` | Prefijos de las rutas protegidas y validación del destino tras el acceso. |
 | `session.ts` | Comprueba la sesión pidiendo el perfil del paciente y exige cuenta en las páginas protegidas. |
+| `attempts.ts` | Límite de intentos en memoria, por clave. Lo usa el canje de códigos de continuidad. |
 
 El portal es solo un sitio web desde el 2026-11-24, cuando el proyecto cambió de arquitectura y dejó de cubrir el canal móvil. Hasta esa fecha existía también `channel/`, una carpeta reservada para detectar el modo instalado.
 

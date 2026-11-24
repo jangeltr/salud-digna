@@ -5,6 +5,7 @@ import type {
   BookingRequest,
   CatalogQuery,
   Clinic,
+  ContinuityCode,
   Credentials,
   HistoryPage,
   HistoryQuery,
@@ -59,7 +60,11 @@ export type RequestEvent =
   | (OnRequest & { type: "help-requested" })
   /** El paciente da por completas sus selecciones y pide que un canal de atención confirme la cita. */
   | (OnRequest & { type: "confirmation-requested" })
-  | (OnRequest & { type: "request-cancelled" });
+  | (OnRequest & { type: "request-cancelled" })
+  /** El paciente pide un código para continuar este trámite en otro canal. */
+  | (OnRequest & { type: "continuity-requested" })
+  /** El paciente trae un código emitido en otro canal. El acuse lleva el trámite que pasa a ser suyo en este. */
+  | { type: "continuity-redeemed"; eventId: string; code: string };
 
 /**
  * Lo que soporta el adaptador activo del trámite. Las pantallas muestran solo lo soportado
@@ -78,6 +83,8 @@ export type RequestCapabilities = {
   patientConfirmation: boolean;
   cancellation: boolean;
   history: boolean;
+  /** Emitir un código para continuar en otro canal y canjear el que emitió otro. */
+  continuityCodes: boolean;
   /**
    * El servicio lista los trámites por paciente, también los de otros canales. Sin esto, la lista
    * sale del registro del portal y un inicio de trámite con resultado incierto no se puede comprobar.
@@ -87,12 +94,17 @@ export type RequestCapabilities = {
 
 /** Acuse de un evento. No es el estado del trámite: el portal lo consulta después. */
 export type Receipt = {
-  /** Trámite sobre el que se aplicó el evento. En `request-started` es el trámite nuevo. */
+  /**
+   * Trámite sobre el que se aplicó el evento. En `request-started` es el trámite nuevo
+   * y en `continuity-redeemed`, el que el código permite continuar.
+   */
   requestId: string;
   /** Versión resultante, si el servicio la informa. Permite encadenar otro evento sin consultar antes. */
   version?: number;
   /** Solo en `help-requested`. */
   assistance?: AssistanceCode;
+  /** Solo en `continuity-requested`. */
+  continuity?: ContinuityCode;
 };
 
 /** Notificación del trámite: el portal informa de lo que hizo el paciente. */

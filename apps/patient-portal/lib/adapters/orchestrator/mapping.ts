@@ -1,6 +1,7 @@
 import type {
   BookingRequest,
   Channel,
+  ContinuityCode,
   HistoryEntry,
   HistoryPage,
   RequestStatus,
@@ -58,15 +59,64 @@ function lookup<Value>(table: Record<string, Value>, value: unknown): Value | un
   return typeof value === "string" && Object.hasOwn(table, value) ? table[value] : undefined;
 }
 
-export type CreatedJourney = { id: string; grant: Secret; grantExpiresAt: number };
+/** Permiso de un trámite con su vencimiento. Sale ya envuelto: su valor no circula como texto. */
+export type GrantedAccess = { grant: Secret; expiresAt: number };
 
-/** Respuesta de `POST /journeys`. El permiso sale ya envuelto: su valor no circula como texto. */
+function readGrant(data: Record<string, unknown>): GrantedAccess | undefined {
+  const expires = readDate(data.grantExpiresAt);
+  if (!expires || typeof data.grant !== "string" || !GRANT.test(data.grant)) return undefined;
+  return { grant: new Secret(data.grant), expiresAt: Date.parse(expires) };
+}
+
+/** `access` falta cuando un reintento llega con el permiso inicial ya vencido o revocado. */
+export type CreatedJourney = { id: string; access?: GrantedAccess };
+
+/** Respuesta de `POST /journeys`. Un reintento puede traer solo `id` y `status`. */
 export function readCreatedJourney(data: unknown): CreatedJourney | undefined {
   if (!isRecord(data)) return undefined;
   const id = readUuid(data.id);
-  const expires = readDate(data.grantExpiresAt);
-  if (!id || !expires || typeof data.grant !== "string" || !GRANT.test(data.grant)) return undefined;
-  return { id, grant: new Secret(data.grant), grantExpiresAt: Date.parse(expires) };
+  if (!id) return undefined;
+  if (data.grant === undefined && data.grantExpiresAt === undefined) return { id };
+
+  const access = readGrant(data);
+  return access ? { id, access } : undefined;
+}
+
+/** Respuesta de `POST /continuity-codes/redeem`. */
+export function readRedeemedJourney(data: unknown): { id: string; access: GrantedAccess } | undefined {
+  if (!isRecord(data)) return undefined;
+  const id = readUuid(data.journeyId);
+  const access = readGrant(data);
+  return id && access ? { id, access } : undefined;
+}
+
+// Doce caracteres, agrupados de cuatro en cuatro o seguidos. El alfabeto no se fija aquí.
+const ISSUED_CODE = /^[0-9A-Za-z]{4}(?:-?[0-9A-Za-z]{4}){2}$/;
+
+/** Respuesta de `POST /journeys/:journeyId/continuity-codes`. */
+export function readContinuityCode(data: unknown): ContinuityCode | undefined {
+  if (!isRecord(data)) return undefined;
+  const expiresAt = readDate(data.expiresAt);
+  if (!expiresAt || typeof data.code !== "string" || !ISSUED_CODE.test(data.code)) return undefined;
+  return { code: data.code, expiresAt };
+}
+
+// Alfabeto de los códigos: Base32 sin I, L, O ni U, como el ejemplo del contrato.
+const TYPED_CODE = /^[0-9A-HJKMNP-TV-Z]{12}$/;
+
+/**
+ * Deja el código que escribió el paciente en la forma que acepta el canje: doce caracteres en mayúsculas.
+ * Quita espacios y guiones, y corrige las letras que el alfabeto excluye por parecerse a un número:
+ * O pasa a 0, e I y L pasan a 1. Devuelve `undefined` si aun así no tiene la forma de un código,
+ * para no gastar un intento de canje en el orquestador.
+ */
+export function normalizeContinuityCode(input: string): string | undefined {
+  const code = input
+    .toUpperCase()
+    .replace(/[\s-]/g, "")
+    .replace(/O/g, "0")
+    .replace(/[IL]/g, "1");
+  return TYPED_CODE.test(code) ? code : undefined;
 }
 
 /** Versión del contexto, de la respuesta de `GET /journeys/:journeyId/context`. */
