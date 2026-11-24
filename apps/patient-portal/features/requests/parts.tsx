@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { SubmitButton } from "@/components/submit-button";
 import type { BookingRequest } from "@/lib/domain/model";
-import { STEPS, type Notice } from "./steps";
+import type { Notice, StepInfo } from "./steps";
 
 const TONES = {
   success: "border-success/30 bg-success-soft text-success",
@@ -32,11 +32,13 @@ type RequestFormProps = {
   label: string;
   pendingLabel?: string;
   secondary?: boolean;
+  /** Clases del botón, cuando no es el principal ni el secundario. */
+  className?: string;
   children?: ReactNode;
 };
 
 /** Formulario de una acción de servidor sobre el trámite. Envía siempre la versión que vio el paciente. */
-export function RequestForm({ action, request, values, label, pendingLabel, secondary, children }: RequestFormProps) {
+export function RequestForm({ action, request, values, label, pendingLabel, secondary, className, children }: RequestFormProps) {
   return (
     <form action={action}>
       <input type="hidden" name="id" value={request.id} />
@@ -45,21 +47,28 @@ export function RequestForm({ action, request, values, label, pendingLabel, seco
         <input key={name} type="hidden" name={name} value={value} />
       ))}
       {children}
-      <SubmitButton pendingLabel={pendingLabel ?? "Guardando…"} className={secondary ? secondaryButton : undefined}>
+      <SubmitButton pendingLabel={pendingLabel ?? "Guardando…"} className={className ?? (secondary ? secondaryButton : undefined)}>
         {label}
       </SubmitButton>
     </form>
   );
 }
 
+type ProgressProps = {
+  request: BookingRequest;
+  /** Pasos del flujo que soporta el servicio activo. */
+  steps: StepInfo[];
+  editing?: string;
+};
+
 /** Indicador de avance. El paso actual lo decide el servicio: los anteriores enlazan a su cambio. */
-export function Progress({ request, editing }: { request: BookingRequest; editing?: string }) {
-  const currentIndex = STEPS.findIndex((item) => item.step === request.step);
+export function Progress({ request, steps, editing }: ProgressProps) {
+  const currentIndex = steps.findIndex((item) => item.step === request.step);
 
   return (
     <nav aria-label="Avance del trámite" className="mt-4">
       <ol className="flex flex-wrap gap-2 text-sm">
-        {STEPS.map((item, index) => {
+        {steps.map((item, index) => {
           const done = currentIndex === -1 || index < currentIndex;
           const current = index === currentIndex && !editing;
           const base = "inline-flex min-h-11 items-center rounded-lg border px-3 font-medium";

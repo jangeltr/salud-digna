@@ -1,5 +1,5 @@
 import "server-only";
-import { success, type Result } from "@/lib/domain/errors";
+import { failure, success, type Result } from "@/lib/domain/errors";
 import type { Receipt, RequestEvent, RequestNotifier } from "@/lib/domain/ports";
 import { authorizedRequest } from "../general-api/authorized";
 import type { ApiPath, ApiResult } from "../general-api/client";
@@ -108,6 +108,11 @@ export const legacyRequestNotifier: RequestNotifier = {
         const { code, expiresAt } = result.data;
         return success({ requestId: event.requestId, assistance: { code, expiresAt } });
       }
+
+      case "confirmation-requested":
+      case "request-cancelled":
+        // La API actual pasa sola a pendiente de confirmación y su contrato no ofrece cancelar.
+        return failure("rejected");
     }
   },
 };

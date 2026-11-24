@@ -3,7 +3,7 @@
 import "server-only";
 import { redirect } from "next/navigation";
 import { isUuid } from "@/features/catalog/params";
-import { requestNotifier, requestQuery } from "@/lib/composition";
+import { requestCapabilities, requestNotifier, requestQuery } from "@/lib/composition";
 import type { Result } from "@/lib/domain/errors";
 import type { Receipt } from "@/lib/domain/ports";
 import { clearSessionCookie } from "@/lib/session/cookie";
@@ -48,6 +48,14 @@ async function readTarget(formData: FormData): Promise<{ eventId: string; reques
   return { eventId: newEventId(), requestId, expectedVersion };
 }
 
+/**
+ * Lo que el adaptador activo no soporta tampoco se muestra. Si aun así llega la acción,
+ * vuelve al trámite sin notificar nada.
+ */
+function requireSupport(supported: boolean, requestId: string): void {
+  if (!supported) redirect(requestPath(requestId));
+}
+
 /** Con la sesión inválida, borra la cookie y lleva a /acceso con el trámite como destino. */
 async function endSession(destination: string): Promise<never> {
   await clearSessionCookie();
@@ -66,6 +74,9 @@ async function settle(result: Result<Receipt>, id: string, onSuccess: string): P
       return endSession(requestPath(id));
     case "not-found":
       // La página responde «no encontrado», igual para un trámite inexistente que para uno ajeno.
+      redirect(requestPath(id));
+    case "access-expired":
+      // La página explica que el trámite necesita un permiso nuevo.
       redirect(requestPath(id));
     case "conflict":
       redirect(requestPath(id, "cambio"));
@@ -101,6 +112,13 @@ export async function startRequest(_previous: StartState, formData: FormData): P
     if (created.error.kind === "session") await endSession(returnTo);
     if (created.error.kind !== "unavailable") {
       return { message: "No pudimos crear el trámite. Inténtalo de nuevo." };
+    }
+    if (!requestCapabilities.patientListing) {
+      // Sin lista por paciente no hay cómo comprobar si el trámite se creó. No se reintenta: decide el paciente.
+      return {
+        message:
+          "El servicio no respondió y no pudimos confirmar si el trámite se creó. Si se creó, quedó sin registrar en el portal y no podrás retomarlo aquí. Puedes empezar otro trámite.",
+      };
     }
 
     // Resultado incierto: el trámite pudo crearse. Se consultan los pendientes antes de otro intento.
@@ -139,6 +157,7 @@ export async function startRequest(_previous: StartState, formData: FormData): P
 /** Reanuda un trámite abierto desde este canal. */
 export async function continueRequest(formData: FormData): Promise<void> {
   const target = await readTarget(formData);
+  requireSupport(requestCapabilities.pause, target.requestId);
   const result = await requestNotifier.notify({ type: "request-resumed", ...target });
   await settle(result, target.requestId, requestPath(target.requestId));
 }
@@ -163,6 +182,7 @@ export async function chooseClinic(formData: FormData): Promise<void> {
 
 export async function chooseSlot(formData: FormData): Promise<void> {
   const target = await readTarget(formData);
+  requireSupport(requestCapabilities.slot, target.requestId);
   const scheduledAt = field(formData, "scheduledAt");
   // Solo se aceptan horarios de la rejilla que sigan siendo futuros.
   if (!isOfferedSlot(scheduledAt)) redirect(requestPath(target.requestId, "invalido"));
@@ -173,6 +193,7 @@ export async function chooseSlot(formData: FormData): Promise<void> {
 
 export async function saveNotes(formData: FormData): Promise<void> {
   const target = await readTarget(formData);
+  requireSupport(requestCapabilities.note, target.requestId);
   const notes = field(formData, "notes").trim();
   if (notes.length > NOTES_MAX) redirect(requestPath(target.requestId, "invalido"));
 
@@ -184,14 +205,32 @@ export async function saveNotes(formData: FormData): Promise<void> {
 /** «Guardar y continuar después»: registra la pausa y conserva las selecciones. */
 export async function pauseAndLeave(formData: FormData): Promise<void> {
   const target = await readTarget(formData);
+  requireSupport(requestCapabilities.pause, target.requestId);
   const result = await requestNotifier.notify({ type: "request-paused", ...target });
   await settle(result, target.requestId, `${PENDING_PATH}?aviso=guardado`);
 }
 
 export async function confirmAppointment(formData: FormData): Promise<void> {
   const target = await readTarget(formData);
+  requireSupport(requestCapabilities.patientConfirmation, target.requestId);
   const result = await requestNotifier.notify({ type: "appointment-confirmed", ...target });
   await settle(result, target.requestId, requestPath(target.requestId));
+}
+
+/** «Enviar a confirmación»: el paciente termina sus selecciones y la cita la confirma un canal de atención. */
+export async function requestConfirmation(formData: FormData): Promise<void> {
+  const target = await readTarget(formData);
+  requireSupport(!requestCapabilities.patientConfirmation, target.requestId);
+  const result = await requestNotifier.notify({ type: "confirmation-requested", ...target });
+  await settle(result, target.requestId, requestPath(target.requestId, "enviado"));
+}
+
+/** «Cancelar trámite». La pantalla pide confirmación antes de mostrar el formulario que llega aquí. */
+export async function cancelRequest(formData: FormData): Promise<void> {
+  const target = await readTarget(formData);
+  requireSupport(requestCapabilities.cancellation, target.requestId);
+  const result = await requestNotifier.notify({ type: "request-cancelled", ...target });
+  await settle(result, target.requestId, requestPath(target.requestId, "cancelado"));
 }
 
 export type AssistanceState = {
@@ -209,6 +248,7 @@ export async function requestAssistance(_previous: AssistanceState, formData: Fo
   const id = field(formData, "id");
   if (!isUuid(id)) redirect(PENDING_PATH);
   if (!(await hasSessionCookie())) redirect(signInUrl(requestPath(id)));
+  requireSupport(requestCapabilities.advisorHelp, id);
 
   const result = await requestNotifier.notify({ type: "help-requested", eventId: newEventId(), requestId: id });
   if (result.ok) {
@@ -217,7 +257,7 @@ export async function requestAssistance(_previous: AssistanceState, formData: Fo
     return { code: assistance.code, expiresAt: formatClock(assistance.expiresAt) };
   }
   if (result.error.kind === "session") await endSession(requestPath(id));
-  if (result.error.kind === "not-found") redirect(requestPath(id));
+  if (result.error.kind === "not-found" || result.error.kind === "access-expired") redirect(requestPath(id));
   if (result.error.kind === "conflict") redirect(requestPath(id, "cambio"));
   return { message: ASSISTANCE_FAILED };
 }

@@ -8,10 +8,11 @@ Las instrucciones anteriores valen para todo el monorepo. Lo que sigue aplica so
 
 Sitio web con Next.js, TypeScript y Tailwind. Las decisiones vigentes y sus motivos están en `apps/patient-portal/docs/decisions.md`. Léelo antes de cambiar la sesión, el canal, las interfaces o los adaptadores, y actualízalo en el mismo cambio si una decisión cambia.
 
-Desde el 2026-11-24 el portal es solo web. El proyecto cambió de arquitectura: el portal simula el canal Web existente y habla con dos servicios, la API general y un orquestador que aún no tiene contrato. Por eso se retiró la PWA instalable que tuvo hasta esa fecha. Su rastro está en la sección «Decisiones retiradas» de ese documento.
+Desde el 2026-11-24 el portal es solo web. El proyecto cambió de arquitectura: el portal simula el canal Web existente y habla con dos servicios, la API general y el orquestador. Por eso se retiró la PWA instalable que tuvo hasta esa fecha. Su rastro está en la sección «Decisiones retiradas» de ese documento.
 
 - Deja fuera el manifiesto, el service worker, los iconos de instalación y cualquier interfaz para un modo instalado.
-- El orquestador aún no tiene contrato. Las interfaces del trámite las atiende hoy `lib/adapters/legacy-requests`, sobre la API actual. Espera al contrato antes de escribir su adaptador.
+- `REQUESTS_BACKEND` elige quién registra los trámites: `legacy`, por defecto, usa `lib/adapters/legacy-requests` sobre la API actual; `orchestrator` usa `lib/adapters/orchestrator`. El comportamiento del modo heredado no cambia.
+- El contrato del orquestador está en `apps/orchestrator/docs/`. Lo que no cubre se oculta: no se guarda en el portal ni se copia a la API general.
 
 ## Alcance
 
@@ -26,10 +27,13 @@ Desde el 2026-11-24 el portal es solo web. El proyecto cambió de arquitectura: 
 - El token queda fuera de páginas y acciones: el adaptador lo toma del módulo de sesión.
 - Cada acción del paciente sobre un trámite se notifica como evento de negocio con `requestNotifier.notify` y un `eventId` nuevo. La pantalla vuelve a consultar el estado con `requestQuery`.
 - Los eventos llevan la versión que vio el paciente. Ante el error `conflict`, vuelve a consultar el trámite antes de reintentar.
+- Cada adaptador del trámite declara sus capacidades. Las pantallas muestran solo lo que declara `requestCapabilities` y cada acción lo comprueba otra vez en el servidor.
+- La clave del canal y los permisos de trámite del orquestador son secretos: quedan fuera de logs, errores, respuestas, cookies y disco. Los permisos viven solo en memoria.
+- En modo orquestador, toda lectura o escritura de un trámite comprueba antes en el registro del canal Web que pertenece al paciente de la sesión.
 - El contrato de la API general es `docs/openapi.json`. Léelo en su ubicación, sin copiarlo al portal. `lib/adapters/` y `mocks/` usan solo operaciones y propiedades de ese archivo.
 - Toda llamada a un servicio sale del servidor de Next. El JWT vive en una cookie `HttpOnly` y queda fuera del código del navegador.
 - Cada página nueva de `(account)` o `(booking)` llama a `requireAccount()` y registra su prefijo en `lib/session/routes.ts`.
-- Las pruebas locales usan un puerto distinto de 5173 y una API simulada. Contra la API desplegada, solo con autorización y contando cada llamada a registro y acceso.
+- Las pruebas locales usan un puerto distinto de 5173 y servicios simulados. Contra servicios desplegados, solo con autorización y contando cada llamada a registro y acceso.
 - Si el portal necesita algo que el contrato no ofrece, repórtalo en lugar de simularlo con campos inventados.
 
 ## Convenciones

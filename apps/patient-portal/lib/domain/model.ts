@@ -77,7 +77,8 @@ export type BookingRequest = {
   status: RequestStatus;
   step: RequestStep;
   selections: Selections;
-  lastChannel: Channel;
+  /** Falta cuando el servicio no informa qué canal registró la última actividad. */
+  lastChannel?: Channel;
   /** Fecha y hora en ISO 8601. */
   lastActivityAt: string;
   createdAt: string;
@@ -85,9 +86,23 @@ export type BookingRequest = {
   version: number;
 };
 
-/** Entrada del historial de un trámite. Aún no la usa ninguna pantalla ni interfaz. */
+/**
+ * Trámite que el portal sabe que es del paciente, pero que no puede consultar:
+ * su permiso falta o venció. No lleva ningún dato del trámite.
+ */
+export type LockedRequest = {
+  id: string;
+  /** Cuándo lo registró el portal, en ISO 8601. */
+  registeredAt: string;
+};
+
+/** Trámites abiertos del paciente. `locked` solo aparece con servicios que exigen un permiso por trámite. */
+export type PendingPage = Page<BookingRequest> & { locked?: LockedRequest[] };
+
+/** Entrada del historial de un trámite. */
 export type HistoryEntry = {
   id: string;
+  /** `other` cubre cualquier evento que el portal no sabe nombrar. */
   kind:
     | "created"
     | "selections-updated"
@@ -95,11 +110,26 @@ export type HistoryEntry = {
     | "resumed"
     | "channel-switched"
     | "status-changed"
-    | "appointment-confirmed";
+    | "appointment-confirmed"
+    | "other";
+  /** Canal que produjo el evento. */
   channel: Channel;
-  actor: "patient" | "advisor" | "admin" | "system";
+  /** Nombre con el que el servicio identifica al canal. Se muestra cuando `channel` es `other`. */
+  channelCode?: string;
+  actor?: "patient" | "advisor" | "admin" | "system";
   occurredAt: string;
+  /** Solo en `selections-updated`: paso en el que quedó el trámite. */
+  step?: RequestStep;
+  /** Solo en `status-changed`. */
+  from?: RequestStatus;
+  to?: RequestStatus;
 };
+
+/** `cursor` es el valor de `nextCursor` de la página anterior. */
+export type HistoryQuery = { limit: number; cursor?: string };
+
+/** Página del historial, del evento más antiguo al más reciente. */
+export type HistoryPage = { items: HistoryEntry[]; nextCursor?: string };
 
 export type Appointment = {
   id: string;

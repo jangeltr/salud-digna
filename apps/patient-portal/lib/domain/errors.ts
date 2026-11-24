@@ -8,7 +8,10 @@
  * - `rate-limited`: límite de intentos excedido.
  * - `invalid`: el servicio rechazó los datos enviados.
  * - `unavailable`: no hubo respuesta útil. En una escritura, el resultado es incierto.
- * - `rejected`: el servicio respondió y rechazó la operación por un motivo que el portal no distingue.
+ * - `rejected`: el servicio respondió y rechazó la operación por un motivo que el portal no distingue,
+ *   o el adaptador activo no la soporta.
+ * - `access-expired`: el trámite es del paciente, pero el portal no tiene un permiso vigente para
+ *   consultarlo ni modificarlo.
  */
 export type ErrorKind =
   | "not-found"
@@ -17,7 +20,8 @@ export type ErrorKind =
   | "rate-limited"
   | "invalid"
   | "unavailable"
-  | "rejected";
+  | "rejected"
+  | "access-expired";
 
 export type PortalError = {
   kind: ErrorKind;

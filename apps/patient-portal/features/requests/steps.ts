@@ -1,4 +1,5 @@
-import type { BookingRequest, Channel, RequestStep } from "@/lib/domain/model";
+import type { BookingRequest, Channel, RequestStatus, RequestStep } from "@/lib/domain/model";
+import type { RequestCapabilities } from "@/lib/domain/ports";
 
 /** Dato ya elegido que el paciente puede cambiar. Es el valor del parámetro `cambiar`. */
 export type Editable = "estudio" | "clinica" | "horario";
@@ -12,6 +13,23 @@ export const STEPS: StepInfo[] = [
   { step: "datetime", label: "Fecha y hora", editable: "horario" },
   { step: "review", label: "Revisión" },
 ];
+
+/** Pasos que muestra el portal. Sin horario, el flujo es estudio, clínica y revisión. */
+export function flowSteps(capabilities: RequestCapabilities): StepInfo[] {
+  return capabilities.slot ? STEPS : STEPS.filter((item) => item.step !== "datetime");
+}
+
+const STATUS_NAMES: Record<RequestStatus, string> = {
+  draft: "Borrador",
+  "in-progress": "En curso",
+  "pending-confirmation": "Pendiente de confirmación",
+  completed: "Completado",
+  cancelled: "Cancelado",
+};
+
+export function statusName(status: RequestStatus): string {
+  return STATUS_NAMES[status] ?? status;
+}
 
 export function stepLabel(step: RequestStep): string {
   if (step === "confirmed") return "Cita confirmada";
@@ -47,6 +65,12 @@ export function channelName(channel: Channel): string {
   return CHANNEL_NAMES[channel] ?? "otro canal";
 }
 
+/** «Última actividad…». Sin canal conocido solo se indica el tiempo transcurrido. */
+export function lastActivity(request: BookingRequest, now: Date = new Date()): string {
+  const when = timeAgo(request.lastActivityAt, now);
+  return request.lastChannel ? `Última actividad en ${channelName(request.lastChannel)}, ${when}.` : `Última actividad ${when}.`;
+}
+
 const relative = new Intl.RelativeTimeFormat("es", { numeric: "always" });
 
 /** Tiempo transcurrido en lenguaje natural: "hace 2 horas". */
@@ -69,6 +93,10 @@ const RECENT_MS = 5 * 60 * 1000;
 export function continuityNotice(request: BookingRequest, now: Date = new Date()): string | undefined {
   if (!isOpen(request)) return undefined;
   const age = now.getTime() - Date.parse(request.lastActivityAt);
+  // Sin canal conocido solo cuenta el tiempo transcurrido.
+  if (!request.lastChannel) {
+    return age < RECENT_MS ? undefined : `Dejaste este trámite ${timeAgo(request.lastActivityAt, now)}.`;
+  }
   if (request.lastChannel === "web" && age < RECENT_MS) return undefined;
   return `Dejaste este trámite en ${channelName(request.lastChannel)} ${timeAgo(request.lastActivityAt, now)}.`;
 }
@@ -81,6 +109,8 @@ const NOTICES = {
   estudio: { tone: "warning", text: "No pudimos añadir el estudio elegido. Selecciónalo de nuevo en la lista." },
   nota: { tone: "success", text: "Nota guardada." },
   guardado: { tone: "success", text: "Tu trámite quedó guardado. Puedes continuarlo cuando quieras." },
+  enviado: { tone: "success", text: "Tu trámite se envió a confirmación." },
+  cancelado: { tone: "success", text: "Trámite cancelado." },
 } as const;
 
 export type Notice = (typeof NOTICES)[keyof typeof NOTICES];

@@ -1,0 +1,85 @@
+import "server-only";
+import { failure, success } from "@/lib/domain/errors";
+import type { BookingRequest, LockedRequest } from "@/lib/domain/model";
+import type { RequestQuery } from "@/lib/domain/ports";
+import { callWithGrant, readRequest, resolveAccess, type OrchestratorDependencies } from "./access";
+import { reportUnexpectedBody } from "./client";
+import { toFailure } from "./failures";
+import { findGrant } from "./grants";
+import { toHistoryPage } from "./mapping";
+import { listRegistered, reportRegistryFailure, type RegistryEntry } from "./registry";
+
+/**
+ * Consulta del trámite sobre el orquestador. El orquestador no lista los trámites de un paciente:
+ * la lista sale del registro del canal Web, y de cada trámite solo se lee el estado si hay permiso vigente.
+ */
+export function createOrchestratorQuery(deps: OrchestratorDependencies): RequestQuery {
+  return {
+    async listPending({ page, limit }) {
+      const patient = await deps.currentPatient();
+      if (!patient.ok) return patient;
+      const { accountId } = patient.data;
+
+      let open: RegistryEntry[];
+      try {
+        open = (await listRegistered(accountId)).filter((entry) => !entry.closedAt);
+      } catch {
+        reportRegistryFailure("leer");
+        return failure("unavailable");
+      }
+
+      const slice = open.slice((page - 1) * limit, page * limit);
+      const reads = await Promise.all(
+        slice.map(async (entry) => {
+          const grant = findGrant(accountId, entry.id);
+          return grant ? readRequest({ accountId, requestId: entry.id, grant }) : failure("access-expired");
+        }),
+      );
+
+      const items: BookingRequest[] = [];
+      const locked: LockedRequest[] = [];
+      for (const [index, read] of reads.entries()) {
+        const entry = slice[index];
+        if (read.ok) {
+          // Un trámite que resultó cerrado ya quedó anotado en el registro y sale de los pendientes.
+          if (read.data.status !== "completed" && read.data.status !== "cancelled") items.push(read.data);
+        } else if (read.error.kind === "access-expired") {
+          locked.push({ id: entry.id, registeredAt: entry.createdAt });
+        } else {
+          return read;
+        }
+      }
+
+      return success({ items, locked, hasMore: open.length > page * limit });
+    },
+
+    async getRequest(id) {
+      const access = await resolveAccess(deps, id);
+      return access.ok ? readRequest(access.data) : access;
+    },
+
+    // El contexto puede traer `appointmentId`, pero ningún evento del contrato lo escribe.
+    async getAppointment() {
+      return success(undefined);
+    },
+
+    async getHistory(requestId, { limit, cursor }) {
+      const access = await resolveAccess(deps, requestId);
+      if (!access.ok) return access;
+
+      const result = await callWithGrant(access.data, {
+        method: "GET",
+        path: "/journeys/:journeyId/history",
+        query: { limit, cursor },
+      });
+      if (!result.ok) return toFailure(result);
+
+      const history = toHistoryPage(result.data);
+      if (!history) {
+        reportUnexpectedBody("GET", "/journeys/:journeyId/history");
+        return failure("unavailable");
+      }
+      return success(history);
+    },
+  };
+}

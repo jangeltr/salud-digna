@@ -6,9 +6,12 @@ import type {
   CatalogQuery,
   Clinic,
   Credentials,
+  HistoryPage,
+  HistoryQuery,
   Page,
   PageQuery,
   Patient,
+  PendingPage,
   Registration,
   Study,
 } from "./model";
@@ -16,7 +19,7 @@ import type {
 /**
  * Las tres interfaces internas del portal. Páginas, acciones y componentes las usan
  * a través de `lib/composition.ts`, que es el único archivo que conoce quién las implementa.
- * Ninguna recibe el token: cada adaptador lo toma del módulo de sesión.
+ * Ninguna recibe el token ni ninguna otra credencial: cada adaptador obtiene las suyas.
  */
 
 /** Datos generales: catálogo, perfil del paciente, acceso y registro. */
@@ -53,7 +56,34 @@ export type RequestEvent =
   | (OnRequest & { type: "request-paused" })
   | (OnRequest & { type: "request-resumed" })
   | (OnRequest & { type: "appointment-confirmed" })
-  | (OnRequest & { type: "help-requested" });
+  | (OnRequest & { type: "help-requested" })
+  /** El paciente da por completas sus selecciones y pide que un canal de atención confirme la cita. */
+  | (OnRequest & { type: "confirmation-requested" })
+  | (OnRequest & { type: "request-cancelled" });
+
+/**
+ * Lo que soporta el adaptador activo del trámite. Las pantallas muestran solo lo soportado
+ * y las acciones rechazan lo demás sin notificar nada.
+ */
+export type RequestCapabilities = {
+  /** Elegir fecha y hora. */
+  slot: boolean;
+  /** Guardar una nota para la clínica. */
+  note: boolean;
+  /** Pausar y reanudar el trámite. */
+  pause: boolean;
+  /** Pedir un código de asistencia para terminar con un asesor. */
+  advisorHelp: boolean;
+  /** El paciente confirma la cita por su cuenta. Sin esto, la envía a confirmación. */
+  patientConfirmation: boolean;
+  cancellation: boolean;
+  history: boolean;
+  /**
+   * El servicio lista los trámites por paciente, también los de otros canales. Sin esto, la lista
+   * sale del registro del portal y un inicio de trámite con resultado incierto no se puede comprobar.
+   */
+  patientListing: boolean;
+};
 
 /** Acuse de un evento. No es el estado del trámite: el portal lo consulta después. */
 export type Receipt = {
@@ -70,6 +100,7 @@ export interface RequestNotifier {
   /**
    * Con el error `unavailable` el resultado es incierto: el evento pudo haberse aplicado.
    * Antes de reintentar hay que consultar el estado.
+   * Un evento que el adaptador no soporta devuelve `rejected` sin llamar a ningún servicio.
    */
   notify(event: RequestEvent): Promise<Result<Receipt>>;
 }
@@ -77,8 +108,10 @@ export interface RequestNotifier {
 /** Consulta del trámite: último estado registrado del paciente de la sesión actual. */
 export interface RequestQuery {
   /** Trámites abiertos del paciente. */
-  listPending(query: PageQuery): Promise<Result<Page<BookingRequest>>>;
+  listPending(query: PageQuery): Promise<Result<PendingPage>>;
   getRequest(id: string): Promise<Result<BookingRequest>>;
   /** Cita asociada a un trámite confirmado. `undefined` si no existe. */
   getAppointment(requestId: string): Promise<Result<Appointment | undefined>>;
+  /** Historial del trámite. Solo lo atienden los adaptadores que declaran `history`. */
+  getHistory(requestId: string, query: HistoryQuery): Promise<Result<HistoryPage>>;
 }

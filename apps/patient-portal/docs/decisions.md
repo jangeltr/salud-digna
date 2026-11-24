@@ -2,15 +2,15 @@
 
 `apps/patient-portal/` es la web pública del paciente. Usa Next.js, TypeScript y Tailwind CSS. Desde el 2026-11-24 es solo un sitio web, como explica «El portal es solo un sitio web».
 
-Este documento registra las decisiones del portal y el estado de la API del que dependen. El estado corresponde al contrato y a las guías publicados en `main` el 2026-11-22. El documento vive junto a la aplicación porque cada equipo mantiene la documentación de la suya, según la [guía de revisión de pull requests](../../../docs/revision-pull-requests.md).
+Este documento registra las decisiones del portal y el estado de la API del que dependen. El estado corresponde al contrato y a las guías publicados en `main` el 2026-11-22, y al contrato del orquestador publicado en `main` el 2026-11-24. El documento vive junto a la aplicación porque cada equipo mantiene la documentación de la suya, según la [guía de revisión de pull requests](../../../docs/revision-pull-requests.md).
 
-El portal tiene su carcasa, con identidad, rutas y un encabezado con la navegación, además de registro, acceso, sesión, catálogo y trámite de agendamiento contra la API. `/mi-espacio`, `/citas`, `/citas/[id]` y `/ayuda` muestran solo su título.
+El portal tiene su carcasa, con identidad, rutas y un encabezado con la navegación, además de registro, acceso, sesión, catálogo y trámite de agendamiento contra la API. El trámite puede registrarse también en el orquestador, como explica «Adaptador del orquestador». `/mi-espacio`, `/citas`, `/citas/[id]` y `/ayuda` muestran solo su título.
 
 Las decisiones que dejaron de aplicarse se conservan al final, en «Decisiones retiradas», con su fecha y su motivo.
 
 ## Contrato
 
-El contrato oficial es [`docs/openapi.json`](../../../docs/openapi.json). El portal lo lee en esa ubicación y evita copiarlo. `lib/adapters/` y `mocks/` se rigen por ese archivo. Es el contrato de la API general. El orquestador aún no tiene contrato, como explica «Dos servicios y tres interfaces».
+El contrato oficial es [`docs/openapi.json`](../../../docs/openapi.json). El portal lo lee en esa ubicación y evita copiarlo. `lib/adapters/` y `mocks/` se rigen por ese archivo. Es el contrato de la API general. El del orquestador está en `apps/orchestrator/docs/`, como explica «Adaptador del orquestador».
 
 **Regla.** El portal usa únicamente operaciones y propiedades que figuran en `docs/openapi.json`. Lo que falte se reporta al equipo de API con método, ruta, rol y código HTTP, y queda pendiente en el portal hasta que exista un contrato acordado. Así lo piden [AGENTS.md](../../../AGENTS.md) y la [guía de integración](../../../docs/INTEGRACION-FRONTENDS.md), sección «Inconsistencias y trabajo con agentes».
 
@@ -90,7 +90,7 @@ Tailwind CSS 4 se carga con `@tailwindcss/postcss` y `@import "tailwindcss"` en 
 
 **Qué cambió.** Se retiraron el manifiesto, los iconos de instalación, la barra inferior del modo instalado, las reglas CSS de ese modo y la carpeta reservada para detectarlo. La navegación pasó a un único encabezado, descrito en «Navegación». El detalle de lo retirado está en «Decisiones retiradas».
 
-**Efecto sobre el resto del documento.** Las secciones sobre la API describen la API actual. El código la sigue usando para todo mientras el orquestador no tenga contrato.
+**Efecto sobre el resto del documento.** Las secciones sobre la API describen la API actual. Con `REQUESTS_BACKEND=legacy`, el valor por defecto, el código la usa para todo. «Adaptador del orquestador» describe el otro modo.
 
 ### Dos servicios y tres interfaces
 
@@ -101,11 +101,11 @@ Tailwind CSS 4 se carga con `@tailwindcss/postcss` y `@import "tailwindcss"` en 
 | Servicio | Qué atiende | Contrato |
 | --- | --- | --- |
 | API general | Datos del paciente, catálogo y acceso. Es la API actual. | `docs/openapi.json`. |
-| Orquestador | Recibe de cada canal mensajes JSON con los cambios del trámite. Cada canal le consulta el último estado registrado de un paciente. | Aún no existe. |
+| Orquestador | Recibe de cada canal mensajes JSON con los cambios del trámite. Cada canal le consulta el último estado registrado de un trámite. | `apps/orchestrator/docs/journey-writes.md` y `journey-queries.md`. Sin OpenAPI. |
 
-El portal es el simulador del canal Web. Hacia el orquestador tendrá dos módulos: notificar y consultar. Mientras el orquestador no tenga contrato, esos dos módulos se atienden con las operaciones `/requests` de la API actual.
+El portal es el simulador del canal Web. Hacia el orquestador tiene dos módulos: notificar y consultar. `REQUESTS_BACKEND` decide quién los atiende: las operaciones `/requests` de la API actual, por defecto, o el orquestador.
 
-**Modelo propio.** `lib/domain/model.ts` define paciente, estudio, clínica, trámite, entrada de historial y cita con el vocabulario del portal. El trámite lleva estado, paso, selecciones, último canal, última actividad y versión. La entrada de historial está definida y todavía sin uso.
+**Modelo propio.** `lib/domain/model.ts` define paciente, estudio, clínica, trámite, entrada de historial y cita con el vocabulario del portal. El trámite lleva estado, paso, selecciones, último canal, última actividad y versión. El último canal falta cuando el servicio no lo informa. La entrada de historial la usa `/tramite/[id]/historial`.
 
 **Errores propios.** `lib/domain/errors.ts` define los errores que devuelven las interfaces.
 
@@ -117,17 +117,18 @@ El portal es el simulador del canal Web. Hacia el orquestador tendrá dos módul
 | `rate-limited` | Límite de intentos excedido, con los segundos de espera si el servicio los indica. |
 | `invalid` | El servicio rechazó los datos enviados. |
 | `unavailable` | No hubo respuesta útil. En una escritura, el resultado es incierto. |
-| `rejected` | El servicio respondió y rechazó la operación por un motivo que el portal no distingue. |
+| `rejected` | El servicio respondió y rechazó la operación por un motivo que el portal no distingue, o el adaptador activo no la soporta. |
+| `access-expired` | El trámite es del paciente, pero el portal no tiene un permiso vigente para consultarlo ni modificarlo. Solo lo devuelve el adaptador del orquestador. |
 
 `rejected` existe porque la API actual documenta `403` en todas las operaciones del trámite. El portal ya trataba ese caso como un rechazo seguro, distinto de «servicio no disponible»: al crear un trámite muestra el error sin consultar los pendientes.
 
 **Las tres interfaces.** Están en `lib/domain/ports.ts`. Todas devuelven `Result`, que es el dato o uno de los errores anteriores.
 
-| Interfaz | Operaciones | Quién la implementa hoy |
+| Interfaz | Operaciones | Quién la implementa |
 | --- | --- | --- |
 | `GeneralData`, datos generales | `listStudies`, `getStudy`, `listClinics`, `getClinic`, `getProfile`, `signIn`, `signUp` | `lib/adapters/general-api/general-data.ts` |
-| `RequestNotifier`, notificación del trámite | `notify(event)` | `lib/adapters/legacy-requests/notifier.ts` |
-| `RequestQuery`, consulta del trámite | `listPending`, `getRequest`, `getAppointment` | `lib/adapters/legacy-requests/query.ts` |
+| `RequestNotifier`, notificación del trámite | `notify(event)` | `notifier.ts` de `lib/adapters/legacy-requests` o de `lib/adapters/orchestrator` |
+| `RequestQuery`, consulta del trámite | `listPending`, `getRequest`, `getAppointment`, `getHistory` | `query.ts` de las mismas carpetas |
 
 `signIn` comprueba las credenciales y deja abierta la sesión del portal. `signUp` crea la cuenta sin abrir la sesión. Las consultas del trámite se refieren siempre al paciente de la sesión actual.
 
@@ -144,43 +145,152 @@ El portal es el simulador del canal Web. Hacia el orquestador tendrá dos módul
 | `request-resumed` | «Continuar este trámite» | `POST /requests/{id}/resume` |
 | `appointment-confirmed` | «Confirmar mi cita» | `POST /requests/{id}/confirm` |
 | `help-requested` | «Pedir ayuda a un asesor» | `POST /requests/{id}/assistance-code` |
+| `confirmation-requested` | «Enviar a confirmación» | Ninguna: la API actual pasa sola a pendiente de confirmación. |
+| `request-cancelled` | «Cancelar trámite» | Ninguna: el contrato no ofrece cancelar. |
 
-Cada evento lleva un `eventId` único, que la acción genera al ejecutarse, el identificador del trámite y, de forma opcional, la versión que vio el paciente en `expectedVersion`. Empezar un trámite desde un estudio emite dos eventos: `request-started` y `study-chosen`.
+Cada evento lleva un `eventId` único, que la acción genera al ejecutarse, el identificador del trámite y, de forma opcional, la versión que vio el paciente en `expectedVersion`. Empezar un trámite desde un estudio emite dos eventos: `request-started` y `study-chosen`. Un evento que el adaptador activo no soporta devuelve `rejected` sin llamar a ningún servicio.
 
 La notificación devuelve un acuse, no el estado del trámite: el identificador del trámite, la versión resultante si el servicio la informa y, en `help-requested`, el código de asistencia. Después de cada evento la página vuelve a consultar el trámite. Con el error `unavailable` el resultado es incierto, así que el portal consulta los pendientes antes de permitir otro intento.
 
 **El adaptador heredado.** `lib/adapters/legacy-requests` traduce cada evento a la operación de la tabla. Acepta el `eventId` y lo ignora, porque la API actual no tiene dónde recibirlo. La API actual exige la versión en cada escritura: si el evento no la trae, el adaptador lee antes la vigente.
 
-**Composición.** `lib/composition.ts` decide qué adaptador atiende cada interfaz y es el único archivo que conoce las implementaciones. Exporta `generalData`, `requestNotifier` y `requestQuery`, y `checkConfiguration()` para el arranque.
+**Composición.** `lib/composition.ts` decide qué adaptador atiende cada interfaz, según `REQUESTS_BACKEND`, y es el único archivo que conoce las implementaciones. Exporta `generalData`, `requestNotifier`, `requestQuery` y `requestCapabilities`, y `checkConfiguration()` para el arranque.
 
 **Reglas de dependencia.**
 
 - Páginas, acciones y componentes importan solo `lib/domain` y `lib/composition.ts`.
 - Los tipos generados del contrato y los códigos HTTP solo aparecen dentro de `lib/adapters`. `failures.ts` es la única traducción de códigos HTTP a errores del portal.
 - El token queda fuera de páginas y acciones. `authorized.ts` lo lee del módulo de sesión en cada llamada, y `signIn` lo guarda en la cookie sin devolverlo.
+- La clave del canal y los permisos de trámite del orquestador tampoco salen de su adaptador.
+- Las pantallas muestran solo lo que declara `requestCapabilities`, y las acciones lo comprueban de nuevo en el servidor.
 
-**Qué habrá que escribir cuando exista el contrato del orquestador.**
+**Estado.** El adaptador del orquestador ya existe para la parte firme de su contrato. El heredado se conserva y sigue siendo el modo por defecto. La sección siguiente describe qué resolvió el contrato y qué sigue abierto.
 
-1. Un adaptador en `lib/adapters/orchestrator/` que implemente `RequestNotifier`: serializa cada evento al mensaje JSON del contrato, con su `eventId`, y traduce la respuesta a un acuse o a un error propio.
-2. En el mismo adaptador, una implementación de `RequestQuery` que lea el último estado registrado del paciente y lo traduzca a `BookingRequest`.
-3. Su cliente HTTP, su variable de entorno con la URL, validada en `checkConfiguration()`, y su forma de autenticarse.
-4. El cambio de dos líneas en `lib/composition.ts`.
-5. Una API simulada del orquestador para las pruebas.
+### Adaptador del orquestador
 
-Después se podrá borrar `lib/adapters/legacy-requests`.
+**Fecha.** 2026-11-24.
 
-**Puntos que el contrato debe resolver.** Hoy dependen de cómo funciona la API actual.
+**Contrato.** `apps/orchestrator/docs/journey-writes.md`, `journey-queries.md` y `data-model.md`, y `apps/orchestrator/README.md`, tal como están en `main` en el commit `4958614`. El orquestador no publica un OpenAPI, así que este adaptador no tiene tipos generados: `mapping.ts` comprueba la forma de cada respuesta antes de usarla.
 
-| Punto | Cómo funciona hoy |
+**Decisiones del propietario del portal.**
+
+- Lo que el orquestador no soporta se oculta. El portal no guarda la fecha ni la nota por su cuenta y no crea copias del trámite en la API general.
+- La adopción de trámites iniciados en otro canal y la carpeta de traspaso quedan para después.
+
+**Selección.** `REQUESTS_BACKEND` decide quién atiende `RequestNotifier` y `RequestQuery`: `legacy`, por defecto, o `orchestrator`. `lib/composition.ts` lee la variable al cargar el servidor. Acceso, perfil y catálogo siguen en la API general en los dos modos. Un valor distinto de esos dos detiene el arranque.
+
+**Capacidades.** Cada adaptador declara lo que soporta en su `capabilities.ts`, y `lib/composition.ts` exporta las del adaptador activo como `requestCapabilities`. Las pantallas muestran solo lo soportado. Cada acción lo comprueba otra vez en el servidor con `requireSupport`: si llega una acción no soportada, vuelve al trámite sin notificar nada.
+
+| Capacidad | Heredado | Orquestador | Motivo en el orquestador |
+| --- | --- | --- | --- |
+| `slot`, horario | Sí | No | El contexto solo admite `studyId` y `clinicId`. Cualquier otro campo se rechaza. |
+| `note`, nota | Sí | No | El mismo. |
+| `pause`, pausa y reanudación | Sí | No | Sin estado ni evento de pausa. |
+| `advisorHelp`, ayuda de asesor | Sí | No | Sin código de asistencia. |
+| `patientConfirmation`, confirmación por el paciente | Sí | No | Ningún evento lleva el trámite a `COMPLETED`. |
+| `cancellation`, cancelación | No | Sí | `JOURNEY_STATUS_CHANGED` a `CANCELLED`. La API general no tiene operación. |
+| `history`, historial | No | Sí | `GET /journeys/:journeyId/history`. |
+| `patientListing`, lista por paciente | Sí | No | Sin consulta de los trámites de un paciente. |
+
+`patientListing` es una capacidad añadida a las siete pedidas. De ella dependen el texto de `/continuar` y lo que ocurre tras un inicio de trámite con resultado incierto.
+
+**Eventos.**
+
+| Evento | Llamada al orquestador |
 | --- | --- |
-| Quién crea el identificador del trámite | El servicio. El portal lo recibe en el acuse de `request-started`. |
-| Versión del trámite | El servicio exige la versión en cada escritura y la devuelve. El modelo la tiene como obligatoria. |
-| Reintento de un evento | Sin deduplicación. Tras un resultado incierto, el portal consulta los pendientes en lugar de reenviar el mismo `eventId`. |
-| Código de asistencia | Lo emite el servicio y llega en el acuse de `help-requested`. |
-| Cita de un trámite | Sin consulta directa. El adaptador recorre el listado de citas del paciente. |
-| Identidad del paciente | La consulta usa el token de la API general. |
-| Vocabulario de estados, pasos y canales | El adaptador traduce los valores de la API actual a los del modelo. |
+| `request-started` | `POST /journeys` con `{"type":"APPOINTMENT"}`. El `eventId` no viaja: la ruta rechaza cualquier otro campo. |
+| `study-chosen`, `clinic-chosen` | `POST /events` con `JOURNEY_CONTEXT_UPDATED`. |
+| `confirmation-requested` | `POST /events` con `JOURNEY_STATUS_CHANGED` a `PENDING_CONFIRMATION`. |
+| `request-cancelled` | `POST /events` con `JOURNEY_STATUS_CHANGED` a `CANCELLED`. |
+| Los otros seis | Ninguna. El adaptador devuelve `rejected` sin llamar. |
 
+Cada `POST /events` lleva el `eventId` como `externalEventId`, `schemaVersion: 1`, `expectedVersion` con la versión que vio el paciente y `occurredAt` en UTC con milisegundos. Antes de publicar un estudio o una clínica, el adaptador comprueba en el catálogo de la API general que existe: el orquestador guarda referencias opacas y no las valida.
+
+**Lectura.** `getRequest` hace dos consultas, `GET /journeys/:journeyId` y `…/context`, y las une en el trámite del modelo. No son atómicas entre sí: un evento de otro canal puede caer entre ambas. El orquestador no informa del último canal, así que `lastChannel` queda vacío y el aviso de continuidad solo indica el tiempo transcurrido. `getAppointment` devuelve siempre «sin cita»: el contexto puede traer `appointmentId`, pero ningún evento lo escribe. `getHistory` lee `…/history` con `limit` y `cursor`.
+
+**Respuestas del orquestador.** `failures.ts` es la única traducción de sus códigos HTTP.
+
+| Respuesta | Qué hace el adaptador |
+| --- | --- |
+| `400` | `invalid`. |
+| `401` y `403` | `unavailable`. Hablan de la clave del canal, no del paciente: su sesión sigue abierta. |
+| `404` | `access-expired`, y olvida el permiso. Solo se llama por trámites que el registro atribuye al paciente. |
+| `409` | Vuelve a leer el contexto y devuelve `conflict`. Si la versión no cambió, deja constancia en el log. |
+| Tiempo de espera agotado en `POST /events` | Un único reenvío con el mismo cuerpo, byte a byte. Si también falla, `unavailable`. |
+| Tiempo de espera agotado en `POST /journeys` | Sin reenvío. `unavailable`. |
+| Sin respuesta o `5xx` | `unavailable`. |
+
+**Cabeceras secretas.** `Authorization` y `X-Journey-Grant` se escriben en un solo lugar, `client.ts`, y no salen de esa función. La clave del canal y los permisos viajan dentro de `Secret`, que devuelve una marca si alguien lo convierte a texto, a JSON o lo inspecciona. El log registra solo el método, la ruta del contrato y el motivo: nunca cabeceras, cuerpos ni identificadores. El cliente rechaza las redirecciones, que reenviarían las cabeceras a otro destino. Ningún resultado que llega a páginas o acciones contiene un permiso.
+
+**Registro del canal Web.** El orquestador no ofrece consultar los trámites de un paciente, así que el portal anota los que inicia. `registry.ts` los guarda en `web-channel-registry.json`, dentro de `PORTAL_DATA_DIR`. Por defecto es `.data/` en el portal, que Git ignora.
+
+- Contiene, por identificador de cuenta, el identificador de cada trámite, cuándo lo registró el portal y cuándo supo que quedó cerrado. Nunca permisos ni claves.
+- La escritura es atómica: el contenido completo va a un archivo temporal de la misma carpeta y sustituye al registro con un renombrado.
+- La carpeta se crea con permisos `0700` y el archivo con `0600`. En Windows los permisos los fija la carpeta.
+- Las escrituras pasan por una cola, de una en una. La copia en memoria solo cambia si el archivo quedó escrito.
+- Sirve con un único proceso del portal. Varias instancias necesitarían un almacén compartido.
+
+**Permisos.** `grants.ts` guarda cada permiso solo en memoria, asociado a cuenta y trámite, con el vencimiento que informó el orquestador. Al reiniciar el servidor se pierden. Un trámite del paciente sin permiso vigente devuelve el error `access-expired`.
+
+**Pertenencia.** Toda lectura o escritura pasa por `resolveAccess`. Primero pide el perfil a la API general, porque el orquestador no conoce al paciente ni su sesión. Después comprueba en el registro que el trámite es de esa cuenta: si no lo es, responde «no encontrado» sin llamar al orquestador. Por último busca el permiso: sin uno vigente responde `access-expired`, también sin llamar.
+
+**Pantallas en modo orquestador.**
+
+| Pantalla | Qué muestra |
+| --- | --- |
+| `/tramite/nuevo` | Texto del flujo sin horario. La lista de abiertos sale del registro. |
+| `/tramite/[id]` | Estudio, clínica y revisión. Sin horario, nota, «Guardar y continuar después», confirmación directa ni ayuda de asesor. |
+| Revisión | Resumen y botón «Enviar a confirmación». |
+| Pendiente de confirmación | Título «Pendiente de confirmación», resumen, folio del trámite con botón de copiar y «Puedes continuar por WhatsApp o Call Center.». |
+| Cancelar | Enlace «Cancelar trámite». El formulario que cancela solo existe en la página tras pedirlo, con `?cancelar=1`. |
+| `/continuar` | Lista del registro. Con permiso vigente, el estado del trámite. Sin él, «Necesita un permiso nuevo», con folio y fecha de registro y sin datos del trámite. |
+| `/tramite/[id]/historial` | Línea de tiempo con el tipo de evento en español, el canal que lo produjo y la fecha. En modo heredado responde `404`. |
+
+El folio es el identificador del trámite. Mientras el trámite está pendiente de confirmación, el paciente puede cambiar el estudio o la clínica: el orquestador lo devuelve a revisión.
+
+**Qué quedó terminado.**
+
+- Selección de adaptador y capacidades, con las pantallas y las acciones de los dos modos.
+- Cliente HTTP del orquestador, con sus cabeceras fuera de logs, errores y respuestas.
+- Los cuatro eventos de la tabla, la lectura del trámite y el historial paginado.
+- Reenvío idéntico tras un tiempo de espera agotado, relectura del contexto tras un `409` y traducción de `401` y `403`.
+- Registro en archivo, permisos en memoria, error `access-expired` y comprobación de pertenencia.
+- Un orquestador simulado y una suite para este modo, fuera del repositorio.
+
+**Qué es provisional y por qué.**
+
+| Provisional | Por qué |
+| --- | --- |
+| El registro del canal Web | Sustituye a la consulta por paciente, que el orquestador no ofrece. Un trámite iniciado en otro canal no aparece en el portal. |
+| «Necesita un permiso nuevo» | El permiso dura cinco minutos y el contrato deja pendiente su renovación. Pasado ese tiempo, el portal no puede leer ni cambiar el trámite, y hoy no tiene cómo recibir otro permiso. |
+| El flujo sin fecha, nota ni cita | El contrato no los cubre. El trámite termina en «Pendiente de confirmación» y la cita oficial no se crea desde el portal. |
+| El último canal y los nombres de canal | El orquestador no informa del último canal. En el historial, el canal se reconoce por su código: `web`, `whatsapp` o `call` dentro del nombre. Cualquier otro se muestra tal cual. |
+| Un solo proceso | Registro y permisos viven en el proceso del portal. |
+
+**Riesgo: crear un trámite con resultado incierto.** `POST /journeys` no es idempotente y el permiso llega solo en su respuesta. Si la respuesta se pierde, el trámite pudo crearse en el orquestador, pero el portal no conoce su identificador ni su permiso: queda huérfano y no se puede recuperar. Por eso el portal no reintenta por su cuenta. Informa al paciente de que no pudo confirmar la creación y le deja decidir si empieza otro. Cada reintento del paciente puede dejar otro trámite huérfano. El mensaje es el mismo cuando el orquestador rechaza la clave del canal, porque `401` y `403` se traducen a `unavailable`: en ese caso no se creó nada.
+
+**Ambigüedades del contrato y cómo se resolvieron.**
+
+| Ambigüedad | Resolución |
+| --- | --- |
+| El `404` no distingue trámite inexistente de permiso ausente, vencido, revocado o ajeno. | Como solo se llama por trámites del registro del paciente, se trata como permiso sin vigencia: `access-expired`. |
+| El `409` cubre versión obsoleta, transición inválida e identificador de evento reutilizado, sin cuerpo que los distinga. | Los tres son `conflict`. La relectura del contexto permite anotar en el log cuándo la versión no cambió. |
+| La respuesta de `POST /events` no trae la versión nueva. | El acuse va sin versión y la página vuelve a leer el trámite. Al crear, la versión es 1 porque así lo fija el contrato. |
+| El contrato no enumera los códigos de canal. Solo usa `demo-web` como ejemplo. | Reconocimiento por nombre, descrito arriba. |
+| La clave se describe como `<keyId>.<secret>` y el permiso como opaco, sin longitudes. | La validación comprueba solo esa forma y que el permiso sea apto para una cabecera. |
+| Los pasos `SELECT_DATETIME` y `CONFIRMED` se pueden leer, pero ningún evento los produce. | Si llegan, la pantalla indica que el paso continúa en otro canal y muestra el folio. |
+| `journey-writes.md` dice que un cambio de contexto deja el trámite `IN_PROGRESS`. `data-model.md` añade que desde `PENDING_CONFIRMATION` se vuelve a `IN_PROGRESS` si cambian datos. | El portal permite cambiar estudio o clínica en un trámite pendiente. |
+| El orquestador no comprueba que el estudio y la clínica existan. | El adaptador lo comprueba en el catálogo antes de publicar. |
+
+**Preguntas abiertas para el equipo del orquestador.**
+
+1. **Permiso.** ¿Cómo obtiene el canal Web un permiso nuevo para un trámite propio pasados los cinco minutos? ¿Solo con la CLI de demostración? ¿Cómo llega al backend del portal?
+2. **Fecha.** ¿`JOURNEY_CONTEXT_UPDATED` aceptará `scheduledAt`? Sin fecha, la API general no puede crear la cita.
+3. **Confirmación.** ¿Quién crea la cita oficial y cómo se informa `COMPLETED` y `appointmentId` al orquestador?
+4. **Paciente.** ¿Cómo encuentra un canal los trámites de un paciente? En la demo, ¿cómo conoce el paciente el identificador de un trámite iniciado en otro canal?
+5. **Acceso.** ¿Qué URL usará el backend del portal, cuál es el código de canal del portal y quién entrega la clave con los scopes `EVENTS_PUBLISH` y `JOURNEYS_READ`? ¿Qué códigos tienen los demás canales?
+
+**Puesta en marcha.** Define en `.env.local` `REQUESTS_BACKEND=orchestrator`, `ORCHESTRATOR_BASE_URL` y `ORCHESTRATOR_CHANNEL_KEY`. La clave tiene la forma `<keyId>.<secret>`, sin el prefijo `Bearer`, y necesita los dos scopes. `PORTAL_DATA_DIR` es opcional. Con un valor ausente o inválido, el servidor registra el motivo al arrancar, sin el valor, y responde `500` a todas las peticiones.
 
 ### Canal de origen
 
@@ -247,7 +357,7 @@ Al añadir una ruta a `(account)` o `(booking)` hay que registrar su prefijo en 
 
 ### Cliente de API y configuración
 
-`API_BASE_URL` es la única variable de entorno. Solo la lee el servidor, sin prefijo `NEXT_PUBLIC_`. `.env.example` documenta su nombre y el valor real va en `.env.local`, que Git ignora. `instrumentation.ts` la valida al arrancar con `checkConfiguration()`, de `lib/composition.ts`: debe usar `https`, salvo en `localhost` y `127.0.0.1`. Con un valor inválido, el servidor registra el error al arrancar y responde `500` a todas las peticiones. `next build` funciona sin la variable, porque ninguna página llama a la API durante la compilación.
+`API_BASE_URL` es obligatoria. `REQUESTS_BACKEND`, `ORCHESTRATOR_BASE_URL`, `ORCHESTRATOR_CHANNEL_KEY` y `PORTAL_DATA_DIR` solo importan en modo orquestador y se describen en «Adaptador del orquestador». Todas las lee solo el servidor, sin prefijo `NEXT_PUBLIC_`. `.env.example` documenta los nombres y los valores reales van en `.env.local`, que Git ignora. Sobre `API_BASE_URL`: `instrumentation.ts` la valida al arrancar con `checkConfiguration()`, de `lib/composition.ts`: debe usar `https`, salvo en `localhost` y `127.0.0.1`. Con un valor inválido, el servidor registra el error al arrancar y responde `500` a todas las peticiones. `next build` funciona sin la variable, porque ninguna página llama a la API durante la compilación.
 
 `lib/adapters/general-api/client.ts` es el único punto de salida hacia la API y lleva `server-only`, así que un componente de cliente no puede importarlo. Cada llamada:
 
@@ -306,7 +416,7 @@ El recorrido requiere un proveedor de WhatsApp configurado en el entorno y un n�
 
 ### Historial de la solicitud
 
-La línea de tiempo de `GET /api/v1/requests/{id}/journey` se muestra dentro de `features/requests`, junto a la solicitud a la que pertenece. Consulta el [contrato de Journey](../../../docs/api-journey.md).
+En modo orquestador, `/tramite/[id]/historial` muestra la línea de tiempo de `GET /journeys/:journeyId/history`. En modo heredado el historial sigue sin pantalla: el adaptador heredado no lee `GET /api/v1/requests/{id}/journey`, descrito en el [contrato de Journey](../../../docs/api-journey.md).
 
 ### Actualización sin tiempo real
 
@@ -360,7 +470,7 @@ Next entrega el `404` de una página dinámica como un documento mínimo que se 
 
 **Seguridad.** Todas las escrituras son Server Actions. Las llamadas del trámite llevan token, así que ninguna respuesta se guarda en caché, y el portal no usa almacenamiento del navegador.
 
-**Pendiente.** `/citas/[id]` y el historial de `GET /api/v1/requests/{id}/journey` aún no tienen pantalla.
+**Pendiente.** `/citas/[id]` y, en modo heredado, el historial de `GET /api/v1/requests/{id}/journey` aún no tienen pantalla.
 
 ## Lo que la API no ofrece
 
@@ -383,6 +493,8 @@ El portal deja estas funciones fuera hasta que exista un contrato acordado.
 | --- | --- |
 | Sugerencia: filtrar clínicas por ciudad en `GET /clinics` | Sin ella, el portal filtra en su servidor con el tope de 500 clínicas descrito en «Catálogo». |
 | Límite de registro e inicio de sesión por IP | Ambas operaciones comparten 10 intentos por IP cada 15 minutos, según el contrato de autenticación. Todas las llamadas llegan desde el servidor del portal, así que los pacientes compartirían ese límite. |
+
+Las preguntas abiertas para el equipo del orquestador están en «Adaptador del orquestador».
 
 ## Decisiones retiradas
 

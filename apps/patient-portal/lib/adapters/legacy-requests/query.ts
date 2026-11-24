@@ -1,5 +1,5 @@
 import "server-only";
-import { success } from "@/lib/domain/errors";
+import { failure, success } from "@/lib/domain/errors";
 import type { RequestQuery } from "@/lib/domain/ports";
 import { authorizedRequest } from "../general-api/authorized";
 import { toFailure, toResult } from "../general-api/failures";
@@ -45,5 +45,10 @@ export const legacyRequestQuery: RequestQuery = {
       if (!result.data.hasMore) break;
     }
     return success(undefined);
+  },
+
+  // Este adaptador no declara `history`.
+  async getHistory() {
+    return failure("rejected");
   },
 };

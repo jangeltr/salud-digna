@@ -17,8 +17,15 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
+type SummaryProps = {
+  request: BookingRequest;
+  selections: SelectionDetails;
+  /** Fila de fecha y hora. Se oculta cuando el servicio activo no guarda horario. */
+  showSchedule?: boolean;
+};
+
 /** Resumen de lo elegido. Sirve para la revisión y para la cita confirmada. */
-export function Summary({ request, selections }: { request: BookingRequest; selections: SelectionDetails }) {
+export function Summary({ request, selections, showSchedule = true }: SummaryProps) {
   const { study, clinic } = selections;
   const { scheduledAt, notes } = request.selections;
 
@@ -37,10 +44,12 @@ export function Summary({ request, selections }: { request: BookingRequest; sele
           "Clínica no disponible"
         )}
       </Row>
-      <Row label="Fecha y hora">
-        {scheduledAt ? formatDateTime(scheduledAt) : "Sin elegir"}
-        <span className="block text-sm text-muted">Hora del centro de México. Horarios de demostración.</span>
-      </Row>
+      {showSchedule ? (
+        <Row label="Fecha y hora">
+          {scheduledAt ? formatDateTime(scheduledAt) : "Sin elegir"}
+          <span className="block text-sm text-muted">Hora del centro de México. Horarios de demostración.</span>
+        </Row>
+      ) : null}
       <Row label="Precio">{study ? formatPrice(study.price) : "No disponible"}</Row>
       {notes ? <Row label="Nota">{notes}</Row> : null}
     </dl>
@@ -95,15 +104,16 @@ type ConfirmedProps = {
   request: BookingRequest;
   selections: SelectionDetails;
   appointment?: Appointment;
+  showSchedule?: boolean;
 };
 
-export function ConfirmedStep({ request, selections, appointment }: ConfirmedProps) {
+export function ConfirmedStep({ request, selections, appointment, showSchedule = true }: ConfirmedProps) {
   return (
     <section aria-labelledby="cita-confirmada">
       <h2 id="cita-confirmada" className="mt-6 text-xl font-semibold text-success">
         Cita confirmada
       </h2>
-      <Summary request={request} selections={selections} />
+      <Summary request={request} selections={selections} showSchedule={showSchedule} />
       <p className="mt-6">
         <Link
           href={appointment ? `/citas/${appointment.id}` : "/citas"}

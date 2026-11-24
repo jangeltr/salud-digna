@@ -5,8 +5,8 @@ Código transversal sin interfaz.
 | Ruta | Contenido |
 | --- | --- |
 | `domain/` | Modelo propio del portal, sus errores y las tres interfaces internas. No depende de ningún servicio. |
-| `adapters/` | Implementaciones de las interfaces. Es el único lugar con tipos generados del contrato y códigos HTTP. |
-| `composition.ts` | Decide qué adaptador atiende cada interfaz. El resto del portal importa los servicios de aquí. |
+| `adapters/` | Implementaciones de las interfaces. Es el único lugar con tipos generados del contrato, códigos HTTP y credenciales de los servicios. |
+| `composition.ts` | Decide qué adaptador atiende cada interfaz, según `REQUESTS_BACKEND`. El resto del portal importa de aquí los servicios y las capacidades del trámite. |
 | `brand.ts` | Nombre, textos de identidad y colores de tema del portal. |
 | `session/` | Sesión del paciente, con el JWT en una cookie `HttpOnly` del origen del portal. |
 
@@ -18,7 +18,11 @@ Páginas, acciones y componentes importan solo `domain/` y `composition.ts`. Nad
 | --- | --- |
 | `model.ts` | Paciente, estudio, clínica, trámite, entrada de historial y cita, con el vocabulario del portal. |
 | `errors.ts` | Errores propios y el tipo `Result` que devuelven las interfaces. |
-| `ports.ts` | Las tres interfaces: `GeneralData`, `RequestNotifier` y `RequestQuery`, con los eventos de negocio del trámite. |
+| `ports.ts` | Las tres interfaces: `GeneralData`, `RequestNotifier` y `RequestQuery`, con los eventos de negocio del trámite y las capacidades que declara cada adaptador. |
+
+## adapters
+
+`service-url.ts` valida la URL base de cada servicio: exige `https`, salvo en `localhost` y `127.0.0.1`. Lo usan los dos adaptadores con cliente HTTP.
 
 ## adapters/general-api
 
@@ -35,13 +39,32 @@ Adaptador de la API general, que es la API actual. Se ejecuta solo en el servido
 
 ## adapters/legacy-requests
 
-Adaptador heredado. Implementa la notificación y la consulta del trámite sobre las operaciones `/requests` y `/appointments` de la API actual, hasta que exista el orquestador. Sus llamadas llevan token y nunca se guardan en caché.
+Adaptador heredado y modo por defecto. Implementa la notificación y la consulta del trámite sobre las operaciones `/requests` y `/appointments` de la API actual. Sus llamadas llevan token y nunca se guardan en caché.
 
 | Archivo | Contenido |
 | --- | --- |
 | `mapping.ts` | Traduce el trámite y la cita de la API al modelo del portal. |
 | `notifier.ts` | Implementa `RequestNotifier`: convierte cada evento de negocio en la operación que hoy lo registra. |
 | `query.ts` | Implementa `RequestQuery`: trámites pendientes, un trámite y su cita. |
+| `capabilities.ts` | Lo que soporta: todo menos cancelación e historial. |
+
+## adapters/orchestrator
+
+Adaptador del orquestador, activo con `REQUESTS_BACKEND=orchestrator`. Se rige por `apps/orchestrator/docs/journey-writes.md` y `journey-queries.md`. El orquestador no publica un OpenAPI, así que aquí no hay tipos generados.
+
+| Archivo | Contenido |
+| --- | --- |
+| `config.ts` | Lee y valida `ORCHESTRATOR_BASE_URL`, `ORCHESTRATOR_CHANNEL_KEY` y `PORTAL_DATA_DIR`. |
+| `secret.ts` | Envoltorio de la clave del canal y de los permisos, que impide que acaben en un log o en una respuesta. |
+| `client.ts` | Única salida hacia el orquestador. Escribe `Authorization` y `X-Journey-Grant`, que no salen de ahí. |
+| `failures.ts` | Única traducción de los códigos HTTP del orquestador a errores del portal. |
+| `mapping.ts` | Comprueba la forma de cada respuesta y la traduce al modelo del portal. |
+| `grants.ts` | Permisos de trámite, solo en memoria, por paciente y trámite. |
+| `registry.ts` | Registro del canal Web en un archivo JSON: qué trámites inició cada paciente. Sin permisos ni claves. |
+| `access.ts` | Comprobación previa a toda lectura o escritura: sesión, pertenencia en el registro y permiso vigente. |
+| `notifier.ts` | Implementa `RequestNotifier`: crear el trámite, estudio, clínica, envío a confirmación y cancelación. |
+| `query.ts` | Implementa `RequestQuery`: lista del registro, un trámite y su historial. |
+| `capabilities.ts` | Lo que soporta: cancelación e historial, sin horario, nota, pausa, ayuda de asesor ni confirmación directa. |
 
 ## session
 
