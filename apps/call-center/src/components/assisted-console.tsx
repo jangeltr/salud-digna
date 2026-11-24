@@ -11,7 +11,7 @@ import { Timeline, type TimelineEvent } from "./timeline";
 const sections = [
   { name: "Bandeja", icon: Inbox }, { name: "Pacientes", icon: UsersRound },
   { name: "Citas", icon: CalendarDays }, { name: "Historial", icon: Clock3 },
-  { name: "Orquestador", icon: Route },
+  { name: "Continuar atención", icon: Route },
 ] as const;
 const channels = { WEB: "Web", WHATSAPP: "WhatsApp", MOBILE: "App", CALL_CENTER: "Call Center" } as const;
 const steps: Record<string, string> = {
@@ -228,10 +228,10 @@ export function AssistedConsole({ api, exit, reportOutcome, omni, enabled }: { a
       </aside>
       <main id="contenido" className="workspace" tabIndex={-1}>
         <header className="workspace-header"><div><p className="eyebrow">Call Center</p><h1 aria-live="polite">{section}</h1></div></header>
-        <div hidden={section !== "Orquestador"}>
-          <OmnichannelPanel api={omni} enabled={enabled} writable frame={(content) => <Panel title="Trámite del orquestador">{content}</Panel>} />
+        <div hidden={section !== "Continuar atención"}>
+          <OmnichannelPanel api={omni} enabled={enabled} writable frame={(content) => <Panel title="Continuar atención en el orquestador">{content}</Panel>} />
         </div>
-        {section !== "Orquestador" && <>
+        {section !== "Continuar atención" && <>
         <p>Atención y citas de la API general.</p>
         <p role="status">{[outcome, message].filter(Boolean).join(" ")}</p>
         <div className="workspace-grid">

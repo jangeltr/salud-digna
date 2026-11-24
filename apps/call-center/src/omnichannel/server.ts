@@ -1,17 +1,19 @@
 import { createHash, randomUUID } from "node:crypto";
-import { eventPayload, isId, readContext, readHistory, readReceipt, readSummary, record, type Outcome } from "./contract";
+import { allowsPending, continuityCode, eventPayload, hasPublishScope, readRedemption, isId, readContext, readHistory, readReceipt, readSummary, record, type Outcome } from "./contract";
 
 class HttpFailure extends Error {
   constructor(readonly status: number) { super("Upstream request failed"); }
 }
 
 type Attempt = { operationId: string; body: string; result?: Outcome; uncertain?: boolean };
-type Access = { id: string; grant: string; expiresAt: number; attempt?: Attempt; timer: ReturnType<typeof setTimeout> };
+type Access = { id: string; grant: string; expiresAt: number; redeemed?: boolean; attempt?: Attempt; timer: ReturnType<typeof setTimeout> };
 const grants = new Map<string, Access>();
 const running = new Map<string, AbortController>();
 const maxSessions = 256;
 const grantFormat = /^[A-Za-z0-9_-]{43}$/;
-const operations = ["open", "read", "history", "close", "publish", "retry"];
+const operations = ["open", "read", "history", "close", "publish", "retry", "redeem", "resume"];
+const upstreamBase = "https://orchestrator.salud-digna.app/api/v1/";
+const accessWindow = 300000;
 
 function remove(key: string) {
   const entry = grants.get(key);
@@ -114,13 +116,19 @@ export function createOmnichannelHandler(role: "ADVISOR" | "ADMIN", keyName: str
         const deadline = sessionDeadline(authorization);
         if (deadline <= Date.now()) { revoke(sessionKey); return reply({ error: "session" }, 401); }
         if (action === "close") { revoke(sessionKey); return reply({ closed: true }); }
-        if (role === "ADMIN" && (action === "publish" || action === "retry")) return reply({ error: "operator" }, 403);
-        if (!isId(body.journeyId)) return reply({ error: "input" }, 400);
-        const id = body.journeyId.toLowerCase();
+        if (role === "ADMIN" && (["publish", "retry", "redeem", "resume"].includes(String(action)))) return reply({ error: "operator" }, 403);
         const apiKey = process.env[keyName];
         if (!apiKey) return reply({ error: "configuration" }, 503);
         controller!.signal.throwIfAborted();
-        return await operate(sessionKey, id, body, apiKey, deadline, controller!.signal);
+        if (action === "redeem") return await redeem(sessionKey, body, apiKey, deadline, controller!.signal);
+        if (action === "resume") {
+          const entry = grants.get(sessionKey);
+          return entry?.redeemed && entry.expiresAt > Date.now()
+            ? reply({ journeyId: entry.id, expiresAt: entry.expiresAt })
+            : reply({ error: "grant" }, 404);
+        }
+        if (!isId(body.journeyId)) return reply({ error: "input" }, 400);
+        return await operate(sessionKey, body.journeyId.toLowerCase(), body, apiKey, deadline, controller!.signal);
       } finally {
         if (controller) running.delete(sessionKey);
       }
@@ -129,6 +137,50 @@ export function createOmnichannelHandler(role: "ADVISOR" | "ADMIN", keyName: str
         [400, 401, 403, 404, 409, 429].includes(error.status) ? error.status : 503);
     }
   };
+}
+
+function saveAccess(key: string, id: string, grant: string, expiresAt: number, redeemed = false) {
+  remove(key);
+  const timer = setTimeout(() => revoke(key), expiresAt - Date.now());
+  timer.unref();
+  grants.set(key, { id, grant, expiresAt, redeemed, timer });
+}
+
+async function redeem(key: string, body: Record<string, unknown>, apiKey: string, deadline: number, signal: AbortSignal) {
+  const code = continuityCode(body.code);
+  if (!code || Object.keys(body).length !== 2) return reply({ error: "input" }, 400);
+  const active = grants.get(key);
+  if (active && active.expiresAt > Date.now()) return reply({ error: "access-active" }, 409);
+  if (!grants.has(key) && grants.size + running.size > maxSessions) return reply({ error: "capacity" }, 503);
+  try {
+    const result = readRedemption(await json(new URL("continuity-codes/redeem", upstreamBase), {
+      method: "POST",
+      headers: { Authorization: "Bearer " + apiKey, "Content-Type": "application/json" },
+      body: JSON.stringify({ code }),
+    }, 201, signal));
+    const expiresAt = Math.min(result.expiresAt, deadline, Date.now() + accessWindow);
+    if (signal.aborted || expiresAt <= Date.now()) return reply({ error: "redemption-expired" }, 410);
+    // Store first. The browser starts separate reads only after receiving this receipt.
+    if (!grants.has(key) && grants.size >= maxSessions) return reply({ error: "redemption-uncertain" }, 503);
+    saveAccess(key, result.id, result.grant, expiresAt, true);
+    return reply({ journeyId: result.id, expiresAt }, 201);
+  } catch (error) {
+    if (error instanceof HttpFailure && [400, 401, 403, 404, 429].includes(error.status)) {
+      return reply({ error: "redemption-rejected" }, error.status);
+    }
+    return reply({ error: "redemption-uncertain" }, 503);
+  }
+}
+
+async function canPublish(apiKey: string, signal: AbortSignal) {
+  try {
+    return hasPublishScope(await json(new URL("channel-auth/verify", upstreamBase), {
+      headers: { Authorization: "Bearer " + apiKey },
+    }, 200, signal));
+  } catch (error) {
+    if (accessDenied(error)) throw error;
+    return false;
+  }
 }
 
 async function operate(key: string, id: string, body: Record<string, unknown>, apiKey: string, deadline: number, signal: AbortSignal) {
@@ -142,10 +194,10 @@ async function operate(key: string, id: string, body: Record<string, unknown>, a
   if (opening && (typeof body.grant !== "string" || !grantFormat.test(body.grant))) return reply({ error: "input" }, 400);
   const grant = opening ? body.grant as string : grants.has(key) && entry?.id === id ? entry.grant : undefined;
   if (!grant) return reply({ error: "grant" }, 404);
-  const expiresAt = opening ? Math.min(Date.now() + 300000, deadline) : entry!.expiresAt;
+  const expiresAt = opening ? Math.min(Date.now() + accessWindow, deadline) : entry!.expiresAt;
   const journey = "journeys/" + id;
   function upstream(path: string, payload?: string) {
-    return json(new URL(path, "https://orchestrator.salud-digna.app/api/v1/"), {
+    return json(new URL(path, upstreamBase), {
       method: payload === undefined ? "GET" : "POST",
       headers: { Authorization: "Bearer " + apiKey, "X-Journey-Grant": grant!,
         ...(payload === undefined ? {} : { "Content-Type": "application/json" }) },
@@ -172,16 +224,15 @@ async function operate(key: string, id: string, body: Record<string, unknown>, a
       }
       if (summary.status === "rejected") throw summary.reason;
       if (context.status === "rejected") throw context.reason;
+      const canMarkPending = !opening && entry?.redeemed === true && allowsPending(summary.value, context.value) &&
+        await canPublish(apiKey, signal);
       if (signal.aborted || Date.now() >= expiresAt) return reply({ error: "grant" }, 404);
       if (opening) {
         if (!grants.has(key) && grants.size >= maxSessions) return reply({ error: "capacity" }, 503);
-        remove(key);
-        const timer = setTimeout(() => revoke(key), expiresAt - Date.now());
-        timer.unref();
-        grants.set(key, { id, grant, expiresAt, timer });
+        saveAccess(key, id, grant, expiresAt);
       }
       return reply({ status: summary.value, context: context.value,
-        history: history.status === "fulfilled" ? history.value : null, expiresAt });
+        history: history.status === "fulfilled" ? history.value : null, expiresAt, canMarkPending });
     }
 
     if (!isId(body.operationId)) return reply({ error: "input" }, 400);
@@ -190,6 +241,23 @@ async function operate(key: string, id: string, body: Record<string, unknown>, a
       const event = eventPayload(body);
       if (!event) return reply({ error: "input" }, 400);
       if (entry!.attempt?.operationId === body.operationId) return reply({ error: "pending" }, 409);
+      if (event.type === "JOURNEY_STATUS_CHANGED" && body.to === "PENDING_CONFIRMATION") {
+        try {
+          if (!entry!.redeemed || !await canPublish(apiKey, signal)) return reply({ outcome: "rejected", status: 403 });
+          const [status, context] = await Promise.all([
+            upstream(journey).then((value) => readSummary(value, id)),
+            upstream(journey + "/context").then((value) => readContext(value, id)),
+          ]);
+          if (!allowsPending(status, context) || context.version !== event.payload.expectedVersion) {
+            return reply({ outcome: "rejected", status: 409 });
+          }
+        } catch (error) {
+          if (accessDenied(error)) throw error;
+          // No event was sent. A failure here cannot leave a pending write.
+          return reply({ outcome: "rejected", status: error instanceof HttpFailure && error.status === 429 ? 429 : 503 });
+        }
+        if (signal.aborted || Date.now() >= expiresAt) return reply({ error: "grant" }, 404);
+      }
       entry!.attempt = { operationId: body.operationId, body: JSON.stringify({ journeyId: id, externalEventId: randomUUID(), schemaVersion: 1,
         occurredAt: new Date().toISOString(), ...event }) };
     }

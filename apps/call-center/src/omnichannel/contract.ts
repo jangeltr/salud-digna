@@ -72,3 +72,31 @@ export function readReceipt(value: unknown, id: string) {
   if (!record(value) || value.journeyId !== id || !isId(value.id)) invalid();
   return value.id;
 }
+
+export function continuityCode(value: unknown) {
+  const alphabet = "[0-9A-HJKMNP-TV-Z]";
+  const pattern = new RegExp("^(?:" + alphabet + "{12}|" + alphabet + "{4}(?:-" + alphabet + "{4}){2})$", "i");
+  return typeof value === "string" && (value.length === 12 || value.length === 14) && pattern.test(value)
+    ? value.replaceAll("-", "").toUpperCase() : undefined;
+}
+
+export function readRedemption(value: unknown) {
+  if (!record(value) || !isId(value.journeyId) || typeof value.grant !== "string" ||
+      !/^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$/.test(value.grant) ||
+      typeof value.grantExpiresAt !== "string" || !date(value.grantExpiresAt)) invalid();
+  return { id: value.journeyId.toLowerCase(), grant: value.grant, expiresAt: Date.parse(value.grantExpiresAt) };
+}
+
+export function allowsPending(status: string, context: View["context"]) {
+  return status === "IN_PROGRESS" && version(context.version) &&
+    isId(context.externalRefs.studyId) && isId(context.externalRefs.clinicId);
+}
+
+export function hasPublishScope(value: unknown) {
+  return record(value) && value.authenticated === true && Array.isArray(value.scopes) &&
+    value.scopes.includes("JOURNEYS_READ") && value.scopes.includes("EVENTS_PUBLISH");
+}
+
+export const referenceLabels: Record<string, string> = {
+  studyId: "Estudio (UUID)", clinicId: "Clínica (UUID)", appointmentId: "Cita (UUID)",
+};
