@@ -5,6 +5,10 @@ import type { HistoryPage, Outcome, View } from "../omnichannel/contract";
 
 export type OmnichannelApi = <T>(body: object) => Promise<T>;
 type AccessView = View & { expiresAt: number };
+const referenceLabels: Record<string, string> = {
+  studyId: "Estudio (UUID)", clinicId: "Clínica (UUID)", appointmentId: "Cita (UUID)",
+};
+const statusLabel = (status: string) => status === "PENDING_CONFIRMATION" ? "Pendiente de confirmación" : status;
 
 class ReadError extends Error {
   constructor(readonly status: number) { super("Omnichannel request failed"); }
@@ -25,7 +29,7 @@ function errorText(error: unknown) {
     400: "Revisa el UUID, el permiso y los datos ingresados.",
     401: "La sesión del operador o la credencial del canal no está autorizada.",
     403: "El operador o el canal carece del permiso necesario.",
-    404: "El trámite, el permiso o el intento ya no está disponible.",
+    404: "No se puede consultar el trámite. Usa un permiso vigente emitido para Administración y este UUID.",
     409: "Hay un conflicto o una operación pendiente. Revisa el estado antes de continuar.",
     429: "Límite de solicitudes. Espera antes de volver a intentarlo.",
   } as Record<number, string>)[error.status] ?? "El servicio no está disponible. Intenta más tarde.";
@@ -178,7 +182,7 @@ export function OmnichannelPanel({ api, writable = false, enabled, frame, initia
     {!enabled && <p>Integración deshabilitada. Falta la configuración privada del servidor.</p>}
     <form onSubmit={open}>
       <fieldset className="fields" disabled={busy || !!pending || !enabled}>
-        <label>UUID del trámite<input required value={journeyId} minLength={36} maxLength={36}
+        <label>Folio del trámite (UUID)<input required value={journeyId} minLength={36} maxLength={36}
           onChange={(event) => setJourneyId(event.target.value)} /></label>
         <label>Permiso temporal<input name="grant" type="password" autoComplete="off" required minLength={43} maxLength={43} /></label>
         <button type="submit">Consultar trámite</button>
@@ -191,11 +195,11 @@ export function OmnichannelPanel({ api, writable = false, enabled, frame, initia
     </>}
     {view && <>
       <dl className="context-data break-words">
-        <div><dt>Trámite</dt><dd>{activeId}</dd></div>
-        <div><dt>Estado</dt><dd>{view.status}</dd></div>
+        <div><dt>Folio del trámite (UUID)</dt><dd>{activeId}</dd></div>
+        <div><dt>Estado vigente</dt><dd>{statusLabel(view.status)}</dd></div>
         <div><dt>Paso vigente</dt><dd>{view.context.currentStep}</dd></div>
         <div><dt>Versión</dt><dd>{view.context.version}</dd></div>
-        {Object.entries(view.context.externalRefs).map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{value}</dd></div>)}
+        {Object.entries(view.context.externalRefs).map(([key, value]) => <div key={key}><dt>{referenceLabels[key] ?? key}</dt><dd>{value}</dd></div>)}
       </dl>
       {writable && <fieldset className="fields" disabled={busy || !!pending}>
         <form className="fields" onSubmit={publish}>
@@ -213,14 +217,14 @@ export function OmnichannelPanel({ api, writable = false, enabled, frame, initia
         </form>
       </fieldset>}
       {writable && pending && <button type="button" disabled={busy} onClick={() => publish()}>Reintentar el mismo avance</button>}
-      <h3>Historial autorizado</h3>
+      <h3>Línea de tiempo entre canales</h3>
       {!view.history ? <p>El historial no está disponible. Actualiza para volver a consultarlo.</p> :
         !view.history.items.length ? <p>Sin eventos disponibles.</p> : <ol className="event-list">
           {view.history.items.map((item) => <li className="break-words" key={item.id}><div>
-            <strong>{item.type}</strong><p>{item.producerCode} · <time dateTime={item.occurredAt}>{new Date(item.occurredAt).toLocaleString("es-MX")}</time></p>
+            <strong>{item.type}</strong><p>Canal: {item.producerCode} · <time dateTime={item.occurredAt}>{new Date(item.occurredAt).toLocaleString("es-MX")}</time></p>
             {item.data.version && <p>Versión {item.data.version}</p>}
             {item.data.currentStep && <p>{item.data.currentStep}</p>}
-            {item.data.from && item.data.to && <p>{item.data.from} → {item.data.to}</p>}
+            {item.data.from && item.data.to && <p>{statusLabel(item.data.from)} → {statusLabel(item.data.to)}</p>}
           </div></li>)}
         </ol>}
       {view.history?.nextCursor && <button type="button" disabled={busy} onClick={() => more(view.history!.nextCursor!)}>Cargar más eventos</button>}
