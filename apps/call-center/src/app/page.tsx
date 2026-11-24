@@ -1,8 +1,14 @@
+"use client";
+
 import Link from "next/link";
 import { Headset } from "lucide-react";
-import { Brand, IntegrationNotice } from "../components/ui";
+import { Brand } from "../components/ui";
 
-export default function LoginPage() {
+import { StaffAccess } from "../components/staff-access";
+import { AssistedConsole } from "../components/assisted-console";
+import type { ReactNode } from "react";
+
+function Login({ form }: { form: ReactNode }) {
   return (
     <main className="login">
       <section className="login-brand">
@@ -17,12 +23,7 @@ export default function LoginPage() {
         <div className="login-form">
           <h2 id="login-title">Inicio de sesión</h2>
           <p>Acceso para asesores de Salud Digna.</p>
-          <fieldset disabled className="fields" aria-describedby="login-status">
-            <label>Correo institucional<input type="email" autoComplete="username" /></label>
-            <label>Contraseña<input type="password" autoComplete="current-password" /></label>
-            <button className="primary" type="button">Iniciar sesión</button>
-          </fieldset>
-          <IntegrationNotice id="login-status">Inicio de sesión pendiente de integración.</IntegrationNotice>
+          {form}
           {process.env.NODE_ENV === "development" && (
             <Link className="preview-link" href="/diseno">Abrir vista de diseño</Link>
           )}
@@ -30,4 +31,10 @@ export default function LoginPage() {
       </section>
     </main>
   );
+}
+
+export default function LoginPage() {
+  return <StaffAccess role="ADVISOR" login={(form) => <Login form={form} />}>
+    {(api, exit, reportOutcome) => <AssistedConsole api={api} exit={exit} reportOutcome={reportOutcome} />}
+  </StaffAccess>;
 }
