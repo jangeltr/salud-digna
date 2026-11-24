@@ -4,10 +4,11 @@ import { ChannelScope, JourneyGrantOperation } from '../generated/prisma/enums';
 import { RequireJourneyAccess, type JourneyAccessRequest } from '../journey-access/journey-access.guard';
 import { creationRequestDigest, readCreationKey, readJourneyEvent } from './journey-write-input';
 import { JourneyWritesService } from './journey-writes.service';
+import { PatientIdentityService } from './patient-identity';
 
 @Controller()
 export class JourneyWritesController {
-  constructor(private readonly writes: JourneyWritesService) {}
+  constructor(private readonly writes: JourneyWritesService, private readonly identities: PatientIdentityService) {}
 
   @Post('journeys')
   @Header('Cache-Control', 'no-store')
@@ -16,7 +17,12 @@ export class JourneyWritesController {
     if (!request.authenticatedChannel) throw new UnauthorizedException();
     if ((request.headersDistinct?.['idempotency-key']?.length ?? 0) > 1) throw new BadRequestException();
     const keyDigest = readCreationKey(request.headers['idempotency-key']);
-    return this.writes.createAppointment(request.authenticatedChannel.id, keyDigest, creationRequestDigest(body));
+    const channelId = request.authenticatedChannel.id;
+    if (request.headers['x-patient-assertion'] !== undefined) {
+      return this.identities.resolve(request, channelId).then((patient) =>
+        this.writes.createAppointment(channelId, keyDigest, creationRequestDigest(body, patient), patient));
+    }
+    return this.writes.createAppointment(channelId, keyDigest, creationRequestDigest(body));
   }
 
   @Post('events')

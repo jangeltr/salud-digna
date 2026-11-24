@@ -6,6 +6,7 @@ import { AccessAuditAction, JourneyGrantOperation, JourneyStatus } from '../gene
 import { PrismaService } from '../persistence/prisma.service';
 import { projectExternalRefs, type JourneyReadAccess } from './journey-queries.service';
 import type { JourneyEventInput } from './journey-write-input';
+import type { ResolvedPatient } from './patient-identity';
 
 class ConcurrentCreation extends Error {}
 
@@ -37,6 +38,7 @@ export class JourneyWritesService {
 
   async createAppointment(
     channelId: string, keyDigest: Uint8Array<ArrayBuffer>, requestDigest: Uint8Array<ArrayBuffer> | undefined,
+    patient?: ResolvedPatient,
   ) {
     const resolve = (canCreate: boolean) => this.prisma.client.$transaction(async (tx) => {
       const existing = await tx.journeyCreationRequest.findUnique({
@@ -66,12 +68,12 @@ export class JourneyWritesService {
       const journey = await tx.journey.create({
         data: {
           type: 'APPOINTMENT',
-          patientSubject: { create: {} },
+          patientSubject: patient ? { connect: { id: patient.patientSubjectId } } : { create: {} },
           context: { create: { currentStep: 'SELECT_STUDY' } },
         },
         select: { id: true, status: true },
       });
-      const actorRef = `journey-bootstrap:${randomUUID()}`;
+      const actorRef = patient?.actorRef ?? `journey-bootstrap:${randomUUID()}`;
       const now = new Date();
       const expiresAt = new Date(now.getTime() + 5 * 60_000);
       const { id: initialGrantId, token } = await this.issueCreationGrant(tx, {

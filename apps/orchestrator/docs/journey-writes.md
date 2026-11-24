@@ -34,11 +34,11 @@ El primer envío devuelve `201 Created` y `Cache-Control: no-store`:
 }
 ```
 
-Se crea un sujeto interno provisional, un contexto `SELECT_STUDY` en versión
-1 y un evento `JOURNEY_CREATED`. La ruta rechaza referencias de pacientes,
-identificadores externos, datos de contacto y actores aportados por el
-cliente. El sujeto provisional carece de identidad verificada y no permite
-leer datos de otros trámites o pacientes. No se consulta la API central.
+Se crea un contexto `SELECT_STUDY` en versión 1 y un evento `JOURNEY_CREATED`.
+Con una [afirmación de identidad](patient-identity.md) válida en
+`X-Patient-Assertion`, se usa el sujeto verificado y su actor. Sin ese
+encabezado se crea un sujeto provisional. La ruta rechaza identificadores
+y actores aportados en el cuerpo. No se consulta la API central.
 
 El permiso dura cinco minutos y se entrega una vez. Está ligado al canal
 creador, al UUID devuelto y a una referencia de sesión generada por el
@@ -133,8 +133,8 @@ y emite ese permiso mediante la
 [CLI de demostración](../README.md#permisos-de-demostración-para-hackatec).
 Compartir el permiso del primer canal produce `404` en el segundo.
 
-La creación y el registro de avances operativos están implementados. El
-aprovisionamiento entre canales es manual para la demo. Quedan pendientes
-la verificación y vinculación de identidad de pacientes existentes, la
-renovación de permisos por un flujo autorizado y la confirmación de una
-cita central mediante un comprobante verificable.
+La creación y el registro de avances operativos están implementados. En la
+demo, el [aprovisionamiento de identidad y permisos](patient-identity.md)
+entre canales es manual y exclusivo de pacientes ficticios. Quedan
+pendientes la prueba de identidad firmada por la autoridad central, la
+renovación autorizada de permisos y la confirmación de citas centrales.

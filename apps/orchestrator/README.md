@@ -126,6 +126,8 @@ El [contrato de consultas](docs/journey-queries.md) describe las rutas de
 estado y contexto y los encabezados requeridos por los backends de canal.
 El [contrato de escritura](docs/journey-writes.md) describe la creación
 de trámites, la publicación de avances y el traspaso de la demo.
+La [guía de identidad ficticia](docs/patient-identity.md) explica cómo
+aprovisionar y recuperar trámites de un paciente entre canales.
 
 `POST /api/v1/journeys` requiere `Idempotency-Key` de 32 bytes aleatorios en
 base64url sin relleno. Conserva la clave para los reintentos de la misma

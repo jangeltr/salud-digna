@@ -3,6 +3,7 @@ import type { Prisma } from '../generated/prisma/client';
 import { AccessAuditAction, AccessAuditOutcome } from '../generated/prisma/enums';
 import { PrismaService } from '../persistence/prisma.service';
 import { createHistoryCursor, projectEventData, readHistoryCursor, readHistoryLimit } from './journey-history';
+import type { ResolvedPatient } from './patient-identity';
 
 export interface JourneyReadAccess {
   journeyId: string;
@@ -32,6 +33,25 @@ export function projectExternalRefs(journeyType: string, value: Prisma.JsonValue
 @Injectable()
 export class JourneyQueriesService {
   constructor(private readonly prisma: PrismaService) {}
+
+  listPatientJourneys(channelId: string, patient: ResolvedPatient) {
+    return this.prisma.client.$transaction(async (tx) => {
+      const items = await tx.journey.findMany({
+        where: { patientSubjectId: patient.patientSubjectId },
+        orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+        take: 100,
+        select: { id: true, type: true, status: true, createdAt: true, updatedAt: true },
+      });
+      await tx.accessAudit.create({
+        data: {
+          channelId, patientSubjectId: patient.patientSubjectId, actorRef: patient.actorRef,
+          action: 'READ_CONTEXT', outcome: 'ALLOWED', reasonCode: 'PATIENT_JOURNEYS',
+        },
+        select: { id: true },
+      });
+      return { items };
+    });
+  }
 
   getJourney(access: JourneyReadAccess) {
     return this.readAndAudit(access, 'JOURNEY_SUMMARY', async (tx) => {
