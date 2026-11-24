@@ -8,6 +8,8 @@ Código transversal sin interfaz.
 | `adapters/` | Implementaciones de las interfaces. Es el único lugar con tipos generados del contrato, códigos HTTP y credenciales de los servicios. |
 | `composition.ts` | Decide qué adaptador atiende cada interfaz, según `REQUESTS_BACKEND`. El resto del portal importa de aquí los servicios y las capacidades del trámite. |
 | `brand.ts` | Nombre, textos de identidad y colores de tema del portal. |
+| `settings.ts` | Ajustes del portal que no son de ningún servicio. Hoy, `REGISTRATION_ENABLED`. |
+| `flags.ts` | Lectura de variables de tipo sí o no: solo admite `true` o `false`. |
 | `session/` | Sesión del paciente, con el JWT en una cookie `HttpOnly` del origen del portal. |
 
 Páginas, acciones y componentes importan solo `domain/` y `composition.ts`. Nada fuera de `adapters/` importa de `adapters/`, salvo `composition.ts`.
@@ -31,8 +33,8 @@ Adaptador de la API general, que es la API actual. Se ejecuta solo en el servido
 | Archivo | Contenido |
 | --- | --- |
 | `schema.d.ts` | Tipos generados desde `docs/openapi.json` con el script `api:types`. No se edita a mano. |
-| `config.ts` | Lee y valida `API_BASE_URL`. |
-| `client.ts` | Única salida hacia la API: cabeceras propias, tiempo de espera y registro sin datos sensibles. |
+| `config.ts` | Lee y valida `API_BASE_URL` y `FORWARD_CLIENT_IP`. |
+| `client.ts` | Única salida hacia la API: cabeceras propias, tiempo de espera y registro sin datos sensibles. Con `FORWARD_CLIENT_IP` encendida añade la IP del paciente. |
 | `authorized.ts` | Llamada con la sesión del paciente. Toma el token del módulo de sesión. |
 | `failures.ts` | Única traducción de códigos HTTP a errores del portal. |
 | `general-data.ts` | Implementa `GeneralData`: catálogo con caché de 30 segundos, perfil, acceso y registro. |
@@ -73,7 +75,9 @@ Adaptador del orquestador, activo con `REQUESTS_BACKEND=orchestrator`. Se rige p
 | `cookie.ts` | Nombre y atributos de la cookie de sesión, y su lectura, escritura y borrado. |
 | `routes.ts` | Prefijos de las rutas protegidas y validación del destino tras el acceso. |
 | `session.ts` | Comprueba la sesión pidiendo el perfil del paciente y exige cuenta en las páginas protegidas. |
-| `attempts.ts` | Límite de intentos en memoria, por clave. Lo usa el canje de códigos de continuidad. |
+| `attempts.ts` | Contadores en memoria, por clave: topes dentro de una ventana y espera creciente tras fallos. |
+| `limits.ts` | Valores de los límites propios del portal: acceso, trámites, códigos y canjes. |
+| `client-ip.ts` | IP del cliente, tomada solo de la cabecera `X-Real-IP` que escribe el proxy. |
 
 El portal es solo un sitio web desde el 2026-11-24, cuando el proyecto cambió de arquitectura y dejó de cubrir el canal móvil. Hasta esa fecha existía también `channel/`, una carpeta reservada para detectar el modo instalado.
 

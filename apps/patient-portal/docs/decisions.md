@@ -333,35 +333,88 @@ Aun con el listado, el portal solo vería resúmenes: identificador, tipo, estad
 
 ### Publicación del portal
 
-**Fecha.** 2026-11-24. Revisión hecha sobre la compilación de producción, sin publicar nada.
+**Fecha.** 2026-11-24. Revisión y preparación hechas sobre la compilación de producción, sin publicar nada. Los pasos para arrancar y la lista de publicación están en el [README](../README.md).
 
 **Lo que necesita el servidor.**
 
 | Requisito | Detalle |
 | --- | --- |
 | Proceso | `next build` y después `next start`, escuchando solo en `127.0.0.1`, detrás de un proxy inverso que termine TLS. |
-| Una sola instancia | Registro, permisos, claves de creación pendientes y contador de intentos viven en el proceso. Con dos instancias, cada una vería trámites y permisos distintos. |
-| Variables | `API_BASE_URL`, `REQUESTS_BACKEND`, `ORCHESTRATOR_BASE_URL`, `ORCHESTRATOR_API_KEY` y `PORTAL_DATA_DIR`, inyectadas desde la configuración privada del servicio. Ninguna lleva el prefijo `NEXT_PUBLIC_`. |
+| Una sola instancia | Registro, permisos, claves de creación pendientes y límites viven en el proceso. Con dos instancias, cada una vería trámites, permisos y contadores distintos. |
+| Variables | `API_BASE_URL`, `REQUESTS_BACKEND`, `ORCHESTRATOR_BASE_URL`, `ORCHESTRATOR_API_KEY`, `PORTAL_DATA_DIR`, `REGISTRATION_ENABLED` y `FORWARD_CLIENT_IP`, inyectadas desde la configuración privada del servicio. Ninguna lleva el prefijo `NEXT_PUBLIC_`. |
 | `PORTAL_DATA_DIR` | Fuera de la carpeta del código, para que un despliegue nuevo no la borre. Propiedad del usuario del servicio, con permisos `0700`. Contiene qué cuenta tiene qué trámites: hay que incluirla en los respaldos y excluirla de cualquier carpeta servida. |
-| Proxy | Debe conservar el `Host` original o enviar `X-Forwarded-Host`, y sobrescribir las cabeceras de reenvío del cliente. Sin el host correcto, el portal rechaza todos los formularios con `403`. |
+| Proxy | Debe conservar el `Host` original o enviar `X-Forwarded-Host`, escribir `X-Real-IP` con la IP del cliente y sobrescribir las cabeceras de reenvío que mande el navegador. Sin el host correcto, el portal rechaza todos los formularios con `403`. |
 | HTTPS | Obligatorio para el navegador: la cookie de sesión lleva `Secure` y el prefijo `__Host-`. |
 
-**Seguridad antes de exponerlo.** «Bloqueante» significa que conviene resolverlo antes de abrir el portal a público general.
+**Registro controlado.** `REGISTRATION_ENABLED` admite `true` o `false`. Sin valor, el registro está apagado en producción y encendido en desarrollo. Apagado, `/registro` responde no encontrado, `/acceso` no enlaza a «Crear cuenta» y la acción de servidor responde `404` sin llamar a la API general. Lo lee `lib/settings.ts`.
 
-| Hallazgo | Clase |
+**Límites propios.** Todas las peticiones a la API general y al orquestador salen del servidor del portal, así que esos servicios no distinguen a un paciente de otro por su IP. El portal pone los suyos, en memoria, en `lib/session/attempts.ts` y `lib/session/limits.ts`.
+
+| Límite | Regla | Aviso al paciente |
+| --- | --- | --- |
+| Acceso, por correo | Tres fallos libres. Cada fallo siguiente impone una espera: 30 segundos, 1, 2, 5 y 15 minutos. La cuenta de fallos se olvida tras 30 minutos sin fallos. | «Demasiados intentos. Espera … antes de volver a intentarlo.» |
+| Acceso, por IP del cliente | Cinco fallos libres y las mismas esperas. | El mismo. |
+| Trámites empezados | 20 por paciente y hora. Cuenta cada intento que llega al servicio. | «Has empezado demasiados trámites en la última hora. Podrás empezar otro en … minutos.» |
+| Códigos de continuidad generados | 30 por paciente y hora. | «Has generado demasiados códigos en la última hora. Podrás generar otro en … minutos.» |
+| Canjes fallidos de un código | 5 por paciente cada 10 minutos. | «Demasiados intentos. Espera unos minutos antes de probar otro código.» |
+
+- Con una espera pendiente no se llama a la API general, ni siquiera con la contraseña correcta.
+- Cuenta como fallo cualquier rechazo de la API. Que la API no responda o aplique su propio límite no cuenta.
+- Un acceso correcto borra los fallos de ese correo. Los de la IP se conservan: una cuenta válida no debe servir para seguir probando otras desde la misma IP.
+- El límite por correo permite que un tercero retrase el acceso de una cuenta que conoce, hasta 15 minutos cada vez. Es el coste de limitar por cuenta.
+- Los topes por paciente necesitan saber de quién es la sesión, así que empezar un trámite y generar un código piden antes el perfil a la API general.
+- Los límites se vacían al reiniciar el servidor y sirven con un único proceso.
+
+**IP del cliente.** `lib/session/client-ip.ts` la toma solo de la cabecera `X-Real-IP`. El supuesto es que esa cabecera la escribe el proxy inverso de confianza, que sobrescribe cualquier valor del navegador, y que el portal escucha solo en `127.0.0.1`, de modo que nadie más puede presentarse como el proxy. Nunca se usa `X-Forwarded-For` ni ninguna otra cabecera del navegador. Si el proxy no envía la cabecera, o su valor no es una IP, no hay límite por IP: el límite por correo y los topes por paciente siguen activos, y el servidor lo avisa una vez en su registro.
+
+**IP del cliente hacia la API general.** Preparada y apagada. Con `FORWARD_CLIENT_IP=true`, `lib/adapters/general-api/client.ts` añade una única cabecera, `X-Portal-Client-IP`, con la IP obtenida del proxy. No viaja en las lecturas del catálogo, que se guardan en caché, y no se reenvía ninguna otra cabecera del navegador. No debe encenderse hasta que el equipo de la API confirme que confía en esa cabecera solo cuando la petición viene del servidor del portal. El nombre de la cabecera también está pendiente de acordar: es propio porque un proxy delante de la API sobrescribe las cabeceras de reenvío habituales.
+
+**Cabeceras.**
+
+| Cabecera | Valor | Dónde |
+| --- | --- | --- |
+| `Strict-Transport-Security` | `max-age=15552000`, seis meses, sin `includeSubDomains`. Solo en producción. | `next.config.ts` |
+| `Content-Security-Policy` | Con un nonce por petición. | `proxy.ts` |
+| `Permissions-Policy` | Todo apagado salvo `clipboard-write` para el propio portal, que usa el botón de copiar. | `next.config.ts` |
+| `X-Robots-Tag` | `noindex, nofollow`. Además, `<meta name="robots">` en cada página y `robots.txt` con `Disallow: /`. | `next.config.ts`, `app/layout.tsx`, `app/robots.txt` |
+| `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy` | Sin cambios. | `next.config.ts` |
+
+**Política de contenido.** Está activa, no en modo informe. Sigue la guía de la versión instalada de Next: `proxy.ts` genera un nonce en cada petición, lo pone en la cabecera de la petición y en la de la respuesta, y Next lo aplica a sus propios scripts. Solo se ejecutan los scripts con ese nonce y los que ellos cargan.
+
+```
+default-src 'self'; script-src 'self' 'nonce-…' 'strict-dynamic'; style-src 'self' 'nonce-…';
+img-src 'self' blob: data:; font-src 'self'; connect-src 'self'; object-src 'none';
+base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+```
+
+- Funciona porque todas las páginas se generan en cada petición y el portal no usa estilos ni scripts en línea, ni recursos de otros orígenes.
+- En desarrollo la política añade `'unsafe-eval'` y estilos en línea, que React necesita para depurar.
+- No incluye `upgrade-insecure-requests`: rompería las pruebas locales por `http`, y en producción `Strict-Transport-Security` ya obliga a usar `https`.
+- No tiene dirección de informes. Una infracción solo se ve en la consola del navegador.
+- Quien añada un script o un estilo en línea, o un recurso de otro origen, debe actualizar la política en `proxy.ts`.
+
+**Páginas de error.** `app/error.tsx` muestra «Algo salió mal» con «Reintentar» y «Volver al inicio», dentro del diseño del portal. `app/global-error.tsx` cubre un fallo del diseño raíz y trae su propio documento, sin estilos. Ninguna muestra ni registra detalles técnicos. La respuesta es `500` y no contiene el mensaje del error, trazas ni rutas de archivos. Como el `404` de una página dinámica, Next entrega un documento mínimo que se completa con JavaScript: sin JavaScript, la página de error queda en blanco.
+
+**Sesión vencida.** `GET /api/session/expired` vuelve a pedir el perfil a la API general. Con la sesión vigente redirige al destino y no toca la cookie. Solo la borra si la API da la sesión por inválida. Un enlace o una petición desde otro sitio no puede cerrar una sesión vigente, y el destino se sanea igual que en el acceso. La revisión del 2026-11-24 lo anotó por error como hallazgo.
+
+**Estado de los hallazgos de seguridad.**
+
+| Hallazgo | Estado |
 | --- | --- |
-| El límite de acceso y registro de la API general es por IP, diez intentos cada quince minutos, y todas las peticiones salen del servidor del portal. Cualquiera puede agotar el cupo y dejar a todos los pacientes sin poder entrar. El portal no tiene un límite propio. | Bloqueante |
-| El registro está abierto: cualquiera crea una cuenta y, con ella, trámites en el orquestador sin tope. | Bloqueante si la URL es pública |
-| Sin `Strict-Transport-Security`. Debe añadirlo el proxy o el portal. | Mejora |
-| Sin `Content-Security-Policy` ni `Permissions-Policy`. El portal no usa HTML sin escapar, `eval` ni almacenamiento del navegador. | Mejora |
-| Sin `noindex` ni `robots.txt`: un prototipo con datos sintéticos podría indexarse. | Mejora |
-| `GET /api/session/expired` borra la cookie sin comprobar el origen. Un sitio ajeno puede cerrar la sesión de un paciente, sin más efecto. | Mejora |
-| No hay tope de códigos de continuidad emitidos ni de trámites abiertos por paciente. | Mejora |
-| Los diez canjes por minuto del orquestador son de todo el canal Web. El límite por paciente del portal lo mitiga, pero no lo evita. | Mejora |
-| Cerrar sesión borra la cookie, pero el token sigue siendo válido en la API general hasta que vence. La API no ofrece revocarlo. | Mejora |
-| Sin página de error propia: una excepción muestra el aviso genérico de Next, sin trazas. | Mejora |
+| El límite de acceso de la API general es por IP, diez intentos cada quince minutos, y todas las peticiones salen del servidor del portal. | Abierto, mitigado. El portal limita por correo y por IP del cliente, pero el cupo de la API sigue siendo uno solo para todos los pacientes: diez accesos legítimos en quince minutos lo agotan. Se resuelve cuando la API limite por la IP real del cliente; `FORWARD_CLIENT_IP` está preparada para eso. |
+| Registro abierto y trámites sin tope. | Cerrado. Registro apagado por defecto en producción y topes por paciente y por hora. |
+| Sin `Strict-Transport-Security`. | Cerrado. |
+| Sin `Content-Security-Policy` ni `Permissions-Policy`. | Cerrado. |
+| Sin `noindex` ni `robots.txt`. | Cerrado. |
+| `GET /api/session/expired` cierra la sesión sin comprobar el origen. | Retirado: era incorrecto. Ver «Sesión vencida». |
+| Sin tope de códigos de continuidad ni de trámites por paciente. | Cerrado. |
+| Los diez canjes por minuto del orquestador son de todo el canal Web. | Abierto. Depende del orquestador. El límite por paciente del portal lo mitiga. |
+| Cerrar sesión no revoca el token en la API general. | Abierto. La API no ofrece revocarlo. |
+| Sin página de error propia. | Cerrado. Sin JavaScript queda en blanco. |
+| El registro, cuando se enciende, no tiene límite propio por IP. | Abierto. Solo lo limita la API general. |
+| Los límites viven en memoria. | Abierto por diseño: se vacían al reiniciar y exigen una sola instancia. |
 
-Lo comprobado y correcto: cookie `__Host-` con `Secure`, `HttpOnly` y `SameSite=Lax`; `403` ante un origen ajeno o nulo; todas las rutas protegidas redirigen a `/acceso` sin sesión y una cookie inventada se borra; las acciones comprueban la sesión; el trámite ajeno responde igual que el inexistente; los mensajes de los servicios nunca llegan a la interfaz; `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff` y `Referrer-Policy` están presentes; las páginas no se almacenan en caché. `pnpm audit` no encontró avisos en las dependencias del portal.
+Lo comprobado y correcto: cookie `__Host-` con `Secure`, `HttpOnly` y `SameSite=Lax`; `403` ante un origen ajeno o nulo; todas las rutas protegidas redirigen a `/acceso` sin sesión y una cookie inventada se borra; las acciones comprueban la sesión; el trámite ajeno responde igual que el inexistente; los mensajes de los servicios nunca llegan a la interfaz; las páginas no se almacenan en caché. `pnpm audit` no encontró avisos en las dependencias del portal.
 
 ### Canal de origen
 
@@ -428,11 +481,11 @@ Al añadir una ruta a `(account)` o `(booking)` hay que registrar su prefijo en 
 
 ### Cliente de API y configuración
 
-`API_BASE_URL` es obligatoria. `REQUESTS_BACKEND`, `ORCHESTRATOR_BASE_URL`, `ORCHESTRATOR_API_KEY` y `PORTAL_DATA_DIR` solo importan en modo orquestador y se describen en «Adaptador del orquestador». Todas las lee solo el servidor, sin prefijo `NEXT_PUBLIC_`. `.env.example` documenta los nombres y los valores reales van en `.env.local`, que Git ignora. Sobre `API_BASE_URL`: `instrumentation.ts` la valida al arrancar con `checkConfiguration()`, de `lib/composition.ts`: debe usar `https`, salvo en `localhost` y `127.0.0.1`. Con un valor inválido, el servidor registra el error al arrancar y responde `500` a todas las peticiones. `next build` funciona sin la variable, porque ninguna página llama a la API durante la compilación.
+`API_BASE_URL` es obligatoria. `REQUESTS_BACKEND`, `ORCHESTRATOR_BASE_URL`, `ORCHESTRATOR_API_KEY` y `PORTAL_DATA_DIR` solo importan en modo orquestador y se describen en «Adaptador del orquestador». `REGISTRATION_ENABLED` y `FORWARD_CLIENT_IP` se describen en «Publicación del portal». Todas las lee solo el servidor, sin prefijo `NEXT_PUBLIC_`. `.env.example` documenta los nombres y los valores reales van en `.env.local`, que Git ignora. Sobre `API_BASE_URL`: `instrumentation.ts` la valida al arrancar con `checkConfiguration()`, de `lib/composition.ts`: debe usar `https`, salvo en `localhost` y `127.0.0.1`. Con un valor inválido, el servidor registra el error al arrancar y responde `500` a todas las peticiones. `next build` funciona sin la variable, porque ninguna página llama a la API durante la compilación.
 
 `lib/adapters/general-api/client.ts` es el único punto de salida hacia la API y lleva `server-only`, así que un componente de cliente no puede importarlo. Cada llamada:
 
-- construye sus propias cabeceras y envía solo `Accept`, `Content-Type` y `Authorization`, sin reenviar nada del navegador;
+- construye sus propias cabeceras y envía solo `Accept`, `Content-Type` y `Authorization`, sin reenviar nada del navegador. Con `FORWARD_CLIENT_IP` encendida añade `X-Portal-Client-IP`, con la IP que escribió el proxy;
 - tiene un tiempo de espera de 8 segundos y trata el fallo de red como «servicio no disponible»;
 - registra en el log solo el método, la ruta y el motivo del fallo, nunca tokens, contraseñas ni cuerpos;
 - descarta el cuerpo de los errores, de modo que el mensaje de la API nunca llega a la interfaz.
@@ -563,7 +616,8 @@ El portal deja estas funciones fuera hasta que exista un contrato acordado.
 | Pendiente | Efecto en el portal |
 | --- | --- |
 | Sugerencia: filtrar clínicas por ciudad en `GET /clinics` | Sin ella, el portal filtra en su servidor con el tope de 500 clínicas descrito en «Catálogo». |
-| Límite de registro e inicio de sesión por IP | Ambas operaciones comparten 10 intentos por IP cada 15 minutos, según el contrato de autenticación. Todas las llamadas llegan desde el servidor del portal, así que los pacientes compartirían ese límite. |
+| Límite de registro e inicio de sesión por IP | Ambas operaciones comparten 10 intentos por IP cada 15 minutos, según el contrato de autenticación. Todas las llamadas llegan desde el servidor del portal, así que los pacientes comparten ese límite. El portal añade los suyos, descritos en «Publicación del portal», pero no puede ampliar ese cupo. |
+| Confiar en `X-Portal-Client-IP` solo cuando la petición viene del servidor del portal | Permitiría a la API limitar por la IP real de cada paciente. Hasta acordarlo, `FORWARD_CLIENT_IP` sigue apagada. |
 
 Las preguntas para el equipo del orquestador están en «Adaptador del orquestador», y lo pendiente antes de publicar, en «Publicación del portal».
 

@@ -9,6 +9,7 @@ import { orchestratorCapabilities } from "./adapters/orchestrator/capabilities";
 import { createOrchestratorNotifier } from "./adapters/orchestrator/notifier";
 import { createOrchestratorQuery } from "./adapters/orchestrator/query";
 import type { GeneralData, RequestCapabilities, RequestNotifier, RequestQuery } from "./domain/ports";
+import { checkSettings } from "./settings";
 
 /**
  * Composición del portal: decide qué adaptador atiende cada interfaz.
@@ -61,6 +62,7 @@ export const requestCapabilities: RequestCapabilities =
 
 /** Se ejecuta al arrancar. Detiene el servidor si la configuración de un adaptador en uso es inválida. */
 export async function checkConfiguration(): Promise<void> {
+  checkSettings();
   // La API general se usa en los dos modos: acceso, perfil y catálogo.
   checkGeneralApiConfiguration();
   if (readRequestsBackend() === "orchestrator") await checkOrchestratorConfiguration();

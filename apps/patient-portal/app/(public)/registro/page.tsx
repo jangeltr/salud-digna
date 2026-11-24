@@ -1,10 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { SignUpForm } from "@/features/auth/sign-up-form";
+import { isRegistrationEnabled } from "@/lib/settings";
 
 export const metadata: Metadata = { title: "Registro" };
 
 export default function SignUpPage() {
+  // Con `REGISTRATION_ENABLED` apagada esta página no existe.
+  if (!isRegistrationEnabled()) notFound();
+
   return (
     <div className="mx-auto max-w-md">
       <h1 className="text-2xl font-bold tracking-tight">Registro</h1>

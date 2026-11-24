@@ -1,8 +1,16 @@
 import "server-only";
-import { getApiBaseUrl } from "./config";
+import { readClientIp } from "@/lib/session/client-ip";
+import { forwardsClientIp, getApiBaseUrl } from "./config";
 import type { paths } from "./schema";
 
 const TIMEOUT_MS = 8_000;
+
+/**
+ * Cabecera con la IP del paciente, solo si `FORWARD_CLIENT_IP` está encendida.
+ * El nombre es propio a propósito: un proxy delante de la API sobrescribe las cabeceras de reenvío
+ * habituales. Está pendiente de acordar con el equipo de la API.
+ */
+const CLIENT_IP_HEADER_FOR_API = "X-Portal-Client-IP";
 
 type WithoutPrefix<Path> = Path extends `/api/v1${infer Rest}` ? Rest : never;
 
@@ -63,6 +71,13 @@ export async function apiRequest<Data>(request: ApiRequest): Promise<ApiResult<D
 
   // Solo se reutilizan lecturas públicas. Con token la respuesta nunca se guarda.
   const cacheable = method === "GET" && !token && revalidate !== undefined;
+
+  // La IP sale de la cabecera del proxy de confianza, nunca de otra cabecera del navegador.
+  // No viaja en las lecturas que se guardan en caché: una respuesta compartida no depende del cliente.
+  if (!cacheable && forwardsClientIp()) {
+    const clientIp = await readClientIp();
+    if (clientIp) headers.set(CLIENT_IP_HEADER_FOR_API, clientIp);
+  }
 
   let response: Response;
   try {

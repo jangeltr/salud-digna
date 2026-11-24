@@ -9,6 +9,8 @@ export const metadata: Metadata = {
   applicationName: APP_NAME,
   title: { default: APP_NAME, template: `%s | ${APP_NAME}` },
   description: APP_DESCRIPTION,
+  // Prototipo con datos sintéticos: ningún buscador debe indexarlo.
+  robots: { index: false, follow: false },
 };
 
 export const viewport: Viewport = {

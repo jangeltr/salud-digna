@@ -6,7 +6,7 @@ import type { GeneralData } from "@/lib/domain/ports";
 import { writeSessionCookie } from "@/lib/session/cookie";
 import { authorizedRequest } from "./authorized";
 import { apiRequest } from "./client";
-import { getApiBaseUrl } from "./config";
+import { forwardsClientIp, getApiBaseUrl } from "./config";
 import { toFailure, toResult } from "./failures";
 import type { components } from "./schema";
 
@@ -49,6 +49,7 @@ function catalogParams({ page, limit, search }: CatalogQuery) {
 /** Detiene el arranque si falta la URL de la API general o es inválida. */
 export function checkGeneralApiConfiguration(): void {
   getApiBaseUrl();
+  forwardsClientIp();
 }
 
 /** Datos generales sobre la API general: catálogo, perfil, acceso y registro. */

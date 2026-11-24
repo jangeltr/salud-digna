@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { SignInForm } from "@/features/auth/sign-in-form";
 import { safeDestination } from "@/lib/session/routes";
+import { isRegistrationEnabled } from "@/lib/settings";
 
 export const metadata: Metadata = { title: "Acceso" };
 
@@ -20,12 +21,14 @@ export default async function SignInPage({ searchParams }: PageProps<"/acceso">)
         </p>
       ) : null}
       <SignInForm destination={destination} />
-      <p className="mt-6 text-sm text-muted">
-        ¿Aún no tienes cuenta?{" "}
-        <Link href="/registro" className="inline-flex min-h-11 items-center font-semibold text-brand underline underline-offset-4">
-          Crear cuenta
-        </Link>
-      </p>
+      {isRegistrationEnabled() ? (
+        <p className="mt-6 text-sm text-muted">
+          ¿Aún no tienes cuenta?{" "}
+          <Link href="/registro" className="inline-flex min-h-11 items-center font-semibold text-brand underline underline-offset-4">
+            Crear cuenta
+          </Link>
+        </p>
+      ) : null}
     </div>
   );
 }

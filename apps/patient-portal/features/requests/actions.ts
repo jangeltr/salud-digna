@@ -6,7 +6,8 @@ import { isUuid } from "@/features/catalog/params";
 import { generalData, requestCapabilities, requestNotifier, requestQuery } from "@/lib/composition";
 import type { Result } from "@/lib/domain/errors";
 import type { Receipt } from "@/lib/domain/ports";
-import { refundAttempt, takeAttempt } from "@/lib/session/attempts";
+import { refundAttempt, takeAttempt, type AttemptLimit } from "@/lib/session/attempts";
+import { CONTINUITY_CODES_PER_HOUR, CONTINUITY_REDEEM, REQUESTS_PER_HOUR, waitText } from "@/lib/session/limits";
 import { clearSessionCookie } from "@/lib/session/cookie";
 import { signInUrl } from "@/lib/session/routes";
 import { hasSessionCookie } from "@/lib/session/session";
@@ -88,6 +89,20 @@ async function settle(result: Result<Receipt>, id: string, onSuccess: string): P
   }
 }
 
+/**
+ * Tope por paciente y por hora. Devuelve 0 si la acción puede seguir, o los segundos que faltan.
+ * Pide el perfil para saber de qué paciente es la sesión. Si el servicio no responde, no cuenta:
+ * la acción fallará después por el mismo motivo.
+ */
+async function hourlyWait(name: string, limit: AttemptLimit, destination: string): Promise<number> {
+  const profile = await generalData.getProfile();
+  if (!profile.ok) {
+    if (profile.error.kind === "session") await endSession(destination);
+    return 0;
+  }
+  return takeAttempt(`${name}:${profile.data.accountId}`, limit);
+}
+
 export type StartState = {
   message?: string;
   /** No se sabe si el trámite se creó: hay que revisar los pendientes antes de otro intento. */
@@ -99,6 +114,11 @@ export async function startRequest(_previous: StartState, formData: FormData): P
   const studyId = field(formData, "estudio");
   const returnTo = isUuid(studyId) ? `/tramite/nuevo?estudio=${studyId}` : "/tramite/nuevo";
   if (!(await hasSessionCookie())) redirect(signInUrl(returnTo));
+
+  const wait = await hourlyWait("start-request", REQUESTS_PER_HOUR, returnTo);
+  if (wait > 0) {
+    return { message: `Has empezado demasiados trámites en la última hora. Podrás empezar otro en ${waitText(wait)}.` };
+  }
 
   const known = new Set(field(formData, "conocidos").split(",").filter(isUuid));
   const startedAt = Date.now();
@@ -290,6 +310,11 @@ export async function requestContinuityCode(_previous: ContinuityState, formData
   if (!(await hasSessionCookie())) redirect(signInUrl(requestPath(id)));
   requireSupport(requestCapabilities.continuityCodes, id);
 
+  const wait = await hourlyWait("continuity-code", CONTINUITY_CODES_PER_HOUR, requestPath(id));
+  if (wait > 0) {
+    return { message: `Has generado demasiados códigos en la última hora. Podrás generar otro en ${waitText(wait)}.` };
+  }
+
   const result = await requestNotifier.notify({ type: "continuity-requested", eventId: newEventId(), requestId: id });
   if (result.ok) {
     const { continuity } = result.data;
@@ -304,8 +329,6 @@ export async function requestContinuityCode(_previous: ContinuityState, formData
 
 export type RedeemState = { message?: string };
 
-/** Intentos fallidos de canje que se toleran por paciente. El orquestador admite diez por minuto a todo el canal. */
-const REDEEM_LIMIT = { limit: 5, windowMs: 10 * 60_000 };
 const CODE_MAX = 32;
 
 // Un solo mensaje para el código mal escrito, desconocido, vencido, ya usado o emitido en este mismo canal.
@@ -327,7 +350,7 @@ export async function redeemContinuityCode(_previous: RedeemState, formData: For
     return { message: REDEEM_UNCERTAIN };
   }
   const attempts = `continuity-redeem:${profile.data.accountId}`;
-  if (!takeAttempt(attempts, REDEEM_LIMIT)) return { message: REDEEM_BLOCKED };
+  if (takeAttempt(attempts, CONTINUITY_REDEEM) > 0) return { message: REDEEM_BLOCKED };
 
   const code = field(formData, "codigo");
   if (code.length > CODE_MAX) return { message: REDEEM_INVALID };

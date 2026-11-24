@@ -34,6 +34,9 @@ Desde el 2026-11-24 el portal es solo web. El proyecto cambió de arquitectura: 
 - El contrato de la API general es `docs/openapi.json`. Léelo en su ubicación, sin copiarlo al portal. `lib/adapters/` y `mocks/` usan solo operaciones y propiedades de ese archivo.
 - Toda llamada a un servicio sale del servidor de Next. El JWT vive en una cookie `HttpOnly` y queda fuera del código del navegador.
 - Cada página nueva de `(account)` o `(booking)` llama a `requireAccount()` y registra su prefijo en `lib/session/routes.ts`.
+- El portal envía una política de contenido con un nonce por petición, escrita en `proxy.ts`. Evita los scripts y estilos en línea y los recursos de otros orígenes; si hace falta alguno, actualiza la política en el mismo cambio.
+- Los límites propios están en `lib/session/limits.ts`. La IP del cliente sale solo de la cabecera `X-Real-IP` que escribe el proxy, nunca de otra cabecera del navegador.
+- `REGISTRATION_ENABLED` y `FORWARD_CLIENT_IP` se leen en el servidor y admiten solo `true` o `false`. La segunda sigue apagada hasta acordarla con el equipo de la API.
 - Las pruebas locales usan un puerto distinto de 5173 y servicios simulados. Contra servicios desplegados, solo con autorización y contando cada llamada a registro y acceso.
 - Si el portal necesita algo que el contrato no ofrece, repórtalo en lugar de simularlo con campos inventados.
 

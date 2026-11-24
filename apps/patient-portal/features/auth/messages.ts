@@ -1,10 +1,9 @@
 import type { PortalError } from "@/lib/domain/errors";
+import { waitText } from "@/lib/session/limits";
 
-function formatWait(seconds: number | undefined): string {
-  if (seconds === undefined || seconds <= 0) return "unos minutos";
-  if (seconds < 60) return seconds === 1 ? "1 segundo" : `${seconds} segundos`;
-  const minutes = Math.ceil(seconds / 60);
-  return minutes === 1 ? "1 minuto" : `${minutes} minutos`;
+/** Aviso de espera. Es el mismo cuando el límite lo pone el portal y cuando lo pone el servicio. */
+export function tooManyAttempts(seconds: number | undefined): string {
+  return `Demasiados intentos. Espera ${waitText(seconds)} antes de volver a intentarlo.`;
 }
 
 /**
@@ -21,7 +20,7 @@ export function authErrorMessage(error: PortalError): string {
     case "conflict":
       return "No se pudo crear la cuenta con ese correo. Si ya tienes una cuenta, inicia sesión.";
     case "rate-limited":
-      return `Demasiados intentos. Espera ${formatWait(error.retryAfterSeconds)} antes de volver a intentarlo.`;
+      return tooManyAttempts(error.retryAfterSeconds);
     default:
       return "No pudimos completar la operación. Inténtalo de nuevo más tarde.";
   }

@@ -1,11 +1,15 @@
 "use server";
 
 import "server-only";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { generalData } from "@/lib/composition";
+import { blockedFor, clearFailures, recordFailure } from "@/lib/session/attempts";
+import { readClientIp } from "@/lib/session/client-ip";
 import { clearSessionCookie } from "@/lib/session/cookie";
+import { LOGIN_BY_EMAIL, LOGIN_BY_IP } from "@/lib/session/limits";
 import { SIGN_IN_PATH, safeDestination } from "@/lib/session/routes";
-import { authErrorMessage } from "./messages";
+import { isRegistrationEnabled } from "@/lib/settings";
+import { authErrorMessage, tooManyAttempts } from "./messages";
 import { validateSignIn, validateSignUp, type FieldErrors } from "./validation";
 
 /** Estado que vuelve al formulario. Nunca incluye la contraseña ni el token. */
@@ -26,14 +30,37 @@ export async function signIn(_previous: AuthFormState, formData: FormData): Prom
   // Los datos inválidos se detienen aquí: el servicio cuenta cada intento, también los fallidos.
   if ("fieldErrors" in validated) return { fieldErrors: validated.fieldErrors, values };
 
+  // Límites propios del portal: por correo y por IP del cliente, con espera creciente.
+  // Sin la cabecera del proxy no hay IP, y entonces solo se aplica el límite por correo.
+  const emailKey = `login-email:${validated.input.email.toLowerCase()}`;
+  const clientIp = await readClientIp();
+  const ipKey = clientIp ? `login-ip:${clientIp}` : undefined;
+  const blocked = Math.max(blockedFor(emailKey), ipKey ? blockedFor(ipKey) : 0);
+  // Con una espera pendiente no se llama al servicio, ni siquiera con la contraseña correcta.
+  if (blocked > 0) return { message: tooManyAttempts(blocked), values };
+
   // Si las credenciales son correctas, el servicio de datos generales deja abierta la sesión.
   const result = await generalData.signIn(validated.input);
-  if (!result.ok) return { message: authErrorMessage(result.error), values };
+  if (!result.ok) {
+    const { kind } = result.error;
+    // Cuenta cualquier rechazo del servicio. Que el servicio no responda o aplique su propio límite no cuenta.
+    if (kind !== "unavailable" && kind !== "rate-limited") {
+      const wait = Math.max(recordFailure(emailKey, LOGIN_BY_EMAIL), ipKey ? recordFailure(ipKey, LOGIN_BY_IP) : 0);
+      if (wait > 0) return { message: tooManyAttempts(wait), values };
+    }
+    return { message: authErrorMessage(result.error), values };
+  }
 
+  // Un acceso correcto borra los fallos de ese correo. Los de la IP se conservan:
+  // una cuenta válida no debe servir para seguir probando otras desde la misma IP.
+  clearFailures(emailKey);
   redirect(safeDestination(formData.get("destino")));
 }
 
 export async function signUp(_previous: AuthFormState, formData: FormData): Promise<AuthFormState> {
+  // Con el registro apagado la página no existe. Si aun así llega el envío, se rechaza sin llamar al servicio.
+  if (!isRegistrationEnabled()) notFound();
+
   const values = {
     firstName: formValue(formData, "firstName"),
     lastName: formValue(formData, "lastName"),
