@@ -1,15 +1,17 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { CalendarDays, Clock3, Inbox, LogIn, UsersRound } from "lucide-react";
+import { CalendarDays, Clock3, Inbox, LogIn, Route, UsersRound } from "lucide-react";
 import { ApiError, errorMessage, transition, type Api, type JourneyEntry } from "./orchestrator";
 import { confirmAppointment, isAccessError, isUncertain } from "./assisted-contract";
 import { Brand, IntegrationNotice, Panel } from "./ui";
+import { OmnichannelPanel, type OmnichannelApi } from "./omnichannel-panel";
 import { Timeline, type TimelineEvent } from "./timeline";
 
 const sections = [
   { name: "Bandeja", icon: Inbox }, { name: "Pacientes", icon: UsersRound },
   { name: "Citas", icon: CalendarDays }, { name: "Historial", icon: Clock3 },
+  { name: "Orquestador", icon: Route },
 ] as const;
 const channels = { WEB: "Web", WHATSAPP: "WhatsApp", MOBILE: "App", CALL_CENTER: "Call Center" } as const;
 const steps: Record<string, string> = {
@@ -37,7 +39,7 @@ function present(entry: JourneyEntry, requestId: string): TimelineEvent {
   };
 }
 
-export function AssistedConsole({ api, exit, reportOutcome }: { api: Api; exit: () => void; reportOutcome: (notice: string) => void }) {
+export function AssistedConsole({ api, exit, reportOutcome, omni, enabled }: { api: Api; exit: () => void; reportOutcome: (notice: string) => void; omni: OmnichannelApi; enabled: boolean }) {
   const [section, setSection] = useState<(typeof sections)[number]["name"]>("Bandeja");
   const [grant, setGrant] = useState<Grant | null>(null);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
@@ -226,6 +228,11 @@ export function AssistedConsole({ api, exit, reportOutcome }: { api: Api; exit: 
       </aside>
       <main id="contenido" className="workspace" tabIndex={-1}>
         <header className="workspace-header"><div><p className="eyebrow">Call Center</p><h1 aria-live="polite">{section}</h1></div></header>
+        <div hidden={section !== "Orquestador"}>
+          <OmnichannelPanel api={omni} enabled={enabled} writable frame={(content) => <Panel title="Trámite del orquestador">{content}</Panel>} />
+        </div>
+        {section !== "Orquestador" && <>
+        <p>Atención y citas de la API general.</p>
         <p role="status">{[outcome, message].filter(Boolean).join(" ")}</p>
         <div className="workspace-grid">
           {section === "Bandeja" && <section className="column queue" aria-label="Bandeja">
@@ -243,7 +250,7 @@ export function AssistedConsole({ api, exit, reportOutcome }: { api: Api; exit: 
               </form>
               <IntegrationNotice>La referencia permite atender un trámite. La búsqueda por datos personales está pendiente de integración.</IntegrationNotice>
             </Panel>}
-            {(section === "Bandeja" || section === "Historial") && <Panel title="Historial omnicanal">
+            {(section === "Bandeja" || section === "Historial") && <Panel title="Historial de la API general">
               {historyIssue && <p role="status">{historyIssue}</p>}
               <Timeline state="empty" events={grant ? history.map((entry) => present(entry, grant.requestId)) : []} />
             </Panel>}
@@ -279,6 +286,7 @@ export function AssistedConsole({ api, exit, reportOutcome }: { api: Api; exit: 
             </Panel>
           </aside>
         </div>
+        </>}
       </main>
     </div>
   );
