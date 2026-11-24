@@ -12,6 +12,12 @@ const MAX_SCAN_PAGES = 5;
 /** Clínicas revisadas como máximo al filtrar por ciudad. */
 export const CITY_SCAN_LIMIT = SCAN_PAGE_SIZE * MAX_SCAN_PAGES;
 
+function slicePage(matches: Clinic[], page: number, truncated: boolean): ClinicSearch {
+  const start = (page - 1) * PAGE_SIZE;
+  const end = start + PAGE_SIZE;
+  return { ok: true, items: matches.slice(start, end), hasMore: matches.length > end, truncated };
+}
+
 export type ClinicSearch = {
   ok: true;
   items: Clinic[];
@@ -32,6 +38,14 @@ export async function searchClinics({ q, city, page }: Search): Promise<ClinicSe
   }
 
   const wanted = normalizeText(city);
+
+  // Sin nombre, el filtro usa el índice de clínicas, que ya está en caché: ninguna llamada nueva.
+  if (!search) {
+    const all = await generalData.allClinics();
+    if (!all.ok) return all;
+    return slicePage(all.data.items.filter((clinic) => normalizeText(clinic.city).includes(wanted)), page, all.data.truncated);
+  }
+
   const start = (page - 1) * PAGE_SIZE;
   const end = start + PAGE_SIZE;
   const matches: Clinic[] = [];

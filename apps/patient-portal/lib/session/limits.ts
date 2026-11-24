@@ -1,5 +1,5 @@
 import "server-only";
-import type { AttemptLimit, Backoff } from "./attempts";
+import type { AttemptLimit, Backoff } from "@/lib/state/ports";
 
 /**
  * Límites propios del portal. Son independientes de los que apliquen la API general y el orquestador:

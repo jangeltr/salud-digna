@@ -10,6 +10,9 @@ Código transversal sin interfaz.
 | `brand.ts` | Nombre, textos de identidad y colores de tema del portal. |
 | `settings.ts` | Ajustes del portal que no son de ningún servicio. Hoy, `REGISTRATION_ENABLED`. |
 | `flags.ts` | Lectura de variables de tipo sí o no: solo admite `true` o `false`. |
+| `cache-settings.ts` | `CATALOG_CACHE_SECONDS`, fijada al compilar. |
+| `secret.ts` | Envoltorio de la clave del canal y de los permisos, que impide que acaben en un log o en una respuesta. |
+| `state/` | Interfaces del estado entre peticiones y su implementación en memoria y archivo. |
 | `session/` | Sesión del paciente, con el JWT en una cookie `HttpOnly` del origen del portal. |
 
 Páginas, acciones y componentes importan solo `domain/` y `composition.ts`. Nada fuera de `adapters/` importa de `adapters/`, salvo `composition.ts`.
@@ -37,7 +40,9 @@ Adaptador de la API general, que es la API actual. Se ejecuta solo en el servido
 | `client.ts` | Única salida hacia la API: cabeceras propias, tiempo de espera y registro sin datos sensibles. Con `FORWARD_CLIENT_IP` encendida añade la IP del paciente. |
 | `authorized.ts` | Llamada con la sesión del paciente. Toma el token del módulo de sesión. |
 | `failures.ts` | Única traducción de códigos HTTP a errores del portal. |
-| `general-data.ts` | Implementa `GeneralData`: catálogo con caché de 30 segundos, perfil, acceso y registro. |
+| `general-data.ts` | Implementa `GeneralData`: catálogo, perfil, acceso, registro y cierre de sesión. |
+| `catalog.ts` | Índice de estudios y clínicas por identificador, en un solo caché. |
+| `session.ts` | Caché del perfil de sesión, por hash del token, hasta 60 segundos. |
 
 ## adapters/legacy-requests
 
@@ -57,25 +62,30 @@ Adaptador del orquestador, activo con `REQUESTS_BACKEND=orchestrator`. Se rige p
 | Archivo | Contenido |
 | --- | --- |
 | `config.ts` | Lee y valida `ORCHESTRATOR_BASE_URL`, `ORCHESTRATOR_API_KEY` y `PORTAL_DATA_DIR`. |
-| `secret.ts` | Envoltorio de la clave del canal y de los permisos, que impide que acaben en un log o en una respuesta. |
 | `client.ts` | Única salida hacia el orquestador. Escribe `Authorization` y `X-Journey-Grant`, que no salen de ahí. |
 | `failures.ts` | Única traducción de los códigos HTTP del orquestador a errores del portal. |
 | `mapping.ts` | Comprueba la forma de cada respuesta y la traduce al modelo del portal. |
-| `grants.ts` | Permisos de trámite, solo en memoria, por paciente y trámite. |
-| `registry.ts` | Registro del canal Web en un archivo JSON: qué trámites inició cada paciente. Sin permisos ni claves. |
 | `access.ts` | Comprobación previa a toda lectura o escritura: sesión, pertenencia en el registro y permiso vigente. |
 | `notifier.ts` | Implementa `RequestNotifier`: crear el trámite con reenvío idempotente, estudio, clínica, envío a confirmación, cancelación, y emitir y canjear códigos de continuidad. |
 | `query.ts` | Implementa `RequestQuery`: lista del registro, un trámite y su historial. |
 | `capabilities.ts` | Lo que soporta: cancelación, historial y códigos de continuidad, sin horario, nota, pausa, ayuda de asesor ni confirmación directa. |
 
+## state
+
+| Archivo | Contenido |
+| --- | --- |
+| `ports.ts` | Interfaces asíncronas: registro del canal Web, permisos, claves de creación pendientes, intentos y caché de sesión. |
+| `memory.ts` | Implementación en la memoria del proceso. |
+| `file-registry.ts` | Registro del canal Web en un archivo JSON, con escritura atómica. |
+
 ## session
 
 | Archivo | Contenido |
 | --- | --- |
-| `cookie.ts` | Nombre y atributos de la cookie de sesión, y su lectura, escritura y borrado. |
+| `cookie.ts` | Nombre y atributos de la cookie de sesión y de la indicadora, y su lectura, escritura y borrado. |
+| `indicator.ts` | Cookie indicadora de sesión, sin datos, que lee el encabezado en el navegador. |
 | `routes.ts` | Prefijos de las rutas protegidas y validación del destino tras el acceso. |
 | `session.ts` | Comprueba la sesión pidiendo el perfil del paciente y exige cuenta en las páginas protegidas. |
-| `attempts.ts` | Contadores en memoria, por clave: topes dentro de una ventana y espera creciente tras fallos. |
 | `limits.ts` | Valores de los límites propios del portal: acceso, trámites, códigos y canjes. |
 | `client-ip.ts` | IP del cliente, tomada solo de la cabecera `X-Real-IP` que escribe el proxy. |
 

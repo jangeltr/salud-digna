@@ -2,10 +2,8 @@
 
 import "server-only";
 import { notFound, redirect } from "next/navigation";
-import { generalData } from "@/lib/composition";
-import { blockedFor, clearFailures, recordFailure } from "@/lib/session/attempts";
+import { attemptStore, generalData } from "@/lib/composition";
 import { readClientIp } from "@/lib/session/client-ip";
-import { clearSessionCookie } from "@/lib/session/cookie";
 import { LOGIN_BY_EMAIL, LOGIN_BY_IP } from "@/lib/session/limits";
 import { SIGN_IN_PATH, safeDestination } from "@/lib/session/routes";
 import { isRegistrationEnabled } from "@/lib/settings";
@@ -35,7 +33,7 @@ export async function signIn(_previous: AuthFormState, formData: FormData): Prom
   const emailKey = `login-email:${validated.input.email.toLowerCase()}`;
   const clientIp = await readClientIp();
   const ipKey = clientIp ? `login-ip:${clientIp}` : undefined;
-  const blocked = Math.max(blockedFor(emailKey), ipKey ? blockedFor(ipKey) : 0);
+  const blocked = Math.max(await attemptStore.blockedFor(emailKey), ipKey ? await attemptStore.blockedFor(ipKey) : 0);
   // Con una espera pendiente no se llama al servicio, ni siquiera con la contraseña correcta.
   if (blocked > 0) return { message: tooManyAttempts(blocked), values };
 
@@ -45,7 +43,10 @@ export async function signIn(_previous: AuthFormState, formData: FormData): Prom
     const { kind } = result.error;
     // Cuenta cualquier rechazo del servicio. Que el servicio no responda o aplique su propio límite no cuenta.
     if (kind !== "unavailable" && kind !== "rate-limited") {
-      const wait = Math.max(recordFailure(emailKey, LOGIN_BY_EMAIL), ipKey ? recordFailure(ipKey, LOGIN_BY_IP) : 0);
+      const wait = Math.max(
+        await attemptStore.recordFailure(emailKey, LOGIN_BY_EMAIL),
+        ipKey ? await attemptStore.recordFailure(ipKey, LOGIN_BY_IP) : 0,
+      );
       if (wait > 0) return { message: tooManyAttempts(wait), values };
     }
     return { message: authErrorMessage(result.error), values };
@@ -53,7 +54,7 @@ export async function signIn(_previous: AuthFormState, formData: FormData): Prom
 
   // Un acceso correcto borra los fallos de ese correo. Los de la IP se conservan:
   // una cuenta válida no debe servir para seguir probando otras desde la misma IP.
-  clearFailures(emailKey);
+  await attemptStore.clearFailures(emailKey);
   redirect(safeDestination(formData.get("destino")));
 }
 
@@ -81,8 +82,8 @@ export async function signUp(_previous: AuthFormState, formData: FormData): Prom
   redirect(safeDestination(formData.get("destino")));
 }
 
-/** Borra la cookie. El servicio no tiene cierre de sesión: el token sigue válido allí hasta que vence. */
+/** Cierra la sesión del portal. El servicio no tiene cierre de sesión: el token sigue válido allí hasta que vence. */
 export async function signOut(): Promise<void> {
-  await clearSessionCookie();
+  await generalData.signOut();
   redirect(SIGN_IN_PATH);
 }

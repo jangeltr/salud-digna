@@ -241,13 +241,13 @@ Cada `POST /events` lleva el `eventId` como `externalEventId`, `schemaVersion: 1
 - **Canjear.** `/continuar` tiene el campo «Tengo un código de continuidad». Al canjearlo, el trámite se añade al registro del paciente de la sesión y el permiso queda solo en memoria.
 - **Validación.** El servidor quita espacios y guiones, pasa a mayúsculas y corrige las letras que el alfabeto excluye por parecerse a un número: O pasa a 0, e I y L pasan a 1. Lo que no tenga forma de código no llega al orquestador.
 - **Mensaje único.** Código mal escrito, desconocido, vencido, ya usado o emitido en este mismo canal muestran el mismo texto. Lo escrito no vuelve en la página.
-- **Límite de intentos.** Cinco canjes fallidos por paciente cada diez minutos, contados en memoria por `lib/session/attempts.ts`. Se cuenta por cuenta, así que cubre todas las sesiones del paciente. Un canje correcto y los avisos `429` o `5xx` del orquestador no gastan intentos.
+- **Límite de intentos.** Cinco canjes fallidos por paciente cada diez minutos, contados por el almacén de intentos de `lib/state`. Se cuenta por cuenta, así que cubre todas las sesiones del paciente. Un canje correcto y los avisos `429` o `5xx` del orquestador no gastan intentos.
 - **El código es la autorización.** No prueba la identidad de quien lo trae: el trámite pasa al registro de quien lo canjea con sesión.
 - **Mismo canal.** El orquestador no deja canjear en Web un código emitido en Web. Un trámite propio con el permiso vencido solo se recupera con un código emitido en otro canal.
 
 **Cabeceras secretas.** `Authorization`, `X-Journey-Grant` e `Idempotency-Key` se escriben en un solo lugar, `client.ts`, y no salen de esa función. La clave del canal y los permisos viajan dentro de `Secret`, que devuelve una marca si alguien lo convierte a texto, a JSON o lo inspecciona. El log registra solo el método, la ruta del contrato y el motivo: nunca cabeceras, cuerpos, códigos ni identificadores. El cliente rechaza las redirecciones, que reenviarían las cabeceras a otro destino. Ningún resultado que llega a páginas o acciones contiene un permiso.
 
-**Registro del canal Web.** El portal anota los trámites que inicia y los que adopta con un código. `registry.ts` los guarda en `web-channel-registry.json`, dentro de `PORTAL_DATA_DIR`. Por defecto es `.data/` en el portal, que Git ignora.
+**Registro del canal Web.** El portal anota los trámites que inicia y los que adopta con un código. `lib/state/file-registry.ts` los guarda en `web-channel-registry.json`, dentro de `PORTAL_DATA_DIR`. Por defecto es `.data/` en el portal, que Git ignora.
 
 - Contiene, por identificador de cuenta, el identificador de cada trámite, cuándo lo registró el portal y cuándo supo que quedó cerrado. Nunca permisos, claves ni códigos.
 - La escritura es atómica: el contenido completo va a un archivo temporal de la misma carpeta y sustituye al registro con un renombrado.
@@ -255,7 +255,7 @@ Cada `POST /events` lleva el `eventId` como `externalEventId`, `schemaVersion: 1
 - Las escrituras pasan por una cola, de una en una. La copia en memoria solo cambia si el archivo quedó escrito.
 - Sirve con un único proceso del portal. Varias instancias necesitarían un almacén compartido.
 
-**Permisos.** `grants.ts` guarda cada permiso solo en memoria, asociado a cuenta y trámite, con el vencimiento que informó el orquestador. Al reiniciar el servidor se pierden. Un trámite del paciente sin permiso vigente devuelve el error `access-expired`.
+**Permisos.** El almacén de permisos de `lib/state/memory.ts` guarda cada permiso solo en memoria, asociado a cuenta y trámite, con el vencimiento que informó el orquestador. Al reiniciar el servidor se pierden. Un trámite del paciente sin permiso vigente devuelve el error `access-expired`.
 
 **Pertenencia.** Toda lectura o escritura pasa por `resolveAccess`. Primero pide el perfil a la API general, porque el orquestador no conoce al paciente ni su sesión. Después comprueba en el registro que el trámite es de esa cuenta: si no lo es, responde «no encontrado» sin llamar al orquestador. Por último busca el permiso: sin uno vigente responde `access-expired`, también sin llamar.
 
@@ -340,7 +340,7 @@ Aun con el listado, el portal solo vería resúmenes: identificador, tipo, estad
 | Requisito | Detalle |
 | --- | --- |
 | Proceso | `next build` y después `next start`, escuchando solo en `127.0.0.1`, detrás de un proxy inverso que termine TLS. |
-| Una sola instancia | Registro, permisos, claves de creación pendientes y límites viven en el proceso. Con dos instancias, cada una vería trámites, permisos y contadores distintos. |
+| Una sola instancia | Registro, permisos, claves de creación pendientes y límites viven en el proceso. Con dos instancias, cada una vería trámites, permisos y contadores distintos. «Rendimiento y caché» explica qué haría falta para varias. |
 | Variables | `API_BASE_URL`, `REQUESTS_BACKEND`, `ORCHESTRATOR_BASE_URL`, `ORCHESTRATOR_API_KEY`, `PORTAL_DATA_DIR`, `REGISTRATION_ENABLED` y `FORWARD_CLIENT_IP`, inyectadas desde la configuración privada del servicio. Ninguna lleva el prefijo `NEXT_PUBLIC_`. |
 | `PORTAL_DATA_DIR` | Fuera de la carpeta del código, para que un despliegue nuevo no la borre. Propiedad del usuario del servicio, con permisos `0700`. Contiene qué cuenta tiene qué trámites: hay que incluirla en los respaldos y excluirla de cualquier carpeta servida. |
 | Proxy | Debe conservar el `Host` original o enviar `X-Forwarded-Host`, escribir `X-Real-IP` con la IP del cliente y sobrescribir las cabeceras de reenvío que mande el navegador. Sin el host correcto, el portal rechaza todos los formularios con `403`. |
@@ -348,7 +348,7 @@ Aun con el listado, el portal solo vería resúmenes: identificador, tipo, estad
 
 **Registro controlado.** `REGISTRATION_ENABLED` admite `true` o `false`. Sin valor, el registro está apagado en producción y encendido en desarrollo. Apagado, `/registro` responde no encontrado, `/acceso` no enlaza a «Crear cuenta» y la acción de servidor responde `404` sin llamar a la API general. Lo lee `lib/settings.ts`.
 
-**Límites propios.** Todas las peticiones a la API general y al orquestador salen del servidor del portal, así que esos servicios no distinguen a un paciente de otro por su IP. El portal pone los suyos, en memoria, en `lib/session/attempts.ts` y `lib/session/limits.ts`.
+**Límites propios.** Todas las peticiones a la API general y al orquestador salen del servidor del portal, así que esos servicios no distinguen a un paciente de otro por su IP. El portal pone los suyos, en memoria, con el almacén de intentos de `lib/state` y los valores de `lib/session/limits.ts`.
 
 | Límite | Regla | Aviso al paciente |
 | --- | --- | --- |
@@ -387,7 +387,8 @@ img-src 'self' blob: data:; font-src 'self'; connect-src 'self'; object-src 'non
 base-uri 'self'; form-action 'self'; frame-ancestors 'none'
 ```
 
-- Funciona porque todas las páginas se generan en cada petición y el portal no usa estilos ni scripts en línea, ni recursos de otros orígenes.
+- Funciona porque esas páginas se generan en cada petición y el portal no usa estilos ni scripts en línea, ni recursos de otros orígenes.
+- Las cuatro páginas de catálogo servidas desde caché no pueden llevar nonce y usan la variante sin nonce de la guía, descrita en «Rendimiento y caché».
 - En desarrollo la política añade `'unsafe-eval'` y estilos en línea, que React necesita para depurar.
 - No incluye `upgrade-insecure-requests`: rompería las pruebas locales por `http`, y en producción `Strict-Transport-Security` ya obliga a usar `https`.
 - No tiene dirección de informes. Una infracción solo se ve en la consola del navegador.
@@ -416,6 +417,75 @@ base-uri 'self'; form-action 'self'; frame-ancestors 'none'
 
 Lo comprobado y correcto: cookie `__Host-` con `Secure`, `HttpOnly` y `SameSite=Lax`; `403` ante un origen ajeno o nulo; todas las rutas protegidas redirigen a `/acceso` sin sesión y una cookie inventada se borra; las acciones comprueban la sesión; el trámite ajeno responde igual que el inexistente; los mensajes de los servicios nunca llegan a la interfaz; las páginas no se almacenan en caché. `pnpm audit` no encontró avisos en las dependencias del portal.
 
+### Rendimiento y caché
+
+**Fecha.** 2026-11-24. Objetivo de referencia: 5 millones de consultas diarias en el portal.
+
+**Catálogo servido desde caché.** `/`, `/estudios`, `/clinicas` y `/estudios/[id]` no leen cookies ni la URL. Next las genera una vez y las regenera cada `CATALOG_CACHE_SECONDS` segundos. Nginx o una CDN pueden servirlas sin llegar a Next.
+
+- `/estudios` y `/clinicas` son solo la primera página sin filtros. La búsqueda, el filtro por ciudad y las páginas siguientes están en `/estudios/buscar` y `/clinicas/buscar`, que leen la URL y se generan en cada petición.
+- `proxy.ts` redirige con `308` los enlaces antiguos con filtros, como `/estudios?q=…`, a la ruta de búsqueda. Es una redirección y no una reescritura: la documentación de Next avisa que reescribir una página estática rompe la hidratación de `usePathname`.
+- `/estudios/[id]` no se genera al compilar. Cada estudio se genera en su primera visita y se guarda, como indica la documentación de `generateStaticParams`.
+- `CATALOG_CACHE_SECONDS` se lee al compilar: `next.config.ts` la valida y Next escribe el valor en el código. Fija la regeneración de esas páginas, la caché de datos del catálogo y su cabecera. Sin valor, 300.
+- `proxy.ts` envía en esas páginas `Cache-Control: public, max-age=N, s-maxage=N`, con N = `CATALOG_CACHE_SECONDS`. Sustituye a la cabecera de Next, que no lleva `public` y permite servir una copia vieja durante un año: tras un despliegue, esa copia apuntaría a archivos de la compilación anterior.
+- `next build` genera el listado de estudios y el de clínicas, así que llama a la API general. Si no la alcanza, `features/catalog/unavailable.tsx` hace que esas páginas pasen a generarse en cada petición, en lugar de guardarse con «Servicio no disponible». Si una regeneración falla, Next sigue sirviendo la copia anterior.
+
+**Política de contenido en el catálogo.** La guía de Next exige generar en cada petición las páginas con nonce. Las cuatro páginas de catálogo usan la variante sin nonce de la misma guía, con `script-src 'self' 'unsafe-inline'` y `style-src 'self' 'unsafe-inline'`, y conservan el resto de directivas: solo recursos del propio origen, sin `object`, sin marcos y con `form-action 'self'`. Esas páginas no muestran datos del paciente ni texto que él escriba. El resto del portal, incluidas las búsquedas, conserva el nonce. Decisión del propietario del portal del 2026-11-24.
+
+**Encabezado.** El diseño raíz ya no lee cookies. Cada grupo de rutas pone su marco, `components/page-frame.tsx`:
+
+- En las páginas públicas el encabezado lo decide el navegador con la cookie indicadora, `lib/session/indicator.ts`. Su valor es `1`: no contiene el token ni ningún identificador. No es `HttpOnly`, porque la lee el navegador. Se escribe y se borra junto con la cookie de sesión, con el mismo vencimiento, al iniciar sesión, al cerrarla y cuando la sesión vence.
+- La cookie indicadora no autoriza nada. Las rutas protegidas siguen validando la cookie de sesión en el servidor.
+- En `(account)` y `(booking)` lo decide el servidor, como antes.
+- Sin JavaScript, las páginas públicas muestran «Acceso» aunque haya sesión. Para no dejar al paciente atascado, `/acceso` con sesión abierta lleva al destino o a `/mi-espacio`.
+
+**Sesión.** `lib/adapters/general-api/session.ts` guarda el perfil validado por `GET /auth/me` durante el mínimo entre 60 segundos y el vencimiento del token. La clave es el SHA-256 del token: el token nunca se guarda.
+
+- Se invalida al cerrar sesión y ante cualquier `401` de la API general.
+- El vencimiento se conoce al iniciar sesión en este proceso. El portal no decodifica el token, así que tras un reinicio las sesiones abiertas vuelven a validarse en cada página hasta que el paciente inicia sesión otra vez.
+- **Contrapartida.** Durante esos 60 segundos, una sesión que la API invalide por su cuenta sigue abriendo las páginas del portal. Cualquier operación que llegue a la API con ese token recibe `401` y cierra la sesión. En modo orquestador, la única llamada a la API general con token es el perfil, así que el retraso puede llegar a los 60 segundos completos.
+
+**Catálogo por identificador.** `lib/adapters/general-api/catalog.ts` mantiene un índice de estudios y clínicas, hasta 1000 estudios y 500 clínicas, que se carga entero en páginas de 100 y se renueva cada `CATALOG_CACHE_SECONDS`. Lo comparten el detalle de un estudio, el resumen del trámite, las listas de «Continuar», el historial y el filtro por ciudad sin nombre. Buscar un elemento no hace ninguna llamada. La API solo devuelve registros activos, también por identificador: un identificador que no está en el índice completo no existe, y solo si el índice llegó al tope se pide por separado.
+
+**Trámite.** La sesión, el trámite, la lista de pendientes, el historial y la cita se leen en paralelo. El perfil se pide una sola vez por petición, compartido entre la sesión y el adaptador del trámite.
+
+**Estado detrás de interfaces.** `lib/state/ports.ts` define los almacenes: registro del canal Web, permisos de trámite, claves de creación pendientes, contadores de intentos y caché de sesión. Todos son asíncronos. La única implementación vive en el proceso, en `lib/state/memory.ts` y `lib/state/file-registry.ts`, y `lib/composition.ts` la elige.
+
+**Qué haría falta para varias instancias.**
+
+| Pieza | Hoy | Con varias instancias |
+| --- | --- | --- |
+| Registro del canal Web | Archivo JSON en `PORTAL_DATA_DIR` | Almacén compartido con escrituras atómicas, como una base de datos o un servicio clave-valor. |
+| Permisos de trámite | Memoria del proceso | Almacén compartido con vencimiento por entrada igual al del permiso. El permiso es un secreto: se guarda cifrado, por ejemplo con AES-GCM y una clave de `PORTAL_GRANT_KEY` fuera del almacén, y nunca en texto plano. |
+| Claves de creación pendientes | Memoria del proceso | El mismo almacén compartido, con cinco minutos de vencimiento. |
+| Límites de intentos | Memoria del proceso | Nginx con `limit_req` sobre `POST /acceso` por IP, y el contador por correo y por paciente en el almacén compartido con incremento atómico. |
+| Caché de sesión | Memoria del proceso | Puede seguir en cada instancia: solo cuesta una validación más por instancia. |
+| Páginas de catálogo | Caché de Next en el disco de la instancia | Nginx o una CDN delante, o un `cacheHandler` compartido de Next. |
+
+Cada almacén se cambia en `lib/composition.ts` sin tocar a quien lo usa.
+
+**Nginx o una CDN delante.** Pueden cachear las cuatro páginas de catálogo respetando su `Cache-Control`. Según la guía de Next sobre CDN:
+
+- la clave de caché debe incluir la consulta, porque `_rsc` distingue el HTML de la navegación del cliente;
+- la cabecera `rsc` debe llegar a Next;
+- ninguna otra ruta debe cachearse, porque las demás responden `private, no-store`;
+- tras cada despliegue hay que vaciar la caché de esas páginas, porque apuntan a los archivos de la compilación anterior.
+
+**Medición.** Con servicios simulados de 100 ms de latencia y un único proceso del portal, en un equipo de desarrollo con 16 núcleos lógicos:
+
+- **Catálogo:** de unas 440–480 a unas 1200–1700 peticiones por segundo, con p95 de unos 15–30 ms.
+- **`/mi-espacio`:** de 176 a unas 540–570 peticiones por segundo, sin llamadas a la API mientras dura la caché de sesión.
+- **Página del trámite:** de 83–90 a 153–172 peticiones por segundo, y de unos 220–240 ms a unos 115–130 ms de p50.
+
+Son cifras de referencia, no de producción.
+
+**Lo que no se pudo optimizar.**
+
+- La página del trámite lee siempre el estado vigente: una llamada en modo heredado y dos en modo orquestador, estado y contexto.
+- «Continuar» en modo orquestador cuesta dos llamadas por trámite abierto, porque el orquestador no ofrece leer varios trámites a la vez.
+- Las búsquedas con texto se generan en cada petición; cada consulta distinta cuesta una llamada cada `CATALOG_CACHE_SECONDS`.
+- El filtro por ciudad con nombre sigue recorriendo el listado filtrado por nombre, porque la API no filtra por ciudad.
+
 ### Canal de origen
 
 La API determina el canal en el servidor y registra como `WEB` toda petición autenticada con JWT. El cliente carece de un campo o una cabecera para declararlo. Consulta el [contrato de solicitudes](../../../docs/api-requests.md), secciones «Actualización parcial» y «Canales, acceso y trazabilidad».
@@ -440,7 +510,7 @@ Todas las combinaciones superan el 4.5:1 del nivel AA. El portal usa las fuentes
 
 ### Navegación
 
-El portal tiene una sola navegación, en el encabezado. Sin sesión ofrece Estudios, Clínicas y Acceso. Con la cookie de sesión ofrece todas las secciones: Estudios, Clínicas, Mi espacio, Continuar, Citas, Ayuda y Perfil. Cerrar sesión está en `/perfil`.
+El portal tiene una sola navegación, en el encabezado. Sin sesión ofrece Estudios, Clínicas y Acceso. Con sesión ofrece todas las secciones: Estudios, Clínicas, Mi espacio, Continuar, Citas, Ayuda y Perfil. Cerrar sesión está en `/perfil`.
 
 **Pantallas de teléfono.** Por debajo de 640 px de ancho, la lista se pliega tras el botón «Menú» y se despliega debajo del encabezado, con un enlace por fila. El contenido baja en lugar de quedar tapado. El botón es un `<details>` nativo y la lista se muestra con CSS mientras está abierto, así que funciona sin JavaScript. Desde 640 px el botón desaparece y la lista queda siempre visible; si no cabe junto al nombre, pasa a la línea siguiente.
 
@@ -467,7 +537,7 @@ Las guías piden enviar `Authorization: Bearer <accessToken>` y omiten dónde gu
 **Rutas protegidas.** Las rutas de `(account)` y `(booking)` exigen sesión, en dos pasos que siguen la guía de autenticación de Next.js:
 
 1. `proxy.ts` hace una comprobación optimista. Si falta la cookie, redirige a `/acceso?destino=<ruta original>` sin llamar a la API.
-2. Cada página protegida llama a `requireAccount()`, de `lib/session/session.ts`, que valida la sesión en el servidor pidiendo el perfil del paciente, hoy con `GET /api/v1/auth/me`. El portal nunca decodifica el token.
+2. Cada página protegida llama a `requireAccount()`, de `lib/session/session.ts`, que valida la sesión en el servidor pidiendo el perfil del paciente, hoy con `GET /api/v1/auth/me`. El perfil validado se reutiliza hasta 60 segundos, como explica «Rendimiento y caché». El portal nunca decodifica el token.
 
 Cuando la API responde `401`, la página redirige a `/api/session/expired`. Ese manejador vuelve a preguntar a la API, borra la cookie solo si la sesión ya es inválida y lleva a `/acceso` con el destino original. Hace falta porque un Server Component no puede borrar cookies. Si la API no responde, la página muestra «Servicio no disponible» y conserva la cookie.
 
@@ -477,7 +547,7 @@ Al añadir una ruta a `(account)` o `(booking)` hay que registrar su prefijo en 
 
 **Mutaciones.** Registro, acceso y cierre de sesión son Server Actions. Next solo las acepta por `POST` y compara la cabecera `Origin` con `Host`: una petición de otro origen se rechaza antes de ejecutar la acción. Next responde `500` en ese caso. `proxy.ts` repite antes la misma comparación y responde `403`, sin sustituir la comprobación de Next, que sigue activa. Si algún día se configura `serverActions.allowedOrigins`, el proxy debe aceptar los mismos orígenes.
 
-**Encabezado.** Los enlaces cambian de «Acceso» a las secciones del área personal según exista la cookie, sin llamar a la API. Los enlaces a rutas protegidas no se precargan, para no validar la sesión en cada precarga. Como el encabezado lee la cookie, todas las páginas se generan en cada petición y Next las sirve con `Cache-Control: private, no-cache, no-store, max-age=0, must-revalidate`.
+**Encabezado.** Los enlaces cambian de «Acceso» a las secciones del área personal sin llamar a la API. En las páginas protegidas lo decide el servidor con la cookie de sesión; en las públicas, el navegador con la cookie indicadora, para que el catálogo pueda servirse desde caché. Los enlaces a rutas protegidas no se precargan, para no validar la sesión en cada precarga. Las páginas que se generan en cada petición se sirven con `Cache-Control: private, no-cache, no-store, max-age=0, must-revalidate`.
 
 ### Cliente de API y configuración
 
@@ -508,13 +578,13 @@ Los tipos salen del contrato. `pnpm --filter @salud-digna/patient-portal api:typ
 
 ### Catálogo
 
-`/estudios` y `/clinicas` listan `GET /api/v1/studies` y `GET /api/v1/clinics`. El portal envía solo los parámetros del contrato: `page`, `limit` y `q`. Muestra 12 tarjetas por página y pagina con `hasMore`. `/estudios/[id]` muestra `GET /api/v1/studies/{id}` y enlaza a `/tramite/nuevo?estudio=<id>` para agendar.
+`/estudios` y `/clinicas` listan `GET /api/v1/studies` y `GET /api/v1/clinics`; su primera página sin filtros se sirve desde caché y la búsqueda está en `/estudios/buscar` y `/clinicas/buscar`. El portal envía solo los parámetros del contrato: `page`, `limit` y `q`. Muestra 12 tarjetas por página y pagina con `hasMore`. `/estudios/[id]` muestra `GET /api/v1/studies/{id}` y enlaza a `/tramite/nuevo?estudio=<id>` para agendar.
 
 **Validación.** El servidor recorta `q` y `ciudad` a 100 caracteres, que es el máximo del contrato, y acepta `pagina` entre 1 y 10 000. Cualquier otro valor vuelve a la primera página. El identificador del detalle debe ser un UUID: si no lo es, el portal responde «no encontrado» sin llamar a la API. Un `400` o un `404` de la API también se muestran como «no encontrado».
 
 **Textos y precio.** Los textos de la API se muestran siempre como texto, escapados por React. El precio llega como cadena decimal y solo se le da formato de pesos mexicanos al mostrarlo.
 
-**Filtro por ciudad.** El contrato no filtra por ciudad. Con ese filtro, el portal recorre el listado de la API en páginas de 100, compara la ciudad sin distinguir mayúsculas ni acentos y pagina sobre las coincidencias. Se detiene en cuanto tiene las necesarias para la página pedida. El enfoque tiene límites:
+**Filtro por ciudad.** El contrato no filtra por ciudad. Sin nombre, el portal filtra el índice de clínicas, que ya está en caché, sin ninguna llamada nueva. Con nombre, recorre el listado de la API filtrado por nombre en páginas de 100, compara la ciudad sin distinguir mayúsculas ni acentos y pagina sobre las coincidencias. Se detiene en cuanto tiene las necesarias para la página pedida. El enfoque tiene límites:
 
 - revisa como máximo 500 clínicas, y avisa en pantalla cuando llega a ese tope porque puede faltar alguna;
 - una búsqueda puede costar hasta cinco llamadas a la API, y más cuanto más avanzada sea la página;
@@ -522,7 +592,7 @@ Los tipos salen del contrato. `pnpm --filter @salud-digna/patient-portal api:typ
 
 La solución de fondo es un parámetro de ciudad en la API.
 
-**Caché.** Las respuestas públicas del catálogo se reutilizan durante 30 segundos con la opción `next.revalidate` de `fetch`. Next solo guarda respuestas `200`, así que un fallo de la API no queda en caché. Las peticiones con token usan siempre `cache: "no-store"`.
+**Caché.** Las respuestas públicas del catálogo se reutilizan durante `CATALOG_CACHE_SECONDS`, 300 segundos por defecto, con la opción `next.revalidate` de `fetch`. Next solo guarda respuestas `200`, así que un fallo de la API no queda en caché. Las peticiones con token usan siempre `cache: "no-store"`.
 
 **Carga, vacío y error.** Los botones de búsqueda y los enlaces muestran «Buscando…» o «Cargando…» mientras dura la navegación, con `useFormStatus` y `useLinkStatus`. El portal prescinde de `loading.tsx` a propósito: con ese archivo la respuesta empieza con `200` antes de consultar la API, y el detalle de un estudio inexistente dejaría de responder `404`. Además, los listados seguirían cargando para siempre en un navegador sin JavaScript. Una lista vacía ofrece quitar los filtros. Si la API no responde, la página muestra «Servicio no disponible» con un enlace para reintentar la misma URL.
 
@@ -618,6 +688,12 @@ El portal deja estas funciones fuera hasta que exista un contrato acordado.
 | Sugerencia: filtrar clínicas por ciudad en `GET /clinics` | Sin ella, el portal filtra en su servidor con el tope de 500 clínicas descrito en «Catálogo». |
 | Límite de registro e inicio de sesión por IP | Ambas operaciones comparten 10 intentos por IP cada 15 minutos, según el contrato de autenticación. Todas las llamadas llegan desde el servidor del portal, así que los pacientes comparten ese límite. El portal añade los suyos, descritos en «Publicación del portal», pero no puede ampliar ese cupo. |
 | Confiar en `X-Portal-Client-IP` solo cuando la petición viene del servidor del portal | Permitiría a la API limitar por la IP real de cada paciente. Hasta acordarlo, `FORWARD_CLIENT_IP` sigue apagada. |
+| Vencimiento de la sesión en `GET /auth/me`, por ejemplo `expiresAt` | El portal guarda el perfil hasta 60 segundos solo si conoce el vencimiento del token, que hoy llega al iniciar sesión. Con este dato, la caché seguiría funcionando tras un reinicio sin decodificar el token. |
+| Cerrar sesión en la API, o revocar el token | Cerrar sesión en el portal borra la cookie, pero el token sigue siendo válido hasta que vence. |
+| Capacidad de la API general | Con 5 millones de consultas al día, el portal estima del orden de 11 a 26 llamadas por segundo de media y de 110 a 260 en un pico de diez veces, según el modo. Es una estimación, en «Rendimiento y caché». |
+| Orquestador: estado y contexto de un trámite en una sola llamada, o de varios a la vez | Hoy cada trámite cuesta dos lecturas, y «Continuar» dos por cada trámite abierto. |
+| Orquestador: límite de canje por actor o por IP, no solo por canal | Los diez canjes por minuto se comparten entre todos los pacientes del canal Web. |
+| Orquestador: capacidad | El portal estima unas 33 llamadas por segundo de media y unas 330 en un pico de diez veces. Es una estimación. |
 
 Las preguntas para el equipo del orquestador están en «Adaptador del orquestador», y lo pendiente antes de publicar, en «Publicación del portal».
 

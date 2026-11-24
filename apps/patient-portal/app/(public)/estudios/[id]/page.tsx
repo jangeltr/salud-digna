@@ -2,11 +2,19 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { LinkPending } from "@/components/link-pending";
-import { ServiceUnavailable } from "@/components/service-unavailable";
 import { formatPrice, isUuid } from "@/features/catalog/params";
+import { CatalogUnavailable } from "@/features/catalog/unavailable";
 import { generalData } from "@/lib/composition";
 
 const FALLBACK_TITLE = "Detalle del estudio";
+
+/**
+ * Ningún estudio se genera al compilar: cada uno se genera la primera vez que se visita,
+ * se guarda y se regenera cada `CATALOG_CACHE_SECONDS`, como indica la documentación de Next.
+ */
+export function generateStaticParams() {
+  return [];
+}
 
 export async function generateMetadata({ params }: PageProps<"/estudios/[id]">): Promise<Metadata> {
   const { id } = await params;
@@ -24,7 +32,7 @@ export default async function StudyDetailPage({ params }: PageProps<"/estudios/[
   const result = await generalData.getStudy(id);
   if (!result.ok) {
     if (result.error.kind === "invalid" || result.error.kind === "not-found") notFound();
-    return <ServiceUnavailable retryHref={`/estudios/${id}`} />;
+    return <CatalogUnavailable retryHref={`/estudios/${id}`} />;
   }
 
   const study = result.data;

@@ -1,6 +1,6 @@
 import "server-only";
 import { getChannelKey, getOrchestratorBaseUrl } from "./config";
-import type { Secret } from "./secret";
+import type { Secret } from "@/lib/secret";
 
 const TIMEOUT_MS = 8_000;
 

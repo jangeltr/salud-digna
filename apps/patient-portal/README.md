@@ -31,6 +31,7 @@ Todas las lee solo el servidor de Next. Ninguna lleva el prefijo `NEXT_PUBLIC_`,
 | `PORTAL_DATA_DIR` | Carpeta del registro del canal Web: qué trámites tiene cada cuenta. | `.data/` dentro del portal. |
 | `REGISTRATION_ENABLED` | `true` o `false`. Decide si existe `/registro`. | Apagado en producción, encendido en desarrollo. |
 | `FORWARD_CLIENT_IP` | `true` o `false`. Envía a la API general la IP del paciente en `X-Portal-Client-IP`. | Apagada. |
+| `CATALOG_CACHE_SECONDS` | Segundos que dura en caché el catálogo, de 1 a 86 400. **Se lee al compilar**: cambiarla exige volver a compilar. | 300. |
 
 Un valor ausente o inválido detiene el arranque: el servidor registra qué variable falla, sin mostrar su valor, y responde `500` a todo.
 
@@ -66,6 +67,8 @@ pnpm --filter @salud-digna/patient-portal build
 pnpm --filter @salud-digna/patient-portal exec next start --hostname 127.0.0.1 --port <puerto>
 ```
 
+`next build` genera el listado de estudios y el de clínicas, así que llama a la API general con el `API_BASE_URL` del entorno de compilación. Si no la alcanza, la compilación termina igual y esas páginas se generan en cada petición: el catálogo funciona, pero sin servirse desde caché.
+
 El script `start` hace lo mismo en el puerto 5173. El proceso debe escuchar solo en `127.0.0.1` y recibir el tráfico a través del proxy. Las variables se inyectan desde la configuración privada del servicio.
 
 El proxy debe terminar TLS y sobrescribir estas cabeceras, igual que el de la API general:
@@ -82,16 +85,34 @@ proxy_pass http://127.0.0.1:<puerto>;
 - Sin el `Host` correcto, el portal rechaza todos los formularios con `403`.
 - `X-Real-IP` es la única fuente de la IP del cliente. Si el proxy no la envía, el límite de acceso por IP no se aplica y el servidor lo avisa una vez en su registro. Los demás límites siguen activos.
 
+### Catálogo desde Nginx
+
+`/`, `/estudios`, `/clinicas` y `/estudios/<id>` llegan con `Cache-Control: public, max-age=N, s-maxage=N`. Nginx puede servirlas sin pasar por Next. Las demás rutas responden `private, no-store` y Nginx no las guarda. La clave incluye la consulta y la cabecera `rsc`, como pide la guía de Next sobre CDN:
+
+```nginx
+proxy_cache_path /var/cache/nginx/portal keys_zone=portal:10m max_size=200m inactive=1h;
+
+location / {
+    proxy_cache portal;
+    proxy_cache_key "$scheme$host$request_uri$http_rsc";
+    proxy_cache_use_stale error timeout updating;
+    # …las cabeceras proxy_set_header y proxy_pass de arriba
+}
+```
+
+Tras cada despliegue hay que vaciar `/var/cache/nginx/portal`: las páginas guardadas apuntan a los archivos de la compilación anterior.
+
 ## Lista de publicación
 
 1. Compilar desde una revisión identificada y con el lockfile.
-2. Una sola instancia del portal. Registro, permisos, límites y claves pendientes viven en el proceso.
+2. Una sola instancia del portal. Registro, permisos, límites y claves pendientes viven en el proceso. Lo que haría falta para varias está en [docs/decisions.md](docs/decisions.md), «Rendimiento y caché».
 3. Variables en la configuración privada del servicio. `REQUESTS_BACKEND=orchestrator` para la demostración.
 4. `PORTAL_DATA_DIR` fuera de la carpeta del código, del usuario del servicio, con permisos `0700`, e incluida en los respaldos.
 5. Proxy con TLS y las cabeceras de arriba. El puerto del portal no debe ser accesible desde fuera.
 6. `REGISTRATION_ENABLED` sin definir o en `false`, salvo que se quiera abrir el registro.
 7. `FORWARD_CLIENT_IP` sin definir, hasta acordarla con el equipo de la API.
-8. Comprobar tras el despliegue: `/robots.txt` responde `Disallow: /`, `/registro` responde `404`, un acceso funciona y la respuesta trae `Strict-Transport-Security` y `Content-Security-Policy`.
+8. Compilar con acceso a la API general, para que el catálogo se sirva desde caché, y vaciar la caché de Nginx o de la CDN tras cada despliegue.
+9. Comprobar tras el despliegue: `/robots.txt` responde `Disallow: /`, `/registro` responde `404`, un acceso funciona y la respuesta trae `Strict-Transport-Security` y `Content-Security-Policy`.
 
 Lo que sigue pendiente antes de abrir el portal a público general está en [docs/decisions.md](docs/decisions.md), sección «Publicación del portal».
 

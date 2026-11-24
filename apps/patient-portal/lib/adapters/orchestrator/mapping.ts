@@ -7,7 +7,7 @@ import type {
   RequestStatus,
   RequestStep,
 } from "@/lib/domain/model";
-import { Secret } from "./secret";
+import { Secret } from "@/lib/secret";
 
 /**
  * Traducción de las respuestas del orquestador al modelo del portal.

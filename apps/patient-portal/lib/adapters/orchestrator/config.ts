@@ -1,7 +1,7 @@
 import "server-only";
 import path from "node:path";
 import { readServiceUrl } from "../service-url";
-import { Secret } from "./secret";
+import { Secret } from "@/lib/secret";
 
 /** Lee y valida ORCHESTRATOR_BASE_URL. Exige https, salvo en localhost y 127.0.0.1. */
 export function readOrchestratorBaseUrl(value = process.env.ORCHESTRATOR_BASE_URL): string {

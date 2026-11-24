@@ -21,9 +21,9 @@ export default async function ResumePage({ searchParams }: PageProps<"/continuar
   const notice = readNotice(query.aviso);
   const hrefFor = (target: number) => listHref(PATH, { pagina: target });
 
-  if (!(await requireAccount())) return <ServiceUnavailable retryHref={hrefFor(page)} />;
-
-  const result = await requestQuery.listPending({ page, limit: PAGE_SIZE });
+  // La sesión y los trámites se leen a la vez.
+  const [account, result] = await Promise.all([requireAccount(), requestQuery.listPending({ page, limit: PAGE_SIZE })]);
+  if (!account) return <ServiceUnavailable retryHref={hrefFor(page)} />;
   if (!result.ok) {
     if (result.error.kind === "session") await expireSession();
     return <ServiceUnavailable retryHref={hrefFor(page)} />;

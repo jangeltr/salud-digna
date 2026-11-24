@@ -16,13 +16,13 @@ export default async function NewRequestPage({ searchParams }: PageProps<"/trami
   const requestedStudy = raw && isUuid(raw) ? raw.toLowerCase() : undefined;
   const path = requestedStudy ? `/tramite/nuevo?estudio=${requestedStudy}` : "/tramite/nuevo";
 
-  if (!(await requireAccount())) return <ServiceUnavailable retryHref={path} />;
-
-  // Esta página solo consulta. El trámite se crea cuando el paciente pulsa el botón.
-  const [study, pending] = await Promise.all([
+  // Esta página solo consulta, y todo a la vez. El trámite se crea cuando el paciente pulsa el botón.
+  const [account, study, pending] = await Promise.all([
+    requireAccount(),
     requestedStudy ? generalData.getStudy(requestedStudy) : undefined,
     requestQuery.listPending({ page: 1, limit: 20 }),
   ]);
+  if (!account) return <ServiceUnavailable retryHref={path} />;
   if (!pending.ok) {
     if (pending.error.kind === "session") await expireSession();
     return <ServiceUnavailable retryHref={path} />;

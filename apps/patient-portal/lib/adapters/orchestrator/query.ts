@@ -2,12 +2,11 @@ import "server-only";
 import { failure, success } from "@/lib/domain/errors";
 import type { BookingRequest, LockedRequest } from "@/lib/domain/model";
 import type { RequestQuery } from "@/lib/domain/ports";
-import { callWithGrant, readRequest, resolveAccess, type OrchestratorDependencies } from "./access";
+import type { RegistryEntry } from "@/lib/state/ports";
+import { callWithGrant, readRequest, reportRegistryFailure, resolveAccess, type OrchestratorDependencies } from "./access";
 import { reportUnexpectedBody } from "./client";
 import { toFailure } from "./failures";
-import { findGrant } from "./grants";
 import { toHistoryPage } from "./mapping";
-import { listRegistered, reportRegistryFailure, type RegistryEntry } from "./registry";
 
 /**
  * Consulta del trámite sobre el orquestador. El orquestador no lista los trámites de un paciente:
@@ -22,17 +21,19 @@ export function createOrchestratorQuery(deps: OrchestratorDependencies): Request
 
       let open: RegistryEntry[];
       try {
-        open = (await listRegistered(accountId)).filter((entry) => !entry.closedAt);
+        open = (await deps.registry.list(accountId)).filter((entry) => !entry.closedAt);
       } catch {
         reportRegistryFailure("leer");
         return failure("unavailable");
       }
 
+      // Todas las lecturas van en paralelo. El orquestador no ofrece leer varios trámites a la vez:
+      // cada uno cuesta dos llamadas, estado y contexto.
       const slice = open.slice((page - 1) * limit, page * limit);
       const reads = await Promise.all(
         slice.map(async (entry) => {
-          const grant = findGrant(accountId, entry.id);
-          return grant ? readRequest({ accountId, requestId: entry.id, grant }) : failure("access-expired");
+          const grant = await deps.grants.find(accountId, entry.id);
+          return grant ? readRequest(deps, { accountId, requestId: entry.id, grant }) : failure("access-expired");
         }),
       );
 
@@ -55,7 +56,7 @@ export function createOrchestratorQuery(deps: OrchestratorDependencies): Request
 
     async getRequest(id) {
       const access = await resolveAccess(deps, id);
-      return access.ok ? readRequest(access.data) : access;
+      return access.ok ? readRequest(deps, access.data) : access;
     },
 
     // El contexto puede traer `appointmentId`, pero ningún evento del contrato lo escribe.
@@ -67,7 +68,7 @@ export function createOrchestratorQuery(deps: OrchestratorDependencies): Request
       const access = await resolveAccess(deps, requestId);
       if (!access.ok) return access;
 
-      const result = await callWithGrant(access.data, {
+      const result = await callWithGrant(deps, access.data, {
         method: "GET",
         path: "/journeys/:journeyId/history",
         query: { limit, cursor },

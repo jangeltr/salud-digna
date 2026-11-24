@@ -29,9 +29,13 @@ export default async function RequestHistoryPage({ params, searchParams }: PageP
   const path = `${requestPath}/historial`;
   const currentPath = cursor ? `${path}?cursor=${cursor}` : path;
 
-  if (!(await requireAccount())) return <ServiceUnavailable retryHref={currentPath} />;
+  // La sesión y el historial se leen a la vez.
+  const [account, result] = await Promise.all([
+    requireAccount(),
+    requestQuery.getHistory(id, { limit: PAGE_SIZE, cursor }),
+  ]);
+  if (!account) return <ServiceUnavailable retryHref={currentPath} />;
 
-  const result = await requestQuery.getHistory(id, { limit: PAGE_SIZE, cursor });
   if (!result.ok) {
     if (result.error.kind === "session") await expireSession();
     // «No encontrado» cubre por igual el trámite inexistente y el de otro paciente.

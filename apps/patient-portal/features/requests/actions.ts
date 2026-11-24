@@ -3,11 +3,11 @@
 import "server-only";
 import { redirect } from "next/navigation";
 import { isUuid } from "@/features/catalog/params";
-import { generalData, requestCapabilities, requestNotifier, requestQuery } from "@/lib/composition";
+import { attemptStore, generalData, requestCapabilities, requestNotifier, requestQuery } from "@/lib/composition";
 import type { Result } from "@/lib/domain/errors";
 import type { Receipt } from "@/lib/domain/ports";
-import { refundAttempt, takeAttempt, type AttemptLimit } from "@/lib/session/attempts";
 import { CONTINUITY_CODES_PER_HOUR, CONTINUITY_REDEEM, REQUESTS_PER_HOUR, waitText } from "@/lib/session/limits";
+import type { AttemptLimit } from "@/lib/state/ports";
 import { clearSessionCookie } from "@/lib/session/cookie";
 import { signInUrl } from "@/lib/session/routes";
 import { hasSessionCookie } from "@/lib/session/session";
@@ -100,7 +100,7 @@ async function hourlyWait(name: string, limit: AttemptLimit, destination: string
     if (profile.error.kind === "session") await endSession(destination);
     return 0;
   }
-  return takeAttempt(`${name}:${profile.data.accountId}`, limit);
+  return attemptStore.take(`${name}:${profile.data.accountId}`, limit);
 }
 
 export type StartState = {
@@ -350,14 +350,14 @@ export async function redeemContinuityCode(_previous: RedeemState, formData: For
     return { message: REDEEM_UNCERTAIN };
   }
   const attempts = `continuity-redeem:${profile.data.accountId}`;
-  if (takeAttempt(attempts, CONTINUITY_REDEEM) > 0) return { message: REDEEM_BLOCKED };
+  if ((await attemptStore.take(attempts, CONTINUITY_REDEEM)) > 0) return { message: REDEEM_BLOCKED };
 
   const code = field(formData, "codigo");
   if (code.length > CODE_MAX) return { message: REDEEM_INVALID };
 
   const result = await requestNotifier.notify({ type: "continuity-redeemed", eventId: newEventId(), code });
   if (result.ok) {
-    refundAttempt(attempts);
+    await attemptStore.refund(attempts);
     redirect(requestPath(result.data.requestId));
   }
 
@@ -369,10 +369,10 @@ export async function redeemContinuityCode(_previous: RedeemState, formData: For
       return { message: REDEEM_INVALID };
     case "rate-limited":
       // El límite que saltó es el del canal entero, no el de este paciente.
-      refundAttempt(attempts);
+      await attemptStore.refund(attempts);
       return { message: REDEEM_BUSY };
     default:
-      refundAttempt(attempts);
+      await attemptStore.refund(attempts);
       return { message: REDEEM_UNCERTAIN };
   }
 }

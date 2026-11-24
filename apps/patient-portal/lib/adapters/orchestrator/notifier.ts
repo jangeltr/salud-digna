@@ -6,14 +6,13 @@ import {
   callWithGrant,
   closeQuietly,
   readVersion,
+  reportRegistryFailure,
   resolveAccess,
   type OrchestratorDependencies,
 } from "./access";
 import { orchestratorRequest, reportConflictWithoutVersionChange, reportUnexpectedBody } from "./client";
 import { isUncertain, toCreationFailure, toFailure, toRedeemFailure } from "./failures";
-import { dropGrant, saveGrant } from "./grants";
 import { normalizeContinuityCode, readContinuityCode, readCreatedJourney, readRedeemedJourney } from "./mapping";
-import { listRegistered, register, reportRegistryFailure } from "./registry";
 
 type OnRequestEvent = Exclude<RequestEvent, { type: "request-started" | "continuity-redeemed" }>;
 type JourneyEventType = "JOURNEY_CONTEXT_UPDATED" | "JOURNEY_STATUS_CHANGED";
@@ -29,9 +28,9 @@ function catalogFailure(result: Result<unknown>): Failure | undefined {
 }
 
 /** Si el registro no se puede leer, no se crea ni se adopta nada: el trámite quedaría sin dueño conocido. */
-async function registryIsReadable(accountId: string): Promise<boolean> {
+async function registryIsReadable(deps: OrchestratorDependencies, accountId: string): Promise<boolean> {
   try {
-    await listRegistered(accountId);
+    await deps.registry.list(accountId);
     return true;
   } catch {
     reportRegistryFailure("leer");
@@ -50,27 +49,9 @@ function creationKey(eventId: string): string {
 /**
  * Creaciones con resultado incierto, por paciente. Mientras el permiso inicial pueda seguir vigente,
  * el siguiente intento del paciente reutiliza la misma clave: si el trámite llegó a crearse,
- * el orquestador devuelve ese mismo y no hay duplicado. Vive solo en memoria.
+ * el orquestador devuelve ese mismo y no hay duplicado.
  */
 const PENDING_CREATION_MS = 5 * 60_000;
-type PendingCreation = { key: string; expiresAt: number };
-
-// En `globalThis` para que todas las copias del módulo que cargue Next compartan el mismo almacén.
-const PENDING = Symbol.for("salud-digna.patient-portal.pending-creations");
-type PendingHolder = { [PENDING]?: Map<string, PendingCreation> };
-
-function pendingCreations(): Map<string, PendingCreation> {
-  const holder = globalThis as PendingHolder;
-  holder[PENDING] ??= new Map();
-  return holder[PENDING];
-}
-
-function pendingCreationKey(accountId: string): string | undefined {
-  const pending = pendingCreations().get(accountId);
-  if (pending && pending.expiresAt > Date.now()) return pending.key;
-  pendingCreations().delete(accountId);
-  return undefined;
-}
 
 /**
  * `request-started`: `POST /journeys` con su `Idempotency-Key`. El permiso que devuelve se guarda
@@ -85,9 +66,9 @@ async function start(deps: OrchestratorDependencies, eventId: string): Promise<R
   const { accountId } = patient.data;
 
   // Nada se envió todavía: el fallo es seguro.
-  if (!(await registryIsReadable(accountId))) return failure("rejected");
+  if (!(await registryIsReadable(deps, accountId))) return failure("rejected");
 
-  const pendingKey = pendingCreationKey(accountId);
+  const pendingKey = await deps.pendingCreations.get(accountId);
   const request = {
     method: "POST",
     path: "/journeys",
@@ -103,12 +84,10 @@ async function start(deps: OrchestratorDependencies, eventId: string): Promise<R
   }
 
   if (!created.ok) {
-    if (isUncertain(created)) {
-      pendingCreations().set(accountId, { key: request.idempotencyKey, expiresAt: Date.now() + PENDING_CREATION_MS });
-    }
+    if (isUncertain(created)) await deps.pendingCreations.set(accountId, request.idempotencyKey, PENDING_CREATION_MS);
     return toCreationFailure(created);
   }
-  pendingCreations().delete(accountId);
+  await deps.pendingCreations.delete(accountId);
 
   const journey = readCreatedJourney(created.data);
   if (!journey) {
@@ -117,12 +96,12 @@ async function start(deps: OrchestratorDependencies, eventId: string): Promise<R
   }
 
   // Un reintento tardío puede llegar sin permiso: el trámite se anota igual y pedirá un permiso nuevo.
-  if (journey.access) saveGrant(accountId, journey.id, journey.access.grant, journey.access.expiresAt);
+  if (journey.access) await deps.grants.save(accountId, journey.id, journey.access.grant, journey.access.expiresAt);
   try {
-    await register(accountId, journey.id, new Date().toISOString());
+    await deps.registry.add(accountId, journey.id, new Date().toISOString());
   } catch {
     reportRegistryFailure("escribir");
-    dropGrant(accountId, journey.id);
+    await deps.grants.drop(accountId, journey.id);
     return failure("unavailable");
   }
 
@@ -154,7 +133,7 @@ async function publish(
   // El orquestador exige la versión esperada. Si el evento no la trae, se lee antes la vigente.
   let expectedVersion = event.expectedVersion;
   if (expectedVersion === undefined) {
-    const current = await readVersion(access);
+    const current = await readVersion(deps, access);
     if (!current.ok) return current;
     expectedVersion = current.data;
   }
@@ -171,13 +150,13 @@ async function publish(
   });
   const request = { method: "POST", path: "/events", body } as const;
 
-  let result = await callWithGrant(access, request);
+  let result = await callWithGrant(deps, access, request);
   // Tiempo de espera agotado: un único reenvío idéntico. Si el primero llegó a aplicarse,
   // el orquestador lo reconoce por el identificador y devuelve el mismo resultado.
-  if (!result.ok && result.timedOut) result = await callWithGrant(access, request);
+  if (!result.ok && result.timedOut) result = await callWithGrant(deps, access, request);
 
   if (result.ok) {
-    if (type === "JOURNEY_STATUS_CHANGED" && changes.to === "CANCELLED") await closeQuietly(access);
+    if (type === "JOURNEY_STATUS_CHANGED" && changes.to === "CANCELLED") await closeQuietly(deps, access);
     // La respuesta trae el identificador del evento, no la versión nueva.
     return success({ requestId: access.requestId });
   }
@@ -185,7 +164,7 @@ async function publish(
   if (result.status === 409) {
     // El contrato pide consultar el contexto tras un conflicto, antes de enviar otro evento.
     // Si la versión no cambió, el conflicto no fue por versión obsoleta: queda constancia en el registro.
-    const current = await readVersion(access);
+    const current = await readVersion(deps, access);
     if (current.ok && current.data === expectedVersion) reportConflictWithoutVersionChange();
   }
   return toFailure(result);
@@ -200,7 +179,7 @@ async function issueContinuityCode(deps: OrchestratorDependencies, requestId: st
   const resolved = await resolveAccess(deps, requestId);
   if (!resolved.ok) return resolved;
 
-  const result = await callWithGrant(resolved.data, { method: "POST", path: "/journeys/:journeyId/continuity-codes" });
+  const result = await callWithGrant(deps, resolved.data, { method: "POST", path: "/journeys/:journeyId/continuity-codes" });
   if (!result.ok) return toFailure(result);
 
   const continuity = readContinuityCode(result.data);
@@ -226,7 +205,7 @@ async function redeemContinuityCode(deps: OrchestratorDependencies, typed: strin
   // Un texto sin forma de código no llega al orquestador, que cuenta cada intento de canje del canal.
   const code = normalizeContinuityCode(typed);
   if (!code) return failure("invalid");
-  if (!(await registryIsReadable(accountId))) return failure("rejected");
+  if (!(await registryIsReadable(deps, accountId))) return failure("rejected");
 
   const result = await orchestratorRequest({
     method: "POST",
@@ -241,12 +220,12 @@ async function redeemContinuityCode(deps: OrchestratorDependencies, typed: strin
     return failure("unavailable");
   }
 
-  saveGrant(accountId, journey.id, journey.access.grant, journey.access.expiresAt);
+  await deps.grants.save(accountId, journey.id, journey.access.grant, journey.access.expiresAt);
   try {
-    await register(accountId, journey.id, new Date().toISOString());
+    await deps.registry.add(accountId, journey.id, new Date().toISOString());
   } catch {
     reportRegistryFailure("escribir");
-    dropGrant(accountId, journey.id);
+    await deps.grants.drop(accountId, journey.id);
     return failure("unavailable");
   }
   return success({ requestId: journey.id });
