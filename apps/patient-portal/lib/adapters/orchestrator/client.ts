@@ -30,12 +30,14 @@ export type OrchestratorRequest = {
   query?: Record<string, string | number | undefined>;
   /** Permiso del trámite. Viaja en X-Journey-Grant. */
   grant?: Secret;
+  /** Clave de idempotencia de `POST /journeys`. Viaja en Idempotency-Key. */
+  idempotencyKey?: string;
   /** Cuerpo JSON ya serializado, para que un reenvío sea idéntico byte a byte. */
   body?: string;
 };
 
-// El registro omite la clave del canal, los permisos, los cuerpos y los identificadores:
-// solo método, ruta del contrato y motivo.
+// El registro omite la clave del canal, los permisos, las claves de idempotencia, los cuerpos
+// y los identificadores: solo método, ruta del contrato y motivo.
 function report(method: string, path: string, reason: string) {
   console.error(`[orquestador] ${method} ${path}: ${reason}`);
 }
@@ -61,12 +63,13 @@ function buildUrl({ path, journeyId, query }: OrchestratorRequest): string {
 
 /** Única salida hacia el orquestador. Ninguna respuesta se guarda en caché. */
 export async function orchestratorRequest(request: OrchestratorRequest): Promise<OrchestratorResult> {
-  const { method, path, grant, body } = request;
+  const { method, path, grant, idempotencyKey, body } = request;
 
   // Las cabeceras se construyen aquí y no salen de esta función: no se registran ni se devuelven.
   const headers = new Headers({ Accept: "application/json" });
   headers.set("Authorization", `Bearer ${getChannelKey().reveal()}`);
   if (grant) headers.set("X-Journey-Grant", grant.reveal());
+  if (idempotencyKey) headers.set("Idempotency-Key", idempotencyKey);
   if (body !== undefined) headers.set("Content-Type", "application/json");
 
   let response: Response;

@@ -1,4 +1,5 @@
 import "server-only";
+import { createHash } from "node:crypto";
 import { failure, success, type Failure, type Result } from "@/lib/domain/errors";
 import type { Receipt, RequestEvent, RequestNotifier } from "@/lib/domain/ports";
 import {
@@ -28,13 +29,22 @@ function catalogFailure(result: Result<unknown>): Failure | undefined {
 }
 
 /**
- * `request-started`: `POST /journeys`. El permiso que devuelve se guarda en memoria y el trámite
- * se anota en el registro del paciente. El `eventId` no viaja: la ruta rechaza cualquier otro campo.
- *
- * Sin reintento: crear un trámite no es idempotente. Si la respuesta se pierde, el trámite pudo
- * crearse y su permiso, que solo venía en esa respuesta, es irrecuperable.
+ * Clave de idempotencia de una creación: 32 bytes en base64url, como exige `Idempotency-Key`.
+ * Se deriva del identificador del evento, que la acción genera al azar: el mismo evento lleva
+ * siempre la misma clave, y un trámite nuevo lleva otra.
  */
-async function start(deps: OrchestratorDependencies): Promise<Result<Receipt>> {
+function creationKey(eventId: string): string {
+  return createHash("sha256").update(`request-started:${eventId}`).digest("base64url");
+}
+
+/**
+ * `request-started`: `POST /journeys`. El permiso que devuelve se guarda en memoria y el trámite
+ * se anota en el registro del paciente. El `eventId` viaja como clave de idempotencia.
+ *
+ * Sin reintento automático, por decisión del propietario del portal: si la respuesta se pierde,
+ * se informa al paciente. Con la clave de idempotencia, reenviar el mismo evento sería seguro.
+ */
+async function start(deps: OrchestratorDependencies, eventId: string): Promise<Result<Receipt>> {
   const patient = await deps.currentPatient();
   if (!patient.ok) return patient;
   const { accountId } = patient.data;
@@ -50,6 +60,7 @@ async function start(deps: OrchestratorDependencies): Promise<Result<Receipt>> {
   const created = await orchestratorRequest({
     method: "POST",
     path: "/journeys",
+    idempotencyKey: creationKey(eventId),
     body: JSON.stringify({ type: "APPOINTMENT" }),
   });
   if (!created.ok) return toCreationFailure(created);
@@ -142,7 +153,7 @@ export function createOrchestratorNotifier(deps: OrchestratorDependencies): Requ
     async notify(event) {
       switch (event.type) {
         case "request-started":
-          return start(deps);
+          return start(deps, event.eventId);
 
         case "study-chosen":
           return publish(deps, event, "JOURNEY_CONTEXT_UPDATED", { studyId: event.studyId }, async () =>

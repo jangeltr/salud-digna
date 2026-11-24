@@ -170,7 +170,9 @@ La notificación devuelve un acuse, no el estado del trámite: el identificador 
 
 **Fecha.** 2026-11-24.
 
-**Contrato.** `apps/orchestrator/docs/journey-writes.md`, `journey-queries.md` y `data-model.md`, y `apps/orchestrator/README.md`, tal como están en `main` en el commit `4958614`. El orquestador no publica un OpenAPI, así que este adaptador no tiene tipos generados: `mapping.ts` comprueba la forma de cada respuesta antes de usarla.
+**Contrato.** `apps/orchestrator/docs/journey-writes.md`, `journey-queries.md` y `data-model.md`, y `apps/orchestrator/README.md`, tal como están en `main` en el commit `4958614`, que es el que integra esta rama. El orquestador no publica un OpenAPI, así que este adaptador no tiene tipos generados: `mapping.ts` comprueba la forma de cada respuesta antes de usarla.
+
+`main` publicó después tres commits que cambian el contrato y que esta rama aún no integra. El adaptador ya envía la cabecera `Idempotency-Key`, que el primero hace obligatoria. El resto está en «Cambios del contrato publicados después».
 
 **Decisiones del propietario del portal.**
 
@@ -198,7 +200,7 @@ La notificación devuelve un acuse, no el estado del trámite: el identificador 
 
 | Evento | Llamada al orquestador |
 | --- | --- |
-| `request-started` | `POST /journeys` con `{"type":"APPOINTMENT"}`. El `eventId` no viaja: la ruta rechaza cualquier otro campo. |
+| `request-started` | `POST /journeys` con `{"type":"APPOINTMENT"}` y la cabecera `Idempotency-Key`, derivada del `eventId`. El cuerpo no admite ningún otro campo. |
 | `study-chosen`, `clinic-chosen` | `POST /events` con `JOURNEY_CONTEXT_UPDATED`. |
 | `confirmation-requested` | `POST /events` con `JOURNEY_STATUS_CHANGED` a `PENDING_CONFIRMATION`. |
 | `request-cancelled` | `POST /events` con `JOURNEY_STATUS_CHANGED` a `CANCELLED`. |
@@ -220,7 +222,7 @@ Cada `POST /events` lleva el `eventId` como `externalEventId`, `schemaVersion: 1
 | Tiempo de espera agotado en `POST /journeys` | Sin reenvío. `unavailable`. |
 | Sin respuesta o `5xx` | `unavailable`. |
 
-**Cabeceras secretas.** `Authorization` y `X-Journey-Grant` se escriben en un solo lugar, `client.ts`, y no salen de esa función. La clave del canal y los permisos viajan dentro de `Secret`, que devuelve una marca si alguien lo convierte a texto, a JSON o lo inspecciona. El log registra solo el método, la ruta del contrato y el motivo: nunca cabeceras, cuerpos ni identificadores. El cliente rechaza las redirecciones, que reenviarían las cabeceras a otro destino. Ningún resultado que llega a páginas o acciones contiene un permiso.
+**Cabeceras secretas.** `Authorization`, `X-Journey-Grant` e `Idempotency-Key` se escriben en un solo lugar, `client.ts`, y no salen de esa función. La clave del canal y los permisos viajan dentro de `Secret`, que devuelve una marca si alguien lo convierte a texto, a JSON o lo inspecciona. El log registra solo el método, la ruta del contrato y el motivo: nunca cabeceras, cuerpos ni identificadores. El cliente rechaza las redirecciones, que reenviarían las cabeceras a otro destino. Ningún resultado que llega a páginas o acciones contiene un permiso.
 
 **Registro del canal Web.** El orquestador no ofrece consultar los trámites de un paciente, así que el portal anota los que inicia. `registry.ts` los guarda en `web-channel-registry.json`, dentro de `PORTAL_DATA_DIR`. Por defecto es `.data/` en el portal, que Git ignora.
 
@@ -267,7 +269,9 @@ El folio es el identificador del trámite. Mientras el trámite está pendiente 
 | El último canal y los nombres de canal | El orquestador no informa del último canal. En el historial, el canal se reconoce por su código: `web`, `whatsapp` o `call` dentro del nombre. Cualquier otro se muestra tal cual. |
 | Un solo proceso | Registro y permisos viven en el proceso del portal. |
 
-**Riesgo: crear un trámite con resultado incierto.** `POST /journeys` no es idempotente y el permiso llega solo en su respuesta. Si la respuesta se pierde, el trámite pudo crearse en el orquestador, pero el portal no conoce su identificador ni su permiso: queda huérfano y no se puede recuperar. Por eso el portal no reintenta por su cuenta. Informa al paciente de que no pudo confirmar la creación y le deja decidir si empieza otro. Cada reintento del paciente puede dejar otro trámite huérfano. El mensaje es el mismo cuando el orquestador rechaza la clave del canal, porque `401` y `403` se traducen a `unavailable`: en ese caso no se creó nada.
+**Riesgo: crear un trámite con resultado incierto.** El identificador y el permiso de un trámite nuevo llegan solo en la respuesta de `POST /journeys`. Si esa respuesta se pierde, el trámite pudo crearse en el orquestador, pero el portal no conoce su identificador ni su permiso: queda huérfano. El portal no reintenta por su cuenta, por decisión de su propietario. Informa al paciente de que no pudo confirmar la creación y le deja decidir si empieza otro. Cada intento nuevo del paciente lleva otra clave de idempotencia y puede dejar otro trámite huérfano. El mensaje es el mismo cuando el orquestador rechaza la clave del canal, porque `401` y `403` se traducen a `unavailable`: en ese caso no se creó nada.
+
+En el contrato del commit `4958614` la creación no era idempotente y el trámite huérfano era irrecuperable. Desde `672965a` lo es: reenviar el mismo cuerpo con la misma `Idempotency-Key` devuelve el mismo trámite y, si el permiso inicial sigue vigente, un permiso nuevo. El adaptador ya envía una clave estable por evento, así que activar ese reenvío eliminaría el riesgo. Queda sin activar hasta que el propietario lo decida.
 
 **Ambigüedades del contrato y cómo se resolvieron.**
 
@@ -281,13 +285,22 @@ El folio es el identificador del trámite. Mientras el trámite está pendiente 
 | Los pasos `SELECT_DATETIME` y `CONFIRMED` se pueden leer, pero ningún evento los produce. | Si llegan, la pantalla indica que el paso continúa en otro canal y muestra el folio. |
 | `journey-writes.md` dice que un cambio de contexto deja el trámite `IN_PROGRESS`. `data-model.md` añade que desde `PENDING_CONFIRMATION` se vuelve a `IN_PROGRESS` si cambian datos. | El portal permite cambiar estudio o clínica en un trámite pendiente. |
 | El orquestador no comprueba que el estudio y la clínica existan. | El adaptador lo comprueba en el catálogo antes de publicar. |
+| `Idempotency-Key` pide 32 bytes aleatorios generados por el canal y conservados para los reintentos. | La clave es el SHA-256 del `eventId`, que la acción genera al azar. Así el mismo evento lleva siempre la misma clave sin guardarla aparte. |
 
-**Preguntas abiertas para el equipo del orquestador.**
+**Cambios del contrato publicados después.** Están en `main` y esta rama aún no los integra.
 
-1. **Permiso.** ¿Cómo obtiene el canal Web un permiso nuevo para un trámite propio pasados los cinco minutos? ¿Solo con la CLI de demostración? ¿Cómo llega al backend del portal?
+| Commit | Qué añade | Estado en el portal |
+| --- | --- | --- |
+| `672965a` | `Idempotency-Key` obligatoria en `POST /journeys`: sin ella responde `400`. Un reintento con la misma clave devuelve el mismo trámite. | Cabecera adoptada. El reenvío automático está sin activar. |
+| `644f8ee` | `GET /journeys` y creación identificada, con la cabecera `X-Patient-Assertion`. La afirmación la emite un operador para pacientes ficticios y vence a los cinco minutos. | Sin usar. Permitiría listar los trámites del paciente sin depender solo del registro. |
+| `ff989cc` | Códigos de continuidad. `POST /journeys/:journeyId/continuity-codes` emite un código de 12 caracteres y `POST /continuity-codes/redeem` lo canjea en otro canal por un permiso de cinco minutos. El canal emisor no puede canjear los suyos. | Sin usar. Podría sustituir al folio en la pantalla de pendiente de confirmación y permitiría adoptar trámites de otro canal. |
+
+**Preguntas abiertas para el equipo del orquestador.** Las dos primeras notas indican lo que los commits posteriores ya responden.
+
+1. **Permiso.** ¿Cómo obtiene el canal Web un permiso nuevo para un trámite propio pasados los cinco minutos? ¿Solo con la CLI de demostración? ¿Cómo llega al backend del portal? Los códigos de continuidad cubren el paso a otro canal, pero el canal emisor no puede canjear los suyos y el contrato sigue dejando pendiente la renovación.
 2. **Fecha.** ¿`JOURNEY_CONTEXT_UPDATED` aceptará `scheduledAt`? Sin fecha, la API general no puede crear la cita.
 3. **Confirmación.** ¿Quién crea la cita oficial y cómo se informa `COMPLETED` y `appointmentId` al orquestador?
-4. **Paciente.** ¿Cómo encuentra un canal los trámites de un paciente? En la demo, ¿cómo conoce el paciente el identificador de un trámite iniciado en otro canal?
+4. **Paciente.** ¿Cómo encuentra un canal los trámites de un paciente? En la demo, ¿cómo conoce el paciente el identificador de un trámite iniciado en otro canal? `GET /journeys` con `X-Patient-Assertion` y los códigos de continuidad lo cubren en parte: falta saber cómo obtiene el portal la afirmación de un paciente sin pasar por la CLI del operador.
 5. **Acceso.** ¿Qué URL usará el backend del portal, cuál es el código de canal del portal y quién entrega la clave con los scopes `EVENTS_PUBLISH` y `JOURNEYS_READ`? ¿Qué códigos tienen los demás canales?
 
 **Puesta en marcha.** Define en `.env.local` `REQUESTS_BACKEND=orchestrator`, `ORCHESTRATOR_BASE_URL` y `ORCHESTRATOR_CHANNEL_KEY`. La clave tiene la forma `<keyId>.<secret>`, sin el prefijo `Bearer`, y necesita los dos scopes. `PORTAL_DATA_DIR` es opcional. Con un valor ausente o inválido, el servidor registra el motivo al arrancar, sin el valor, y responde `500` a todas las peticiones.
