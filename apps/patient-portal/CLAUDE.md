@@ -6,7 +6,12 @@ Las instrucciones anteriores valen para todo el monorepo. Lo que sigue aplica so
 
 ## Contexto
 
-App Next.js, TypeScript y Tailwind que funciona como sitio web y como PWA instalable. Las decisiones vigentes y sus motivos están en `apps/patient-portal/docs/decisions.md`. Léelo antes de cambiar la sesión, el canal o el cliente de API, y actualízalo en el mismo cambio si una decisión cambia.
+Sitio web con Next.js, TypeScript y Tailwind. Las decisiones vigentes y sus motivos están en `apps/patient-portal/docs/decisions.md`. Léelo antes de cambiar la sesión, el canal o el cliente de API, y actualízalo en el mismo cambio si una decisión cambia.
+
+Desde el 2026-11-24 el portal es solo web. El proyecto cambió de arquitectura: el portal simula el canal Web existente y hablará con dos servicios nuevos cuyos contratos aún no existen. Por eso se retiró la PWA instalable que tuvo hasta esa fecha. Su rastro está en la sección «Decisiones retiradas» de ese documento.
+
+- Deja fuera el manifiesto, el service worker, los iconos de instalación y cualquier interfaz para un modo instalado.
+- Mientras no existan los contratos nuevos, el código sigue usando la API actual. Espera a que se publiquen antes de escribir contra esos servicios.
 
 ## Alcance
 

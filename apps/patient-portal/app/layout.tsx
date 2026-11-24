@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
-import { InstalledNav } from "@/components/installed-nav";
 import { PrototypeBanner } from "@/components/prototype-banner";
 import { SiteHeader } from "@/components/site-header";
 import { APP_DESCRIPTION, APP_NAME, THEME_COLOR } from "@/lib/brand";
@@ -34,7 +33,6 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         >
           {children}
         </main>
-        <InstalledNav />
       </body>
     </html>
   );

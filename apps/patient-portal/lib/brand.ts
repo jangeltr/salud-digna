@@ -1,5 +1,4 @@
 export const APP_NAME = "Portal del Paciente";
-export const APP_SHORT_NAME = "Paciente";
 export const APP_DESCRIPTION =
   "Prototipo del Hackatec con datos sintéticos. No es el sitio oficial de Salud Digna.";
 export const PROTOTYPE_NOTICE =

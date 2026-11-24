@@ -2,7 +2,7 @@ import { BACKGROUND_COLOR, THEME_COLOR } from "@/lib/brand";
 
 type AppMarkProps = {
   size: number;
-  /** Fracción del lienzo que ocupa la figura. Los iconos maskable usan un valor menor. */
+  /** Fracción del lienzo que ocupa la figura. */
   scale: number;
 };
 

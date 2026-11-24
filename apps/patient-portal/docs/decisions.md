@@ -1,10 +1,12 @@
 # Decisiones del portal del paciente
 
-`apps/patient-portal/` es la web pública del paciente y también su aplicación móvil. Usa Next.js, TypeScript y Tailwind CSS. Funcionará como sitio web y como PWA instalable.
+`apps/patient-portal/` es la web pública del paciente. Usa Next.js, TypeScript y Tailwind CSS. Desde el 2026-11-24 es solo un sitio web, como explica «El portal es solo un sitio web».
 
 Este documento registra las decisiones del portal y el estado de la API del que dependen. El estado corresponde al contrato y a las guías publicados en `main` el 2026-11-22. El documento vive junto a la aplicación porque cada equipo mantiene la documentación de la suya, según la [guía de revisión de pull requests](../../../docs/revision-pull-requests.md).
 
-El portal ya tiene su carcasa, con identidad, rutas, las dos navegaciones y el manifiesto de la PWA, además de registro, acceso y sesión contra la API. El resto de las pantallas muestra solo su título. El service worker llegará en un cambio posterior.
+El portal tiene su carcasa, con identidad, rutas y un encabezado con la navegación, además de registro, acceso, sesión, catálogo y trámite de agendamiento contra la API. `/mi-espacio`, `/citas`, `/citas/[id]` y `/ayuda` muestran solo su título.
+
+Las decisiones que dejaron de aplicarse se conservan al final, en «Decisiones retiradas», con su fecha y su motivo.
 
 ## Contrato
 
@@ -20,17 +22,17 @@ La URL base de integración es `https://api.salud-digna.app/api/v1` y las rutas 
 | --- | --- |
 | `app/` | Rutas del App Router. Los grupos `(public)`, `(booking)` y `(account)` separan las páginas sin sesión, el flujo de agendamiento y el área personal. `api/` contiene los manejadores de servidor del portal. |
 | `features/` | Un módulo por dominio: `catalog`, `requests`, `appointments`, `auth`, `identity` y `help`. |
-| `lib/` | Código transversal: `api` para el cliente de la API, `channel` para el modo instalado, `session` para la sesión del paciente y `brand.ts` con el nombre y los colores de la aplicación. |
-| `components/` | Interfaz compartida y las dos navegaciones, la del sitio web y la de la app instalada. |
+| `lib/` | Código transversal: `api` para el cliente de la API, `session` para la sesión del paciente y `brand.ts` con el nombre y los colores del portal. |
+| `components/` | Interfaz compartida y el encabezado con la navegación. |
 | `mocks/` | Respuestas simuladas de operaciones del contrato. |
-| `public/` | Manifiesto de la PWA e iconos. |
+| `public/` | Archivos estáticos. Hoy está vacía. |
 | `docs/` | Este documento. |
 
 ## Idioma y rutas
 
 Los textos visibles y la documentación se escriben en español. El código y las carpetas usan nombres en inglés alineados con los módulos de la API.
 
-La excepción son los segmentos de URL. Van en español y sin acentos porque los ve el paciente, así que las carpetas de ruta bajo `app/` se llaman `estudios`, `clinicas`, `tramite` o `mi-espacio`. Los grupos de rutas quedan fuera de la URL, y `api/` e `icons/` son rutas técnicas: todos siguen en inglés.
+La excepción son los segmentos de URL. Van en español y sin acentos porque los ve el paciente, así que las carpetas de ruta bajo `app/` se llaman `estudios`, `clinicas`, `tramite` o `mi-espacio`. Los grupos de rutas quedan fuera de la URL y `api/` es una ruta técnica: siguen en inglés.
 
 | Grupo | Rutas |
 | --- | --- |
@@ -78,19 +80,27 @@ Tailwind CSS 4 se carga con `@tailwindcss/postcss` y `@import "tailwindcss"` en 
 
 ## Decisiones
 
-### La app móvil es la PWA del portal
+### El portal es solo un sitio web
 
-El canal móvil se cubre instalando este mismo portal como PWA. El repositorio no tendrá un proyecto móvil aparte. Esto resuelve la ubicación de la aplicación móvil que el README dejaba por definir.
+**Fecha.** 2026-11-24.
+
+**Decisión.** El portal es únicamente un sitio web. Se usa desde el navegador, también en el teléfono, y no se instala.
+
+**Motivo.** El proyecto cambió de arquitectura. El portal pasa a simular el canal Web existente y hablará con dos servicios nuevos cuyos contratos aún no existen. Deja de cubrir el canal móvil, así que la PWA instalable ya no tiene función.
+
+**Qué cambió.** Se retiraron el manifiesto, los iconos de instalación, la barra inferior del modo instalado, las reglas CSS de ese modo y la carpeta reservada para detectarlo. La navegación pasó a un único encabezado, descrito en «Navegación». El detalle de lo retirado está en «Decisiones retiradas».
+
+**Efecto sobre el resto del documento.** Las secciones sobre la API describen la API actual, que el código sigue usando mientras no existan los contratos nuevos.
 
 ### Canal de origen
 
-La API determina el canal en el servidor y registra como `WEB` toda petición autenticada con JWT, incluidas las de una app. El cliente carece de un campo o una cabecera para declararlo. Consulta el [contrato de solicitudes](../../../docs/api-requests.md), secciones «Actualización parcial» y «Canales, acceso y trazabilidad».
+La API determina el canal en el servidor y registra como `WEB` toda petición autenticada con JWT. El cliente carece de un campo o una cabecera para declararlo. Consulta el [contrato de solicitudes](../../../docs/api-requests.md), secciones «Actualización parcial» y «Canales, acceso y trazabilidad».
 
-El portal detecta con `display-mode: standalone` si corre instalado y usa esa señal solo para su propia interfaz. Hoy lo resuelve con CSS, mediante la variante `standalone:` de `app/globals.css`. `lib/channel` queda reservado para cuando haga falta leer el modo desde el código. Sus acciones quedan registradas como `WEB` en ambos modos. Que la API distinga `MOBILE` queda como sugerencia pendiente del equipo de backend.
+El portal actúa solo como canal Web. El aviso de continuidad nombra los canales `WEB`, `WHATSAPP` y `CALL_CENTER`, y muestra «otro canal» para cualquier otro valor.
 
 ### Identidad
 
-La aplicación se llama «Portal del Paciente» y su nombre corto es «Paciente». Usa una paleta propia, definida como variables CSS en `app/globals.css`, y prescinde del verde y del logotipo de Salud Digna. Todas las pantallas muestran una franja fija con el texto «Prototipo Hackatec · datos sintéticos · no es el sitio oficial de Salud Digna».
+El sitio se llama «Portal del Paciente». Usa una paleta propia, definida como variables CSS en `app/globals.css`, y prescinde del verde y del logotipo de Salud Digna. Todas las pantallas muestran una franja fija con el texto «Prototipo Hackatec · datos sintéticos · no es el sitio oficial de Salud Digna».
 
 | Uso | Variables | Contraste |
 | --- | --- | --- |
@@ -106,17 +116,17 @@ Todas las combinaciones superan el 4.5:1 del nivel AA. El portal usa las fuentes
 
 ### Navegación
 
-El portal tiene dos navegaciones y ambas están siempre en el HTML. En el navegador se ve el encabezado con Estudios, Clínicas y Acceso. En modo instalado se oculta ese menú y aparece una barra inferior con Inicio, que lleva a `/mi-espacio`, Continuar, Citas y Ayuda. El cambio depende solo de la media query `display-mode: standalone`, sin JavaScript.
+El portal tiene una sola navegación, en el encabezado. Sin sesión ofrece Estudios, Clínicas y Acceso. Con la cookie de sesión ofrece todas las secciones: Estudios, Clínicas, Mi espacio, Continuar, Citas, Ayuda y Perfil. Cerrar sesión está en `/perfil`.
 
-El diseño parte del móvil. Las barras respetan las áreas seguras con `env(safe-area-inset-*)` y `viewport-fit=cover`, y los enlaces miden al menos 44 px de alto. Cada `nav` lleva su etiqueta y hay un enlace «Saltar al contenido». El recuadro de foco usa `:focus-visible`: aparece al navegar con teclado y no al hacer clic en enlaces o botones. Los campos de texto lo muestran también al hacer clic, porque así define el navegador esa pseudoclase. El enlace de la página abierta lleva `aria-current="page"`, y el de su sección lleva `aria-current="true"` cuando se está en una página interior. `components/nav-link.tsx` es un Client Component porque `usePathname` lo exige.
+**Pantallas de teléfono.** Por debajo de 640 px de ancho, la lista se pliega tras el botón «Menú» y se despliega debajo del encabezado, con un enlace por fila. El contenido baja en lugar de quedar tapado. El botón es un `<details>` nativo y la lista se muestra con CSS mientras está abierto, así que funciona sin JavaScript. Desde 640 px el botón desaparece y la lista queda siempre visible; si no cabe junto al nombre, pasa a la línea siguiente.
 
-### PWA
+**Teclado.** El orden de tabulación es «Saltar al contenido», el nombre del portal, «Menú» y los enlaces. «Menú» se abre y se cierra con Intro o con Espacio, que es el comportamiento nativo de `<details>`. `components/header-menu.tsx` es un Client Component que solo añade el cierre del menú al cambiar de página, porque el encabezado persiste entre páginas.
 
-`app/manifest.ts` genera el manifiesto, que Next sirve en `/manifest.webmanifest`. Declara `display: standalone`, `start_url: /mi-espacio`, `scope: /`, `lang: es`, el color de tema `#3730a3` y el fondo `#ffffff`.
+**Tamaños y foco.** Los enlaces y el botón miden al menos 44 px de alto y de ancho. El encabezado y la franja de prototipo respetan las áreas seguras con `env(safe-area-inset-*)` y `viewport-fit=cover`. El `nav` lleva su etiqueta y hay un enlace «Saltar al contenido». El recuadro de foco usa `:focus-visible`: aparece al navegar con teclado y no al hacer clic en enlaces o botones. En el encabezado se dibuja por dentro de cada enlace, porque la franja de prototipo taparía su borde superior. Los campos de texto lo muestran también al hacer clic, porque así define el navegador esa pseudoclase. El enlace de la página abierta lleva `aria-current="page"`, y el de su sección lleva `aria-current="true"` cuando se está en una página interior. `components/nav-link.tsx` es un Client Component porque `usePathname` lo exige.
 
-Los iconos se generan con `ImageResponse` de `next/og`, que forma parte de Next. `app/icons/[file]/route.tsx` produce en la compilación los de 192 y 512 px y uno maskable de 512 px, sin archivos binarios en el repositorio. `app/icon.tsx` y `app/apple-icon.tsx` generan el icono de pestaña y el de iOS con la misma figura.
+### Iconos
 
-El portal aún no registra un service worker. Chrome dejó de exigirlo para instalar desde su menú a partir de la versión 108 en Android y la 112 en escritorio, según [su blog para desarrolladores](https://developer.chrome.com/blog/update-install-criteria). Sí hará falta para el uso sin conexión y las notificaciones.
+`app/icon.tsx` genera el icono de pestaña y `app/apple-icon.tsx` el que iOS usa en marcadores y favoritos. Ambos dibujan la figura de `app/icons/mark.tsx` con `ImageResponse` de `next/og`, que forma parte de Next, sin archivos binarios en el repositorio.
 
 ### Sesión
 
@@ -143,7 +153,7 @@ Al añadir una ruta a `(account)` o `(booking)` hay que registrar su prefijo en 
 
 **Mutaciones.** Registro, acceso y cierre de sesión son Server Actions. Next solo las acepta por `POST` y compara la cabecera `Origin` con `Host`: una petición de otro origen se rechaza antes de ejecutar la acción. Next responde `500` en ese caso. `proxy.ts` repite antes la misma comparación y responde `403`, sin sustituir la comprobación de Next, que sigue activa. Si algún día se configura `serverActions.allowedOrigins`, el proxy debe aceptar los mismos orígenes.
 
-**Encabezado.** El enlace cambia de «Acceso» a «Mi espacio» según exista la cookie, sin llamar a la API. Como el encabezado lee la cookie, todas las páginas se generan en cada petición y Next las sirve con `Cache-Control: private, no-cache, no-store, max-age=0, must-revalidate`.
+**Encabezado.** Los enlaces cambian de «Acceso» a las secciones del área personal según exista la cookie, sin llamar a la API. Los enlaces a rutas protegidas no se precargan, para no validar la sesión en cada precarga. Como el encabezado lee la cookie, todas las páginas se generan en cada petición y Next las sirve con `Cache-Control: private, no-cache, no-store, max-age=0, must-revalidate`.
 
 ### Cliente de API y configuración
 
@@ -281,6 +291,27 @@ El portal deja estas funciones fuera hasta que exista un contrato acordado.
 
 | Pendiente | Efecto en el portal |
 | --- | --- |
-| Sugerencia: distinguir `MOBILE` de `WEB` | Sin ella, el uso instalado queda registrado como `WEB` y el historial no muestra el cambio entre ambos. |
 | Sugerencia: filtrar clínicas por ciudad en `GET /clinics` | Sin ella, el portal filtra en su servidor con el tope de 500 clínicas descrito en «Catálogo». |
 | Límite de registro e inicio de sesión por IP | Ambas operaciones comparten 10 intentos por IP cada 15 minutos, según el contrato de autenticación. Todas las llamadas llegan desde el servidor del portal, así que los pacientes compartirían ese límite. |
+
+## Decisiones retiradas
+
+Esta sección conserva lo que el portal decidió antes y ya no aplica. Nada de lo descrito aquí existe en el código actual.
+
+### PWA instalable y canal móvil
+
+**Vigencia.** Del 2026-11-22 al 2026-11-24. La sustituye «El portal es solo un sitio web», por el cambio de arquitectura del proyecto. El último commit que la contiene es `464e3fe`.
+
+**Qué decidía.**
+
+- El canal móvil se cubría instalando este mismo portal como PWA, sin un proyecto móvil aparte.
+- El portal detectaba con `display-mode: standalone` si corría instalado y usaba esa señal solo para su interfaz, mediante la variante `standalone:` de `app/globals.css`. `lib/channel` quedaba reservado para leer el modo desde el código.
+- Había dos navegaciones, ambas siempre en el HTML. En el navegador se veía el encabezado con Estudios, Clínicas y Acceso. En modo instalado se ocultaba ese menú y aparecía una barra inferior con Inicio, Continuar, Citas y Ayuda.
+- `app/manifest.ts` generaba `/manifest.webmanifest` con `display: standalone`, `start_url: /mi-espacio`, `scope: /`, `lang: es`, el nombre corto «Paciente», el color de tema `#3730a3` y el fondo `#ffffff`.
+- `app/icons/[file]/route.tsx` producía en la compilación los iconos de instalación de 192 y 512 px y uno maskable de 512 px.
+- El service worker quedaba para un cambio posterior. Chrome dejó de exigirlo para instalar desde su menú a partir de la versión 108 en Android y la 112 en escritorio, según [su blog para desarrolladores](https://developer.chrome.com/blog/update-install-criteria).
+- Quedaba pendiente con el equipo de API la sugerencia de distinguir `MOBILE` de `WEB`, porque el uso instalado se registraba como `WEB`.
+
+**Qué se retiró del código.** `app/manifest.ts`, `app/icons/[file]/route.tsx`, `components/installed-nav.tsx`, `lib/channel/`, la variante `standalone:` y la utilidad `safe-bottom` de `app/globals.css`, la constante `APP_SHORT_NAME` de `lib/brand.ts`, el nombre del canal `MOBILE` en `features/requests/steps.ts` y las excepciones del manifiesto y de los iconos en el `matcher` de `proxy.ts`.
+
+**Qué se conserva.** El icono de pestaña y el de iOS, `viewport-fit=cover` con las áreas seguras, y el tipo `Channel` de `lib/api/schema.d.ts`, que se genera desde el contrato de la API y por eso incluye `MOBILE`.

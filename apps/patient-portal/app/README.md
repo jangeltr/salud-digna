@@ -8,8 +8,10 @@ Rutas del portal con el App Router de Next.js. Los grupos entre paréntesis orga
 | `(booking)/` | Flujo de la solicitud de agendamiento: `/tramite/nuevo` y `/tramite/[id]`. |
 | `(account)/` | Área personal del paciente: `/mi-espacio`, `/continuar`, `/citas`, `/citas/[id]`, `/ayuda` y `/perfil`. |
 | `api/` | Manejadores de servidor del portal. Reciben las peticiones del navegador y llaman a la API de Salud Digna desde el servidor. Hoy contiene `session/expired`, que borra la cookie de una sesión vencida. |
-| `icons/` | Iconos del manifiesto, generados en la compilación. |
+| `icons/` | Figura de la marca que comparten el icono de pestaña y el de iOS. No publica rutas. |
 
-`layout.tsx` monta la franja de prototipo y las dos navegaciones. `manifest.ts` genera `/manifest.webmanifest`. `icon.tsx` y `apple-icon.tsx` generan el icono de pestaña y el de iOS.
+`layout.tsx` monta la franja de prototipo y el encabezado con la navegación. `icon.tsx` y `apple-icon.tsx` generan el icono de pestaña y el de iOS.
+
+El portal es solo un sitio web desde el 2026-11-24, cuando el proyecto cambió de arquitectura y dejó de cubrir el canal móvil. Hasta esa fecha, esta carpeta tenía también `manifest.ts` y la ruta `icons/[file]`, con el manifiesto y los iconos de instalación de la PWA. El motivo y el detalle están en [docs/decisions.md](../docs/decisions.md).
 
 Las rutas de `api/` se publican en `/api/...` del origen del portal y son distintas de `/api/v1` del backend.

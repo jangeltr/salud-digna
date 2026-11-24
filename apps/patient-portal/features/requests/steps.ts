@@ -36,10 +36,10 @@ export function readEditable(value: string | string[] | undefined, request: Requ
   return undefined;
 }
 
-const CHANNEL_NAMES: Record<Channel, string> = {
+// Canales que el portal sabe nombrar. Cualquier otro valor se muestra como «otro canal».
+const CHANNEL_NAMES: Partial<Record<Channel, string>> = {
   WEB: "la web",
   WHATSAPP: "WhatsApp",
-  MOBILE: "la app",
   CALL_CENTER: "Call Center",
 };
 

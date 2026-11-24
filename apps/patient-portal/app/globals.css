@@ -36,13 +36,6 @@
   --color-danger-soft: var(--danger-soft);
 }
 
-/* El modo instalado se resuelve solo con CSS. */
-@custom-variant standalone {
-  @media (display-mode: standalone) {
-    @slot;
-  }
-}
-
 /* Áreas seguras del dispositivo. */
 @utility safe-x {
   padding-left: max(1rem, env(safe-area-inset-left));
@@ -51,10 +44,6 @@
 
 @utility safe-top {
   padding-top: env(safe-area-inset-top);
-}
-
-@utility safe-bottom {
-  padding-bottom: env(safe-area-inset-bottom);
 }
 
 @layer base {
