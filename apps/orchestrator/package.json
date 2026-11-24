@@ -9,6 +9,7 @@
     "check": "pnpm run prisma:generate && tsc --noEmit",
     "auth:create-channel-credential": "node dist/channel-auth/create-channel-credential.js",
     "auth:create-demo-journey-grant": "node dist/journey-access/create-demo-journey-grant.js",
+    "auth:provision-demo-patient": "node dist/journeys/provision-demo-patient.js",
     "prisma:generate": "prisma generate --config prisma.config.ts",
     "prisma:validate": "prisma validate --config prisma.config.ts",
     "prisma:migrate:dev": "prisma migrate dev --config prisma.config.ts",

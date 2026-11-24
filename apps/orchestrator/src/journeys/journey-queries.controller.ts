@@ -1,7 +1,9 @@
-import { Controller, Get, Header, NotFoundException, Query, Req } from '@nestjs/common';
-import { JourneyGrantOperation } from '../generated/prisma/enums';
+import { Controller, Get, Header, NotFoundException, Query, Req, UnauthorizedException } from '@nestjs/common';
+import { RequireChannelScopes } from '../channel-auth/channel-auth.guard';
+import { ChannelScope, JourneyGrantOperation } from '../generated/prisma/enums';
 import { RequireJourneyAccess, type JourneyAccessRequest } from '../journey-access/journey-access.guard';
 import { JourneyQueriesService, type JourneyReadAccess } from './journey-queries.service';
+import { PatientIdentityService } from './patient-identity';
 
 function readAccess(request: JourneyAccessRequest): JourneyReadAccess {
   const { authenticatedChannel, journeyAccess } = request;
@@ -12,7 +14,17 @@ function readAccess(request: JourneyAccessRequest): JourneyReadAccess {
 
 @Controller('journeys')
 export class JourneyQueriesController {
-  constructor(private readonly queries: JourneyQueriesService) {}
+  constructor(private readonly queries: JourneyQueriesService, private readonly identities: PatientIdentityService) {}
+
+  @Get()
+  @Header('Cache-Control', 'no-store')
+  @RequireChannelScopes(ChannelScope.JOURNEYS_READ)
+  async listPatientJourneys(@Req() request: JourneyAccessRequest) {
+    if (!request.authenticatedChannel) throw new UnauthorizedException();
+    const { id: channelId } = request.authenticatedChannel;
+    const patient = await this.identities.resolve(request, channelId);
+    return this.queries.listPatientJourneys(channelId, patient);
+  }
 
   @Get(':journeyId')
   @Header('Cache-Control', 'no-store')

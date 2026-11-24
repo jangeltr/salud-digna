@@ -1,21 +1,28 @@
-import { Body, Controller, Header, NotFoundException, Post, Req, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Header, NotFoundException, Post, Req, UnauthorizedException } from '@nestjs/common';
 import { RequireChannelScopes } from '../channel-auth/channel-auth.guard';
 import { ChannelScope, JourneyGrantOperation } from '../generated/prisma/enums';
 import { RequireJourneyAccess, type JourneyAccessRequest } from '../journey-access/journey-access.guard';
-import { readJourneyEvent, validateJourneyCreation } from './journey-write-input';
+import { creationRequestDigest, readCreationKey, readJourneyEvent } from './journey-write-input';
 import { JourneyWritesService } from './journey-writes.service';
+import { PatientIdentityService } from './patient-identity';
 
 @Controller()
 export class JourneyWritesController {
-  constructor(private readonly writes: JourneyWritesService) {}
+  constructor(private readonly writes: JourneyWritesService, private readonly identities: PatientIdentityService) {}
 
   @Post('journeys')
   @Header('Cache-Control', 'no-store')
   @RequireChannelScopes(ChannelScope.EVENTS_PUBLISH)
   create(@Req() request: JourneyAccessRequest, @Body() body: unknown) {
     if (!request.authenticatedChannel) throw new UnauthorizedException();
-    validateJourneyCreation(body);
-    return this.writes.createAppointment(request.authenticatedChannel.id);
+    if ((request.headersDistinct?.['idempotency-key']?.length ?? 0) > 1) throw new BadRequestException();
+    const keyDigest = readCreationKey(request.headers['idempotency-key']);
+    const channelId = request.authenticatedChannel.id;
+    if (request.headers['x-patient-assertion'] !== undefined) {
+      return this.identities.resolve(request, channelId).then((patient) =>
+        this.writes.createAppointment(channelId, keyDigest, creationRequestDigest(body, patient), patient));
+    }
+    return this.writes.createAppointment(channelId, keyDigest, creationRequestDigest(body));
   }
 
   @Post('events')

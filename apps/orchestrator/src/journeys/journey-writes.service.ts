@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import type { Prisma } from '../generated/prisma/client';
@@ -6,6 +6,9 @@ import { AccessAuditAction, JourneyGrantOperation, JourneyStatus } from '../gene
 import { PrismaService } from '../persistence/prisma.service';
 import { projectExternalRefs, type JourneyReadAccess } from './journey-queries.service';
 import type { JourneyEventInput } from './journey-write-input';
+import type { ResolvedPatient } from './patient-identity';
+
+class ConcurrentCreation extends Error {}
 
 function nextAppointmentState(
   event: JourneyEventInput, currentStatus: JourneyStatus, currentStep: string, storedRefs: Prisma.JsonValue,
@@ -33,32 +36,60 @@ function nextAppointmentState(
 export class JourneyWritesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  createAppointment(channelId: string) {
-    const actorRef = `journey-bootstrap:${randomUUID()}`;
-    const secret = randomBytes(32);
-    const digest = Uint8Array.from(createHash('sha256').update(secret).digest());
-    return this.prisma.client.$transaction(async (tx) => {
+  async createAppointment(
+    channelId: string, keyDigest: Uint8Array<ArrayBuffer>, requestDigest: Uint8Array<ArrayBuffer> | undefined,
+    patient?: ResolvedPatient,
+  ) {
+    const resolve = (canCreate: boolean) => this.prisma.client.$transaction(async (tx) => {
+      const existing = await tx.journeyCreationRequest.findUnique({
+        where: { channelId_keyDigest: { channelId, keyDigest } },
+        select: {
+          requestDigest: true, initialStatus: true,
+          initialGrant: { select: {
+            channelId: true, journeyId: true, actorRef: true, expiresAt: true, revokedAt: true, operations: true,
+          } },
+        },
+      });
+      if (existing) {
+        const initial = existing.initialGrant;
+        if (!requestDigest || !Buffer.from(existing.requestDigest).equals(requestDigest) || initial.channelId !== channelId) {
+          throw new ConflictException();
+        }
+        const result = { id: initial.journeyId, status: existing.initialStatus };
+        const now = new Date();
+        if (initial.revokedAt || initial.expiresAt <= now || !initial.operations.length) return result;
+
+        const { token } = await this.issueCreationGrant(tx, initial, now);
+        return { ...result, grant: token, grantExpiresAt: initial.expiresAt };
+      }
+      if (!canCreate) throw new ServiceUnavailableException();
+      if (!requestDigest) throw new BadRequestException();
+
       const journey = await tx.journey.create({
         data: {
           type: 'APPOINTMENT',
-          patientSubject: { create: {} },
+          patientSubject: patient ? { connect: { id: patient.patientSubjectId } } : { create: {} },
           context: { create: { currentStep: 'SELECT_STUDY' } },
         },
         select: { id: true, status: true },
       });
+      const actorRef = patient?.actorRef ?? `journey-bootstrap:${randomUUID()}`;
       const now = new Date();
       const expiresAt = new Date(now.getTime() + 5 * 60_000);
+      const { id: initialGrantId, token } = await this.issueCreationGrant(tx, {
+        channelId, journeyId: journey.id, actorRef, expiresAt,
+        operations: [JourneyGrantOperation.READ_JOURNEY, JourneyGrantOperation.PUBLISH_EVENT],
+      }, now);
+      const claimed = await tx.journeyCreationRequest.createMany({
+        data: { channelId, keyDigest, requestDigest, initialGrantId, initialStatus: journey.status },
+        skipDuplicates: true,
+      });
+      if (!claimed.count) throw new ConcurrentCreation();
+
       await tx.journeyEvent.create({
         data: {
           journeyId: journey.id, producerId: channelId, externalEventId: `system:created:${journey.id}`,
           type: 'JOURNEY_CREATED', schemaVersion: 1, occurredAt: now, payload: { version: 1 },
-        },
-        select: { id: true },
-      });
-      await tx.journeyAccessGrant.create({
-        data: {
-          channelId, journeyId: journey.id, actorRef, digest, createdAt: now, expiresAt,
-          operations: [JourneyGrantOperation.READ_JOURNEY, JourneyGrantOperation.PUBLISH_EVENT],
         },
         select: { id: true },
       });
@@ -69,8 +100,32 @@ export class JourneyWritesService {
         },
         select: { id: true },
       });
-      return { ...journey, grant: secret.toString('base64url'), grantExpiresAt: expiresAt };
+      return { ...journey, grant: token, grantExpiresAt: expiresAt };
     });
+
+    try {
+      return await resolve(true);
+    } catch (error) {
+      if (!(error instanceof ConcurrentCreation)) throw error;
+      return resolve(false);
+    }
+  }
+
+  private async issueCreationGrant(tx: Prisma.TransactionClient, grant: {
+    channelId: string;
+    journeyId: string;
+    actorRef: string;
+    expiresAt: Date;
+    operations: JourneyGrantOperation[];
+  }, createdAt: Date) {
+    const secret = randomBytes(32);
+    const digest = Uint8Array.from(createHash('sha256').update(secret).digest());
+    const { channelId, journeyId, actorRef, expiresAt, operations } = grant;
+    const { id } = await tx.journeyAccessGrant.create({
+      data: { channelId, journeyId, actorRef, expiresAt, operations, createdAt, digest },
+      select: { id: true },
+    });
+    return { id, token: secret.toString('base64url') };
   }
 
   publish(access: JourneyReadAccess, event: JourneyEventInput) {

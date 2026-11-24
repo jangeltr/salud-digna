@@ -126,6 +126,21 @@ El [contrato de consultas](docs/journey-queries.md) describe las rutas de
 estado y contexto y los encabezados requeridos por los backends de canal.
 El [contrato de escritura](docs/journey-writes.md) describe la creación
 de trámites, la publicación de avances y el traspaso de la demo.
+La [guía de identidad ficticia](docs/patient-identity.md) explica cómo
+aprovisionar y recuperar trámites de un paciente entre canales.
+El [contrato de continuidad](docs/continuity-codes.md) documenta la emisión
+y el canje entre Web, WhatsApp y Call Center. Requiere la migración
+[`20261124082308_add_continuity_codes`](prisma/migrations/20261124082308_add_continuity_codes/migration.sql)
+y la clave HMAC privada del orquestador.
+
+`POST /api/v1/journeys` requiere `Idempotency-Key` de 32 bytes aleatorios en
+base64url sin relleno. Conserva la clave para los reintentos de la misma
+operación y genera otra para cada trámite nuevo. Un reintento recupera el
+ID y estado inicial y puede recibir un permiso nuevo dentro de la vigencia
+original. La misma clave con un cuerpo distinto devuelve `409` en ese canal.
+Coordina el cambio con los backends de canal y aplica la
+[migración incremental](prisma/migrations/20261124075314_add_journey_creation_idempotency/migration.sql)
+antes de desplegar esta versión.
 
 ## Prisma
 

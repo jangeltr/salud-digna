@@ -16,12 +16,14 @@ const grantSecret = Buffer.alloc(32, 13);
 const hash = (bytes) => createHash('sha256').update(bytes).digest();
 const hasStatus = (status) => (error) => error.getStatus?.() === status;
 
-function fixture({ grant = {}, scopes = ['JOURNEYS_READ'], operation = 'READ_JOURNEY', source = 'params' } = {}) {
+function fixture({ grant = {}, scopes = ['JOURNEYS_READ'], operation = 'READ_JOURNEY', source = 'params', additional = [] } = {}) {
   class Controller {
     handle() {}
   }
   const handler = Controller.prototype.handle;
-  RequireJourneyAccess(operation, source)(Controller.prototype, 'handle', Object.getOwnPropertyDescriptor(Controller.prototype, 'handle'));
+  RequireJourneyAccess(operation, source, ...additional)(
+    Controller.prototype, 'handle', Object.getOwnPropertyDescriptor(Controller.prototype, 'handle'),
+  );
   const request = {
     headers: {
       authorization: `Bearer ${keyId}.${channelSecret.toString('base64url')}`,
@@ -50,6 +52,7 @@ function fixture({ grant = {}, scopes = ['JOURNEYS_READ'], operation = 'READ_JOU
       journeyAccessGrant: { async findUnique({ where }) {
         lookups.push(where);
         return grant === null ? null : {
+          id: 'stored-grant',
           channelId,
           digest: hash(grantSecret),
           actorRef: 'verified-session',
@@ -80,8 +83,16 @@ test('authorizes a matching grant and derives actor and journey from verified se
   await attempt.authorize();
   assert.deepEqual(attempt.lookups, [{ digest: Uint8Array.from(hash(grantSecret)) }]);
   assert.deepEqual(attempt.request.journeyAccess, {
-    journeyId, actorRef: 'verified-session', operation: 'READ_JOURNEY',
+    grantId: 'stored-grant', journeyId, actorRef: 'verified-session', operation: 'READ_JOURNEY',
   });
+});
+
+test('requires both operations for continuity without allowing a read-only grant to delegate', async () => {
+  const scopes = ['JOURNEYS_READ', 'EVENTS_PUBLISH'];
+  const additional = ['PUBLISH_EVENT'];
+  await assert.rejects(fixture({ additional }).authorize, hasStatus(403));
+  await assert.rejects(fixture({ scopes, additional }).authorize, hasStatus(404));
+  await fixture({ scopes, additional, grant: { operations: ['READ_JOURNEY', 'PUBLISH_EVENT'] } }).authorize();
 });
 
 test('requires API key authentication and the corresponding channel scope before grant lookup', async () => {

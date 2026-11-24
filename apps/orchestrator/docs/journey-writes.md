@@ -9,13 +9,21 @@ devuelto al crear del registro de solicitudes y respuestas.
 
 ## Crear un trámite
 
-`POST /api/v1/journeys` acepta exclusivamente este cuerpo:
+`POST /api/v1/journeys` exige el nuevo encabezado obligatorio
+`Idempotency-Key: <clave>`. El backend del canal genera 32 bytes con un
+generador criptográfico y los codifica en base64url sin relleno, en 43
+caracteres. En Node.js usa `randomBytes(32).toString('base64url')` de
+`node:crypto`. Genera y conserva la clave antes del primer envío, junto a la
+operación y sesión que la originaron. Excluye este encabezado de los logs.
+Una clave ausente, duplicada en encabezados o mal formada devuelve `400`.
+
+El cuerpo admitido es:
 
 ```json
 {"type":"APPOINTMENT"}
 ```
 
-Devuelve `201 Created` y `Cache-Control: no-store`:
+El primer envío devuelve `201 Created` y `Cache-Control: no-store`:
 
 ```json
 {
@@ -26,19 +34,35 @@ Devuelve `201 Created` y `Cache-Control: no-store`:
 }
 ```
 
-Se crea un sujeto interno provisional, un contexto `SELECT_STUDY` en versión
-1 y un evento `JOURNEY_CREATED`. La ruta rechaza referencias de pacientes,
-identificadores externos, datos de contacto y actores aportados por el
-cliente. El sujeto provisional carece de identidad verificada y no permite
-leer datos de otros trámites o pacientes. No se consulta la API central.
+Se crea un contexto `SELECT_STUDY` en versión 1 y un evento `JOURNEY_CREATED`.
+Con una [afirmación de identidad](patient-identity.md) válida en
+`X-Patient-Assertion`, se usa el sujeto verificado y su actor. Sin ese
+encabezado se crea un sujeto provisional. La ruta rechaza identificadores
+y actores aportados en el cuerpo. No se consulta la API central.
 
 El permiso dura cinco minutos y se entrega una vez. Está ligado al canal
 creador, al UUID devuelto y a una referencia de sesión generada por el
 orquestador. El backend lo conserva vinculado a la sesión que originó la
 creación. Permite lectura y publicación sobre ese trámite, sujetas además
-a los scopes de la API key. Crear un trámite carece de idempotencia en
-este incremento. Un reintento tras una respuesta perdida puede crear otro
-trámite provisional.
+a los scopes de la API key.
+
+Si la respuesta se pierde, reenvía el mismo cuerpo con la misma clave.
+Para el mismo canal, la respuesta vuelve a ser `201` con el mismo `id` y
+el estado inicial `DRAFT`, aunque el trámite haya avanzado. La operación
+se guarda como un digest por canal. Un envío concurrente con la misma
+clave y cuerpo recupera el trámite ganador. Pasar la misma clave con otro
+cuerpo en el mismo canal devuelve `409 Conflict`. Para iniciar otro trámite
+voluntariamente, genera una clave nueva aunque el cuerpo sea idéntico.
+La misma clave en otro canal identifica una operación independiente.
+
+El secreto original del permiso no se recupera. Mientras el permiso inicial
+siga vigente y sin revocar, cada reintento equivalente puede devolver otro
+`grant`, con el mismo canal, trámite, sesión, operaciones y fecha límite.
+Los permisos emitidos pueden coexistir hasta esa fecha o su revocación
+individual. Pasada la fecha o revocado el permiso inicial, el reintento
+devuelve solo `id` y `status`. Consulta el contexto autorizado para obtener
+el estado operativo actual. Los trámites creados antes de este cambio
+carecen de un registro de idempotencia retroactivo.
 
 ## Publicar un avance
 
@@ -103,14 +127,15 @@ Consulta el [contrato de lectura](journey-queries.md) para las demás
 consultas autorizadas.
 
 Un canal distinto utiliza su propia API key y un permiso emitido
-específicamente para ese canal, trámite, actor y operaciones. Para trámites
-ficticios del Hackatec, un operador local autorizado comprueba la atención
-y emite ese permiso mediante la
-[CLI de demostración](../README.md#permisos-de-demostración-para-hackatec).
+específicamente para ese canal, trámite y operaciones. El canal de origen
+puede delegar la atención mediante un
+[código de continuidad](continuity-codes.md). La
+[CLI de demostración](../README.md#permisos-de-demostración-para-hackatec)
+permite el aprovisionamiento manual para trámites ficticios.
 Compartir el permiso del primer canal produce `404` en el segundo.
 
-La creación y el registro de avances operativos están implementados. El
-aprovisionamiento entre canales es manual para la demo. Quedan pendientes
-la verificación y vinculación de identidad de pacientes existentes, la
-renovación de permisos por un flujo autorizado y la confirmación de una
-cita central mediante un comprobante verificable.
+La creación y el registro de avances operativos están implementados. En la
+demo, el [aprovisionamiento de identidad](patient-identity.md)
+es manual y exclusivo de pacientes ficticios. Quedan
+pendientes la prueba de identidad firmada por la autoridad central, la
+renovación autorizada de permisos y la confirmación de citas centrales.
