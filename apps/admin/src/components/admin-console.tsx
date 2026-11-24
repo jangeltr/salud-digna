@@ -1,15 +1,20 @@
 "use client";
 
 import { useState } from "react";
-import { Activity, Building2, CalendarDays, ClipboardList, FlaskConical, LayoutDashboard, ListChecks, LogIn, Route, ShieldCheck, UsersRound } from "lucide-react";
+import { Activity, Building2, CalendarDays, ClipboardList, FlaskConical, LayoutDashboard, ListChecks, LogIn, Network, Route, ShieldCheck, UsersRound } from "lucide-react";
 import { Brand, Empty, EmptyTable, Panel, Pending } from "./ui";
 import { ChannelLegend, Journey } from "./journey";
 import { registries, Registry } from "./registry";
+import { LiveDashboard, LiveSupervision, RequestJourney, type RequestRow } from "./live-monitoring";
+import type { Api } from "./orchestrator";
 
 const operations = [
   { name: "Dashboard", icon: LayoutDashboard },
   { name: "Supervisión", icon: ClipboardList },
   { name: "Patient Journey", icon: Route },
+  { name: "Centro de Orquestación", icon: Activity },
+  { name: "Integraciones", icon: Network },
+  { name: "Auditoría", icon: ListChecks },
 ] as const;
 
 const management = [
@@ -17,7 +22,6 @@ const management = [
   { name: "Roles y permisos", icon: ShieldCheck },
   { name: "Estudios", icon: FlaskConical },
   { name: "Clínicas", icon: Building2 },
-  { name: "Auditoría", icon: ListChecks },
 ] as const;
 
 type Section = (typeof operations | typeof management)[number]["name"];
@@ -107,8 +111,9 @@ function Audit() {
   );
 }
 
-export function AdminConsole() {
+export function AdminConsole({ api, exit }: { api?: Api; exit?: () => void }) {
   const [section, setSection] = useState<Section>("Dashboard");
+  const [selected, setSelected] = useState<RequestRow>();
   const renderNavigation = (items: typeof operations | typeof management) => items.map(({ name, icon: Icon }) => (
     <button type="button" className="nav-item" aria-current={section === name ? "page" : undefined} key={name} onClick={() => setSection(name)}>
       <Icon size={19} aria-hidden="true" /><span>{name}</span>
@@ -124,17 +129,27 @@ export function AdminConsole() {
           <div className="nav-group" role="group" aria-label="Operación"><p aria-hidden="true">Operación</p>{renderNavigation(operations)}</div>
           <div className="nav-group" role="group" aria-label="Gestión"><p aria-hidden="true">Gestión</p>{renderNavigation(management)}</div>
         </nav>
-        <a href="/" className="back-link"><LogIn size={18} aria-hidden="true" /> Acceso</a>
+        {exit ? <button type="button" className="back-link" onClick={exit}><LogIn size={18} aria-hidden="true" /> Cerrar sesión</button>
+          : <a href="/" className="back-link"><LogIn size={18} aria-hidden="true" /> Acceso</a>}
       </aside>
       <main className="workspace" id="contenido" tabIndex={-1}>
         <header className="workspace-header">
           <div><p>Administración</p><h1 aria-live="polite">{section}</h1></div>
-          <span className="design-status">Vista de desarrollo</span>
+          {!api && <span className="design-status">Vista de desarrollo</span>}
         </header>
         <div className="workspace-content">
-          {section === "Dashboard" && <Dashboard openSupervision={() => setSection("Supervisión")} />}
-          {section === "Supervisión" && <Supervision openJourney={() => setSection("Patient Journey")} />}
-          {section === "Patient Journey" && <Journey events={[]} />}
+          {section === "Dashboard" && (api
+            ? <LiveDashboard api={api} openSupervision={() => setSection("Supervisión")} />
+            : <Dashboard openSupervision={() => setSection("Supervisión")} />)}
+          {section === "Supervisión" && (api
+            ? <LiveSupervision api={api} openJourney={(row) => { setSelected(row); setSection("Patient Journey"); }} />
+            : <Supervision openJourney={() => setSection("Patient Journey")} />)}
+          {section === "Patient Journey" && (api ? <RequestJourney api={api} selected={selected} /> : <Journey events={[]} />)}
+          {section === "Centro de Orquestación" && (api ? <RequestJourney api={api} center /> :
+            <Panel title="Eventos por trámite"><Pending>Consulta disponible con sesión administrativa.</Pending></Panel>)}
+          {section === "Integraciones" && <Panel title="Canales registrados">
+            <EmptyTable title="Integraciones" columns={["Canal", "Estado", "Última actividad"]}>Directorio y estado de canales pendientes de integración.</EmptyTable>
+          </Panel>}
           {(section === "Usuarios" || section === "Estudios" || section === "Clínicas") && <Registry key={section} spec={registries[section]} />}
           {section === "Roles y permisos" && <Roles />}
           {section === "Auditoría" && <Audit />}

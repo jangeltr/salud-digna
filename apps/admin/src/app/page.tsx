@@ -1,8 +1,13 @@
+"use client";
+
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { ShieldCheck } from "lucide-react";
-import { Brand, Pending } from "../components/ui";
+import { Brand } from "../components/ui";
+import { AdminConsole } from "../components/admin-console";
+import { StaffAccess } from "../components/staff-access";
 
-export default function Login() {
+function Login({ form }: { form: ReactNode }) {
   return (
     <main className="login">
       <div className="login-identity">
@@ -12,15 +17,16 @@ export default function Login() {
       <div className="login-body">
         <section className="panel login-card" aria-labelledby="login-title">
           <h2 id="login-title">Acceso administrativo</h2>
-          <fieldset disabled className="fields" aria-describedby="login-status">
-            <label>Correo institucional<input type="email" autoComplete="username" /></label>
-            <label>Contraseña<input type="password" autoComplete="current-password" /></label>
-            <button type="button" className="primary">Iniciar sesión</button>
-          </fieldset>
-          <Pending id="login-status">Autenticación pendiente de integración.</Pending>
+          {form}
           {process.env.NODE_ENV === "development" && <Link className="text-link" href="/diseno">Abrir vista de diseño</Link>}
         </section>
       </div>
     </main>
   );
+}
+
+export default function Page() {
+  return <StaffAccess role="ADMIN" login={(form) => <Login form={form} />}>
+    {(api, exit) => <AdminConsole api={api} exit={exit} />}
+  </StaffAccess>;
 }
