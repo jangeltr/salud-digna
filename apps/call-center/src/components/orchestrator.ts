@@ -9,21 +9,24 @@ export class ApiError extends Error {
       429: retryAfter && /^\d+$/.test(retryAfter)
         ? `Límite de intentos. Espera al menos ${retryAfter} segundos.`
         : "Límite de intentos. Intenta más tarde.",
-    }[status] ?? "El orquestador no pudo completar la operación.");
+    }[status] ?? "La API central no pudo completar la operación.");
   }
 }
 
 export function errorMessage(error: unknown) {
-  return error instanceof ApiError ? error.message : "No se pudo conectar con el orquestador o leer su respuesta.";
+  return error instanceof ApiError ? error.message : "No se pudo conectar con la API central o leer su respuesta.";
 }
 
 export type Api = <T>(path: string, body?: object, expectedStatus?: number) => Promise<T>;
 
 export function apiWith(token?: string): Api {
   return async <T>(path: string, body?: object, expectedStatus?: number): Promise<T> => {
-    const origin = new URL(process.env.NEXT_PUBLIC_ORCHESTRATOR_ORIGIN ?? "http://127.0.0.1:3000");
+    const defaultOrigin = process.env.NODE_ENV === "development"
+      ? "http://127.0.0.1:3000"
+      : "https://api.salud-digna.app";
+    const origin = new URL(process.env.NEXT_PUBLIC_GENERAL_API_ORIGIN ?? defaultOrigin);
     if (origin.protocol !== "https:" && !(origin.protocol === "http:" && ["localhost", "127.0.0.1"].includes(origin.hostname))) {
-      throw new Error("Se requiere HTTPS para el orquestador.");
+      throw new Error("Se requiere HTTPS para la API central.");
     }
     const response = await fetch(new URL("/api/v1/" + path, origin), {
       method: body ? "POST" : "GET",
