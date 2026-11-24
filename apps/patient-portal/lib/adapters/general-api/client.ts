@@ -16,7 +16,7 @@ export type ApiFailure = { ok: false; status: number | null; retryAfter?: number
 
 export type ApiResult<Data> = ApiSuccess<Data> | ApiFailure;
 
-type ApiRequest = {
+export type ApiRequest = {
   method: "GET" | "POST" | "PATCH";
   path: ApiPath;
   /** Valores para los segmentos entre llaves de la ruta, como `{id}`. */

@@ -1,4 +1,4 @@
-import type { ApiFailure } from "@/lib/api/client";
+import type { PortalError } from "@/lib/domain/errors";
 
 function formatWait(seconds: number | undefined): string {
   if (seconds === undefined || seconds <= 0) return "unos minutos";
@@ -8,22 +8,20 @@ function formatWait(seconds: number | undefined): string {
 }
 
 /**
- * Mensaje para el paciente según el código HTTP. Nunca reproduce el texto que devuelve la API.
+ * Mensaje para el paciente según el error. Nunca reproduce el texto que devuelve el servicio.
  */
-export function authErrorMessage(failure: ApiFailure): string {
-  if (failure.status === null || failure.status >= 500) {
-    return "El servicio no está disponible en este momento. Inténtalo de nuevo más tarde.";
-  }
-
-  switch (failure.status) {
-    case 400:
+export function authErrorMessage(error: PortalError): string {
+  switch (error.kind) {
+    case "unavailable":
+      return "El servicio no está disponible en este momento. Inténtalo de nuevo más tarde.";
+    case "invalid":
       return "Revisa los datos del formulario e inténtalo de nuevo.";
-    case 401:
+    case "session":
       return "No pudimos iniciar sesión con esos datos. Revisa el correo y la contraseña.";
-    case 409:
+    case "conflict":
       return "No se pudo crear la cuenta con ese correo. Si ya tienes una cuenta, inicia sesión.";
-    case 429:
-      return `Demasiados intentos. Espera ${formatWait(failure.retryAfter)} antes de volver a intentarlo.`;
+    case "rate-limited":
+      return `Demasiados intentos. Espera ${formatWait(error.retryAfterSeconds)} antes de volver a intentarlo.`;
     default:
       return "No pudimos completar la operación. Inténtalo de nuevo más tarde.";
   }

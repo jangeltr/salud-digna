@@ -2,6 +2,6 @@
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
 
-  const { getApiBaseUrl } = await import("@/lib/api/config");
-  getApiBaseUrl();
+  const { checkConfiguration } = await import("@/lib/composition");
+  checkConfiguration();
 }

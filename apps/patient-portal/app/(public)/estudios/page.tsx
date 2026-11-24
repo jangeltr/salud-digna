@@ -5,7 +5,7 @@ import { Pagination } from "@/features/catalog/pagination";
 import { PAGE_SIZE, listHref, readPage, readText } from "@/features/catalog/params";
 import { SearchForm } from "@/features/catalog/search-form";
 import { StudyCard } from "@/features/catalog/study-card";
-import { listStudies } from "@/lib/api/catalog";
+import { generalData } from "@/lib/composition";
 
 export const metadata: Metadata = { title: "Estudios" };
 
@@ -17,7 +17,7 @@ export default async function StudiesPage({ searchParams }: PageProps<"/estudios
   const page = readPage(params.pagina);
   const hrefFor = (target: number) => listHref(PATH, { q, pagina: target });
 
-  const result = await listStudies({ page, limit: PAGE_SIZE, q: q || undefined });
+  const result = await generalData.listStudies({ page, limit: PAGE_SIZE, search: q || undefined });
   if (!result.ok) return <ServiceUnavailable retryHref={hrefFor(page)} />;
 
   const { items, hasMore } = result.data;

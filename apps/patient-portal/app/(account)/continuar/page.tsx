@@ -6,8 +6,8 @@ import { PAGE_SIZE, listHref, readPage } from "@/features/catalog/params";
 import { NoticeBanner } from "@/features/requests/parts";
 import { PendingList } from "@/features/requests/pending-list";
 import { readNotice } from "@/features/requests/steps";
-import { listPendingRequests } from "@/lib/api/requests";
-import { expireSession, requireSession } from "@/lib/session/session";
+import { requestQuery } from "@/lib/composition";
+import { expireSession, requireAccount } from "@/lib/session/session";
 
 export const metadata: Metadata = { title: "Continuar" };
 
@@ -19,12 +19,11 @@ export default async function ResumePage({ searchParams }: PageProps<"/continuar
   const notice = readNotice(query.aviso);
   const hrefFor = (target: number) => listHref(PATH, { pagina: target });
 
-  const session = await requireSession();
-  if (!session) return <ServiceUnavailable retryHref={hrefFor(page)} />;
+  if (!(await requireAccount())) return <ServiceUnavailable retryHref={hrefFor(page)} />;
 
-  const result = await listPendingRequests(session.token, page, PAGE_SIZE);
+  const result = await requestQuery.listPending({ page, limit: PAGE_SIZE });
   if (!result.ok) {
-    if (result.status === 401) await expireSession();
+    if (result.error.kind === "session") await expireSession();
     return <ServiceUnavailable retryHref={hrefFor(page)} />;
   }
 

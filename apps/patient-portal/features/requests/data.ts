@@ -1,30 +1,21 @@
 import "server-only";
-import { getClinic, getStudy, type Clinic, type Study } from "@/lib/api/catalog";
-import { listAppointments, type Appointment, type RequestSnapshot } from "@/lib/api/requests";
+import { generalData, requestQuery } from "@/lib/composition";
+import type { Appointment, Clinic, Selections, Study } from "@/lib/domain/model";
 
-export type Selections = { study?: Study; clinic?: Clinic };
+/** Estudio y clínica ya elegidos, con sus datos de catálogo. */
+export type SelectionDetails = { study?: Study; clinic?: Clinic };
 
 /** Nombres y precio de lo ya elegido. Si un registro dejó de estar disponible, queda sin detalle. */
-export async function loadSelections(context: RequestSnapshot["context"]): Promise<Selections> {
+export async function loadSelections(selections: Selections): Promise<SelectionDetails> {
   const [study, clinic] = await Promise.all([
-    context.studyId ? getStudy(context.studyId) : undefined,
-    context.clinicId ? getClinic(context.clinicId) : undefined,
+    selections.studyId ? generalData.getStudy(selections.studyId) : undefined,
+    selections.clinicId ? generalData.getClinic(selections.clinicId) : undefined,
   ]);
   return { study: study?.ok ? study.data : undefined, clinic: clinic?.ok ? clinic.data : undefined };
 }
 
-const APPOINTMENT_PAGES = 3;
-
-/**
- * Busca la cita de un trámite confirmado. El contrato no ofrece esa consulta directa,
- * así que se recorre el listado de citas propias y se compara `requestId`.
- */
-export async function findAppointment(token: string, requestId: string): Promise<Appointment | undefined> {
-  for (let page = 1; page <= APPOINTMENT_PAGES; page++) {
-    const result = await listAppointments(token, page, 100);
-    if (!result.ok) return undefined;
-    const match = result.data.items.find((appointment) => appointment.requestId === requestId);
-    if (match || !result.data.hasMore) return match;
-  }
-  return undefined;
+/** Cita de un trámite confirmado. Si no se puede consultar, la pantalla enlaza al listado de citas. */
+export async function findAppointment(requestId: string): Promise<Appointment | undefined> {
+  const result = await requestQuery.getAppointment(requestId);
+  return result.ok ? result.data : undefined;
 }

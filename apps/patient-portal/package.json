@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start --hostname 127.0.0.1 --port 5173",
     "check": "next typegen && tsc --noEmit",
-    "api:types": "openapi-typescript ../../docs/openapi.json --output lib/api/schema.d.ts"
+    "api:types": "openapi-typescript ../../docs/openapi.json --output lib/adapters/general-api/schema.d.ts"
   },
   "dependencies": {
     "next": "16.4.6",

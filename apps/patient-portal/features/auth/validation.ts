@@ -1,6 +1,6 @@
-import type { LoginInput, RegisterInput } from "@/lib/api/auth";
+import type { Credentials, Registration } from "@/lib/domain/model";
 
-// Límites de RegisterDto y LoginDto en docs/openapi.json.
+// Límites del registro y el acceso en la API general: `RegisterDto` y `LoginDto` de docs/openapi.json.
 export const LIMITS = {
   name: 100,
   email: 254,
@@ -36,7 +36,7 @@ function hasErrors(errors: FieldErrors): boolean {
   return Object.values(errors).some(Boolean);
 }
 
-export function validateSignIn(formData: FormData): Validated<LoginInput> {
+export function validateSignIn(formData: FormData): Validated<Credentials> {
   const input = { email: text(formData, "email"), password: password(formData) };
   const fieldErrors: FieldErrors = { email: emailError(input.email) };
 
@@ -46,7 +46,7 @@ export function validateSignIn(formData: FormData): Validated<LoginInput> {
   return hasErrors(fieldErrors) ? { fieldErrors } : { input };
 }
 
-export function validateSignUp(formData: FormData): Validated<RegisterInput> {
+export function validateSignUp(formData: FormData): Validated<Registration> {
   const firstName = text(formData, "firstName");
   const lastName = text(formData, "lastName");
   const email = text(formData, "email");
@@ -68,6 +68,6 @@ export function validateSignUp(formData: FormData): Validated<RegisterInput> {
 
   if (hasErrors(fieldErrors)) return { fieldErrors };
 
-  // El contrato pide omitir el teléfono cuando no se conoce.
+  // El teléfono se omite cuando no se conoce.
   return { input: { firstName, lastName, email, password: secret, ...(phone ? { phone } : {}) } };
 }

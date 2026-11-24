@@ -1,10 +1,10 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { formatPrice } from "@/features/catalog/params";
-import type { Appointment, RequestSnapshot } from "@/lib/api/requests";
+import type { Appointment, BookingRequest } from "@/lib/domain/model";
 import { confirmAppointment, saveNotes } from "./actions";
 import { AssistanceForm } from "./assistance-form";
-import type { Selections } from "./data";
+import type { SelectionDetails } from "./data";
 import { RequestForm } from "./parts";
 import { formatDateTime } from "./schedule";
 
@@ -18,9 +18,9 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
 }
 
 /** Resumen de lo elegido. Sirve para la revisión y para la cita confirmada. */
-export function Summary({ request, selections }: { request: RequestSnapshot; selections: Selections }) {
+export function Summary({ request, selections }: { request: BookingRequest; selections: SelectionDetails }) {
   const { study, clinic } = selections;
-  const { scheduledAt, notes } = request.context;
+  const { scheduledAt, notes } = request.selections;
 
   return (
     <dl className="mt-4 divide-y divide-line rounded-lg border border-line bg-canvas px-4">
@@ -47,7 +47,7 @@ export function Summary({ request, selections }: { request: RequestSnapshot; sel
   );
 }
 
-export function ReviewStep({ request, selections }: { request: RequestSnapshot; selections: Selections }) {
+export function ReviewStep({ request, selections }: { request: BookingRequest; selections: SelectionDetails }) {
   return (
     <section aria-labelledby="paso-revision">
       <h2 id="paso-revision" className="mt-6 text-xl font-semibold">
@@ -64,7 +64,7 @@ export function ReviewStep({ request, selections }: { request: RequestSnapshot; 
           name="notes"
           rows={3}
           maxLength={500}
-          defaultValue={request.context.notes ?? ""}
+          defaultValue={request.selections.notes ?? ""}
           aria-describedby="notes-hint"
           className="mt-1 block w-full rounded-lg border border-line bg-canvas px-3 py-2 text-base text-ink"
         />
@@ -92,8 +92,8 @@ export function ReviewStep({ request, selections }: { request: RequestSnapshot; 
 }
 
 type ConfirmedProps = {
-  request: RequestSnapshot;
-  selections: Selections;
+  request: BookingRequest;
+  selections: SelectionDetails;
   appointment?: Appointment;
 };
 

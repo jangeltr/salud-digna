@@ -1,46 +1,46 @@
-import type { Channel, RequestSnapshot, RequestStep } from "@/lib/api/requests";
+import type { BookingRequest, Channel, RequestStep } from "@/lib/domain/model";
 
 /** Dato ya elegido que el paciente puede cambiar. Es el valor del parámetro `cambiar`. */
 export type Editable = "estudio" | "clinica" | "horario";
 
 export type StepInfo = { step: RequestStep; label: string; editable?: Editable };
 
-/** Pasos del trámite en el orden que calcula la API. */
+/** Pasos del trámite en el orden que calcula el servicio. */
 export const STEPS: StepInfo[] = [
-  { step: "SELECT_STUDY", label: "Estudio", editable: "estudio" },
-  { step: "SELECT_CLINIC", label: "Clínica", editable: "clinica" },
-  { step: "SELECT_DATETIME", label: "Fecha y hora", editable: "horario" },
-  { step: "REVIEW", label: "Revisión" },
+  { step: "study", label: "Estudio", editable: "estudio" },
+  { step: "clinic", label: "Clínica", editable: "clinica" },
+  { step: "datetime", label: "Fecha y hora", editable: "horario" },
+  { step: "review", label: "Revisión" },
 ];
 
 export function stepLabel(step: RequestStep): string {
-  if (step === "CONFIRMED") return "Cita confirmada";
+  if (step === "confirmed") return "Cita confirmada";
   return STEPS.find((item) => item.step === step)?.label ?? step;
 }
 
-/** DRAFT, IN_PROGRESS y PENDING_CONFIRMATION admiten cambios. COMPLETED y CANCELLED están cerrados. */
-export function isOpen(request: RequestSnapshot): boolean {
-  return request.status === "DRAFT" || request.status === "IN_PROGRESS" || request.status === "PENDING_CONFIRMATION";
+/** Los tres primeros estados admiten cambios. `completed` y `cancelled` están cerrados. */
+export function isOpen(request: BookingRequest): boolean {
+  return request.status === "draft" || request.status === "in-progress" || request.status === "pending-confirmation";
 }
 
 /**
- * Qué dato ya elegido se puede cambiar. La API no permite vaciar estudio ni clínica,
+ * Qué dato ya elegido se puede cambiar. El estudio y la clínica no se pueden vaciar,
  * así que volver a un paso anterior significa elegir otro valor para ese dato.
  */
-export function readEditable(value: string | string[] | undefined, request: RequestSnapshot): Editable | undefined {
+export function readEditable(value: string | string[] | undefined, request: BookingRequest): Editable | undefined {
   if (!isOpen(request)) return undefined;
-  const { studyId, clinicId, scheduledAt } = request.context;
+  const { studyId, clinicId, scheduledAt } = request.selections;
   if (value === "estudio" && studyId) return "estudio";
   if (value === "clinica" && clinicId) return "clinica";
   if (value === "horario" && scheduledAt) return "horario";
   return undefined;
 }
 
-// Canales que el portal sabe nombrar. Cualquier otro valor se muestra como «otro canal».
-const CHANNEL_NAMES: Partial<Record<Channel, string>> = {
-  WEB: "la web",
-  WHATSAPP: "WhatsApp",
-  CALL_CENTER: "Call Center",
+const CHANNEL_NAMES: Record<Channel, string> = {
+  web: "la web",
+  whatsapp: "WhatsApp",
+  "call-center": "Call Center",
+  other: "otro canal",
 };
 
 export function channelName(channel: Channel): string {
@@ -66,11 +66,11 @@ const RECENT_MS = 5 * 60 * 1000;
  * Aviso de continuidad. Se muestra cuando la última actividad fue en otro canal
  * o cuando el paciente vuelve a un trámite que dejó hace un rato.
  */
-export function continuityNotice(request: RequestSnapshot, now: Date = new Date()): string | undefined {
+export function continuityNotice(request: BookingRequest, now: Date = new Date()): string | undefined {
   if (!isOpen(request)) return undefined;
-  const age = now.getTime() - Date.parse(request.updatedAt);
-  if (request.lastChannel === "WEB" && age < RECENT_MS) return undefined;
-  return `Dejaste este trámite en ${channelName(request.lastChannel)} ${timeAgo(request.updatedAt, now)}.`;
+  const age = now.getTime() - Date.parse(request.lastActivityAt);
+  if (request.lastChannel === "web" && age < RECENT_MS) return undefined;
+  return `Dejaste este trámite en ${channelName(request.lastChannel)} ${timeAgo(request.lastActivityAt, now)}.`;
 }
 
 /** Avisos que una acción deja tras redirigir. Solo se aceptan estas claves. */

@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { LinkPending } from "@/components/link-pending";
-import type { Study } from "@/lib/api/catalog";
+import type { Study } from "@/lib/domain/model";
 import { formatPrice } from "./params";
 
-/** Los textos de la API se muestran como texto: React los escapa. */
+/** Los textos del catálogo se muestran como texto: React los escapa. */
 export function StudyCard({ study }: { study: Study }) {
   return (
     <li className="flex flex-col rounded-lg border border-line bg-canvas p-4">

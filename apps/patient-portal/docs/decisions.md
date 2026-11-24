@@ -10,7 +10,7 @@ Las decisiones que dejaron de aplicarse se conservan al final, en «Decisiones r
 
 ## Contrato
 
-El contrato oficial es [`docs/openapi.json`](../../../docs/openapi.json). El portal lo lee en esa ubicación y evita copiarlo. `lib/api` y `mocks/` se rigen por ese archivo.
+El contrato oficial es [`docs/openapi.json`](../../../docs/openapi.json). El portal lo lee en esa ubicación y evita copiarlo. `lib/adapters/` y `mocks/` se rigen por ese archivo. Es el contrato de la API general. El orquestador aún no tiene contrato, como explica «Dos servicios y tres interfaces».
 
 **Regla.** El portal usa únicamente operaciones y propiedades que figuran en `docs/openapi.json`. Lo que falte se reporta al equipo de API con método, ruta, rol y código HTTP, y queda pendiente en el portal hasta que exista un contrato acordado. Así lo piden [AGENTS.md](../../../AGENTS.md) y la [guía de integración](../../../docs/INTEGRACION-FRONTENDS.md), sección «Inconsistencias y trabajo con agentes».
 
@@ -22,7 +22,7 @@ La URL base de integración es `https://api.salud-digna.app/api/v1` y las rutas 
 | --- | --- |
 | `app/` | Rutas del App Router. Los grupos `(public)`, `(booking)` y `(account)` separan las páginas sin sesión, el flujo de agendamiento y el área personal. `api/` contiene los manejadores de servidor del portal. |
 | `features/` | Un módulo por dominio: `catalog`, `requests`, `appointments`, `auth`, `identity` y `help`. |
-| `lib/` | Código transversal: `api` para el cliente de la API, `session` para la sesión del paciente y `brand.ts` con el nombre y los colores del portal. |
+| `lib/` | Código transversal: `domain` con el modelo, los errores y las interfaces; `adapters` con sus implementaciones; `composition.ts`, que elige el adaptador de cada interfaz; `session` para la sesión del paciente; y `brand.ts` con el nombre y los colores del portal. |
 | `components/` | Interfaz compartida y el encabezado con la navegación. |
 | `mocks/` | Respuestas simuladas de operaciones del contrato. |
 | `public/` | Archivos estáticos. Hoy está vacía. |
@@ -66,7 +66,7 @@ Los scripts siguen el patrón de las otras aplicaciones. Se ejecutan desde la ra
 | `build` | `next build` | Compilación de producción. La ejecuta también la revisión de integración. |
 | `start` | `next start --hostname 127.0.0.1 --port 5173` | Sirve la compilación. |
 | `check` | `next typegen && tsc --noEmit` | Genera los tipos de rutas y comprueba TypeScript en modo estricto. |
-| `api:types` | `openapi-typescript ../../docs/openapi.json --output lib/api/schema.d.ts` | Genera los tipos de la API a partir del contrato. Solo lee ese archivo. |
+| `api:types` | `openapi-typescript ../../docs/openapi.json --output lib/adapters/general-api/schema.d.ts` | Genera los tipos de la API a partir del contrato. Solo lee ese archivo. |
 
 Configuración de `next.config.ts`:
 
@@ -86,11 +86,101 @@ Tailwind CSS 4 se carga con `@tailwindcss/postcss` y `@import "tailwindcss"` en 
 
 **Decisión.** El portal es únicamente un sitio web. Se usa desde el navegador, también en el teléfono, y no se instala.
 
-**Motivo.** El proyecto cambió de arquitectura. El portal pasa a simular el canal Web existente y hablará con dos servicios nuevos cuyos contratos aún no existen. Deja de cubrir el canal móvil, así que la PWA instalable ya no tiene función.
+**Motivo.** El proyecto cambió de arquitectura. El portal pasa a simular el canal Web existente y habla con dos servicios, descritos en «Dos servicios y tres interfaces». Deja de cubrir el canal móvil, así que la PWA instalable ya no tiene función.
 
 **Qué cambió.** Se retiraron el manifiesto, los iconos de instalación, la barra inferior del modo instalado, las reglas CSS de ese modo y la carpeta reservada para detectarlo. La navegación pasó a un único encabezado, descrito en «Navegación». El detalle de lo retirado está en «Decisiones retiradas».
 
-**Efecto sobre el resto del documento.** Las secciones sobre la API describen la API actual, que el código sigue usando mientras no existan los contratos nuevos.
+**Efecto sobre el resto del documento.** Las secciones sobre la API describen la API actual. El código la sigue usando para todo mientras el orquestador no tenga contrato.
+
+### Dos servicios y tres interfaces
+
+**Fecha.** 2026-11-24.
+
+**Los dos servicios.**
+
+| Servicio | Qué atiende | Contrato |
+| --- | --- | --- |
+| API general | Datos del paciente, catálogo y acceso. Es la API actual. | `docs/openapi.json`. |
+| Orquestador | Recibe de cada canal mensajes JSON con los cambios del trámite. Cada canal le consulta el último estado registrado de un paciente. | Aún no existe. |
+
+El portal es el simulador del canal Web. Hacia el orquestador tendrá dos módulos: notificar y consultar. Mientras el orquestador no tenga contrato, esos dos módulos se atienden con las operaciones `/requests` de la API actual.
+
+**Modelo propio.** `lib/domain/model.ts` define paciente, estudio, clínica, trámite, entrada de historial y cita con el vocabulario del portal. El trámite lleva estado, paso, selecciones, último canal, última actividad y versión. La entrada de historial está definida y todavía sin uso.
+
+**Errores propios.** `lib/domain/errors.ts` define los errores que devuelven las interfaces.
+
+| Error | Significado |
+| --- | --- |
+| `not-found` | El recurso no existe o no pertenece al paciente. |
+| `conflict` | El recurso cambió desde la última lectura, o ya existe. |
+| `session` | No hay sesión o ya no es válida. |
+| `rate-limited` | Límite de intentos excedido, con los segundos de espera si el servicio los indica. |
+| `invalid` | El servicio rechazó los datos enviados. |
+| `unavailable` | No hubo respuesta útil. En una escritura, el resultado es incierto. |
+| `rejected` | El servicio respondió y rechazó la operación por un motivo que el portal no distingue. |
+
+`rejected` existe porque la API actual documenta `403` en todas las operaciones del trámite. El portal ya trataba ese caso como un rechazo seguro, distinto de «servicio no disponible»: al crear un trámite muestra el error sin consultar los pendientes.
+
+**Las tres interfaces.** Están en `lib/domain/ports.ts`. Todas devuelven `Result`, que es el dato o uno de los errores anteriores.
+
+| Interfaz | Operaciones | Quién la implementa hoy |
+| --- | --- | --- |
+| `GeneralData`, datos generales | `listStudies`, `getStudy`, `listClinics`, `getClinic`, `getProfile`, `signIn`, `signUp` | `lib/adapters/general-api/general-data.ts` |
+| `RequestNotifier`, notificación del trámite | `notify(event)` | `lib/adapters/legacy-requests/notifier.ts` |
+| `RequestQuery`, consulta del trámite | `listPending`, `getRequest`, `getAppointment` | `lib/adapters/legacy-requests/query.ts` |
+
+`signIn` comprueba las credenciales y deja abierta la sesión del portal. `signUp` crea la cuenta sin abrir la sesión. Las consultas del trámite se refieren siempre al paciente de la sesión actual.
+
+**Eventos de negocio.** Cada acción del paciente sobre su trámite se notifica como un evento.
+
+| Evento | Acción del paciente | Operación de la API actual |
+| --- | --- | --- |
+| `request-started` | «Empezar el trámite» | `POST /requests` |
+| `study-chosen` | Elegir un estudio | `PATCH /requests/{id}/context` |
+| `clinic-chosen` | Elegir una clínica | `PATCH /requests/{id}/context` |
+| `slot-chosen` | Elegir fecha y hora | `PATCH /requests/{id}/context` |
+| `note-saved` | Guardar o quitar la nota | `PATCH /requests/{id}/context` |
+| `request-paused` | «Guardar y continuar después» | `POST /requests/{id}/pause` |
+| `request-resumed` | «Continuar este trámite» | `POST /requests/{id}/resume` |
+| `appointment-confirmed` | «Confirmar mi cita» | `POST /requests/{id}/confirm` |
+| `help-requested` | «Pedir ayuda a un asesor» | `POST /requests/{id}/assistance-code` |
+
+Cada evento lleva un `eventId` único, que la acción genera al ejecutarse, el identificador del trámite y, de forma opcional, la versión que vio el paciente en `expectedVersion`. Empezar un trámite desde un estudio emite dos eventos: `request-started` y `study-chosen`.
+
+La notificación devuelve un acuse, no el estado del trámite: el identificador del trámite, la versión resultante si el servicio la informa y, en `help-requested`, el código de asistencia. Después de cada evento la página vuelve a consultar el trámite. Con el error `unavailable` el resultado es incierto, así que el portal consulta los pendientes antes de permitir otro intento.
+
+**El adaptador heredado.** `lib/adapters/legacy-requests` traduce cada evento a la operación de la tabla. Acepta el `eventId` y lo ignora, porque la API actual no tiene dónde recibirlo. La API actual exige la versión en cada escritura: si el evento no la trae, el adaptador lee antes la vigente.
+
+**Composición.** `lib/composition.ts` decide qué adaptador atiende cada interfaz y es el único archivo que conoce las implementaciones. Exporta `generalData`, `requestNotifier` y `requestQuery`, y `checkConfiguration()` para el arranque.
+
+**Reglas de dependencia.**
+
+- Páginas, acciones y componentes importan solo `lib/domain` y `lib/composition.ts`.
+- Los tipos generados del contrato y los códigos HTTP solo aparecen dentro de `lib/adapters`. `failures.ts` es la única traducción de códigos HTTP a errores del portal.
+- El token queda fuera de páginas y acciones. `authorized.ts` lo lee del módulo de sesión en cada llamada, y `signIn` lo guarda en la cookie sin devolverlo.
+
+**Qué habrá que escribir cuando exista el contrato del orquestador.**
+
+1. Un adaptador en `lib/adapters/orchestrator/` que implemente `RequestNotifier`: serializa cada evento al mensaje JSON del contrato, con su `eventId`, y traduce la respuesta a un acuse o a un error propio.
+2. En el mismo adaptador, una implementación de `RequestQuery` que lea el último estado registrado del paciente y lo traduzca a `BookingRequest`.
+3. Su cliente HTTP, su variable de entorno con la URL, validada en `checkConfiguration()`, y su forma de autenticarse.
+4. El cambio de dos líneas en `lib/composition.ts`.
+5. Una API simulada del orquestador para las pruebas.
+
+Después se podrá borrar `lib/adapters/legacy-requests`.
+
+**Puntos que el contrato debe resolver.** Hoy dependen de cómo funciona la API actual.
+
+| Punto | Cómo funciona hoy |
+| --- | --- |
+| Quién crea el identificador del trámite | El servicio. El portal lo recibe en el acuse de `request-started`. |
+| Versión del trámite | El servicio exige la versión en cada escritura y la devuelve. El modelo la tiene como obligatoria. |
+| Reintento de un evento | Sin deduplicación. Tras un resultado incierto, el portal consulta los pendientes en lugar de reenviar el mismo `eventId`. |
+| Código de asistencia | Lo emite el servicio y llega en el acuse de `help-requested`. |
+| Cita de un trámite | Sin consulta directa. El adaptador recorre el listado de citas del paciente. |
+| Identidad del paciente | La consulta usa el token de la API general. |
+| Vocabulario de estados, pasos y canales | El adaptador traduce los valores de la API actual a los del modelo. |
+
 
 ### Canal de origen
 
@@ -134,7 +224,7 @@ El portal tiene una sola navegación, en el encabezado. Sin sesión ofrece Estud
 
 El token dura `expiresIn` segundos. La API carece de renovación y de una operación de cierre de sesión. Al vencer, el paciente vuelve a iniciar sesión. Cerrar sesión en el portal elimina su cookie, y el token conserva su validez en la API hasta que vence. Consulta la misma sección de la guía pública y el [contrato de autenticación](../../../docs/api-auth.md), sección «Límites del MVP y comprobación local».
 
-Las guías piden enviar `Authorization: Bearer <accessToken>` y omiten dónde guardar el token. El portal lo guarda en una cookie `HttpOnly` de su propio origen. El código del navegador no puede leer el token y nunca llama a la API. El navegador habla con el portal, y el servidor de Next llama a la API con el token de la cookie. Los manejadores de `app/api/` y el cliente de `lib/api` se ejecutan solo en el servidor.
+Las guías piden enviar `Authorization: Bearer <accessToken>` y omiten dónde guardar el token. El portal lo guarda en una cookie `HttpOnly` de su propio origen. El código del navegador no puede leer el token y nunca llama a la API. El navegador habla con el portal, y el servidor de Next llama a la API con el token de la cookie. Los manejadores de `app/api/` y los adaptadores de `lib/adapters` se ejecutan solo en el servidor. El token tampoco viaja por páginas ni acciones: el adaptador lo lee de la cookie al llamar, y al iniciar sesión lo guarda en ella directamente.
 
 **Cookie.** Tras `POST /api/v1/auth/login`, el portal guarda `accessToken` en una cookie `HttpOnly`, `SameSite=Lax`, `Path=/` y con `Max-Age` igual a `expiresIn`. En producción la cookie lleva además `Secure` y el nombre `__Host-portal-session`. En desarrollo se llama `portal-session`. El token queda fuera del HTML, de las props, de la URL y del almacenamiento del navegador. El borrado repite los mismos atributos, porque el navegador rechaza un `Set-Cookie` con prefijo `__Host-` que omita `Secure`.
 
@@ -143,7 +233,7 @@ Las guías piden enviar `Authorization: Bearer <accessToken>` y omiten dónde gu
 **Rutas protegidas.** Las rutas de `(account)` y `(booking)` exigen sesión, en dos pasos que siguen la guía de autenticación de Next.js:
 
 1. `proxy.ts` hace una comprobación optimista. Si falta la cookie, redirige a `/acceso?destino=<ruta original>` sin llamar a la API.
-2. Cada página protegida llama a `requireAccount()`, de `lib/session/session.ts`, que valida la sesión en el servidor con `GET /api/v1/auth/me`. El portal nunca decodifica el token.
+2. Cada página protegida llama a `requireAccount()`, de `lib/session/session.ts`, que valida la sesión en el servidor pidiendo el perfil del paciente, hoy con `GET /api/v1/auth/me`. El portal nunca decodifica el token.
 
 Cuando la API responde `401`, la página redirige a `/api/session/expired`. Ese manejador vuelve a preguntar a la API, borra la cookie solo si la sesión ya es inválida y lleva a `/acceso` con el destino original. Hace falta porque un Server Component no puede borrar cookies. Si la API no responde, la página muestra «Servicio no disponible» y conserva la cookie.
 
@@ -157,16 +247,16 @@ Al añadir una ruta a `(account)` o `(booking)` hay que registrar su prefijo en 
 
 ### Cliente de API y configuración
 
-`API_BASE_URL` es la única variable de entorno. Solo la lee el servidor, sin prefijo `NEXT_PUBLIC_`. `.env.example` documenta su nombre y el valor real va en `.env.local`, que Git ignora. `instrumentation.ts` la valida al arrancar: debe usar `https`, salvo en `localhost` y `127.0.0.1`. Con un valor inválido el servidor se detiene. `next build` funciona sin la variable, porque ninguna página llama a la API durante la compilación.
+`API_BASE_URL` es la única variable de entorno. Solo la lee el servidor, sin prefijo `NEXT_PUBLIC_`. `.env.example` documenta su nombre y el valor real va en `.env.local`, que Git ignora. `instrumentation.ts` la valida al arrancar con `checkConfiguration()`, de `lib/composition.ts`: debe usar `https`, salvo en `localhost` y `127.0.0.1`. Con un valor inválido, el servidor registra el error al arrancar y responde `500` a todas las peticiones. `next build` funciona sin la variable, porque ninguna página llama a la API durante la compilación.
 
-`lib/api/client.ts` es el único punto de salida hacia la API y lleva `server-only`, así que un componente de cliente no puede importarlo. Cada llamada:
+`lib/adapters/general-api/client.ts` es el único punto de salida hacia la API y lleva `server-only`, así que un componente de cliente no puede importarlo. Cada llamada:
 
 - construye sus propias cabeceras y envía solo `Accept`, `Content-Type` y `Authorization`, sin reenviar nada del navegador;
 - tiene un tiempo de espera de 8 segundos y trata el fallo de red como «servicio no disponible»;
 - registra en el log solo el método, la ruta y el motivo del fallo, nunca tokens, contraseñas ni cuerpos;
 - descarta el cuerpo de los errores, de modo que el mensaje de la API nunca llega a la interfaz.
 
-Los tipos salen del contrato. `pnpm --filter @salud-digna/patient-portal api:types` lee `docs/openapi.json` y genera `lib/api/schema.d.ts` con `openapi-typescript`. Hay que repetirlo cuando cambie el contrato. `ApiPath` limita las rutas del cliente a las que existen en ese archivo.
+Los tipos salen del contrato. `pnpm --filter @salud-digna/patient-portal api:types` lee `docs/openapi.json` y genera `lib/adapters/general-api/schema.d.ts` con `openapi-typescript`. Hay que repetirlo cuando cambie el contrato. `ApiPath` limita las rutas del cliente a las que existen en ese archivo.
 
 ### Registro y acceso
 
@@ -314,4 +404,4 @@ Esta sección conserva lo que el portal decidió antes y ya no aplica. Nada de l
 
 **Qué se retiró del código.** `app/manifest.ts`, `app/icons/[file]/route.tsx`, `components/installed-nav.tsx`, `lib/channel/`, la variante `standalone:` y la utilidad `safe-bottom` de `app/globals.css`, la constante `APP_SHORT_NAME` de `lib/brand.ts`, el nombre del canal `MOBILE` en `features/requests/steps.ts` y las excepciones del manifiesto y de los iconos en el `matcher` de `proxy.ts`.
 
-**Qué se conserva.** El icono de pestaña y el de iOS, `viewport-fit=cover` con las áreas seguras, y el tipo `Channel` de `lib/api/schema.d.ts`, que se genera desde el contrato de la API y por eso incluye `MOBILE`.
+**Qué se conserva.** El icono de pestaña y el de iOS, `viewport-fit=cover` con las áreas seguras, y el tipo `Channel` de `lib/adapters/general-api/schema.d.ts`, que se genera desde el contrato de la API y por eso incluye `MOBILE`.

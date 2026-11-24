@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { LinkPending } from "@/components/link-pending";
 import { ServiceUnavailable } from "@/components/service-unavailable";
 import { formatPrice, isUuid } from "@/features/catalog/params";
-import { getStudy } from "@/lib/api/catalog";
+import { generalData } from "@/lib/composition";
 
 const FALLBACK_TITLE = "Detalle del estudio";
 
@@ -12,18 +12,18 @@ export async function generateMetadata({ params }: PageProps<"/estudios/[id]">):
   const { id } = await params;
   if (!isUuid(id)) return { title: FALLBACK_TITLE };
 
-  const result = await getStudy(id);
+  const result = await generalData.getStudy(id);
   return { title: result.ok ? result.data.name : FALLBACK_TITLE };
 }
 
 export default async function StudyDetailPage({ params }: PageProps<"/estudios/[id]">) {
   const { id } = await params;
-  // Un identificador que no es UUID nunca llega a la API.
+  // Un identificador que no es UUID nunca llega al servicio.
   if (!isUuid(id)) notFound();
 
-  const result = await getStudy(id);
+  const result = await generalData.getStudy(id);
   if (!result.ok) {
-    if (result.status === 400 || result.status === 404) notFound();
+    if (result.error.kind === "invalid" || result.error.kind === "not-found") notFound();
     return <ServiceUnavailable retryHref={`/estudios/${id}`} />;
   }
 

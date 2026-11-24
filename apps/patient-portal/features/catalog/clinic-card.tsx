@@ -1,6 +1,6 @@
-import type { Clinic } from "@/lib/api/catalog";
+import type { Clinic } from "@/lib/domain/model";
 
-/** Los textos de la API se muestran como texto: React los escapa. */
+/** Los textos del catálogo se muestran como texto: React los escapa. */
 export function ClinicCard({ clinic }: { clinic: Clinic }) {
   return (
     <li className="rounded-lg border border-line bg-canvas p-4">

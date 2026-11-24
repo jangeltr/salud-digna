@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { SubmitButton } from "@/components/submit-button";
-import type { RequestSnapshot } from "@/lib/api/requests";
+import type { BookingRequest } from "@/lib/domain/model";
 import { STEPS, type Notice } from "./steps";
 
 const TONES = {
@@ -26,7 +26,7 @@ export const secondaryButton =
 
 type RequestFormProps = {
   action: (formData: FormData) => Promise<void>;
-  request: RequestSnapshot;
+  request: BookingRequest;
   /** Campos ocultos adicionales, como el estudio o el horario elegido. */
   values?: Record<string, string>;
   label: string;
@@ -35,7 +35,7 @@ type RequestFormProps = {
   children?: ReactNode;
 };
 
-/** Formulario de una acción de servidor sobre el trámite. Envía siempre la versión que mostró la API. */
+/** Formulario de una acción de servidor sobre el trámite. Envía siempre la versión que vio el paciente. */
 export function RequestForm({ action, request, values, label, pendingLabel, secondary, children }: RequestFormProps) {
   return (
     <form action={action}>
@@ -52,9 +52,9 @@ export function RequestForm({ action, request, values, label, pendingLabel, seco
   );
 }
 
-/** Indicador de avance. El paso actual lo decide la API: los anteriores enlazan a su cambio. */
-export function Progress({ request, editing }: { request: RequestSnapshot; editing?: string }) {
-  const currentIndex = STEPS.findIndex((item) => item.step === request.currentStep);
+/** Indicador de avance. El paso actual lo decide el servicio: los anteriores enlazan a su cambio. */
+export function Progress({ request, editing }: { request: BookingRequest; editing?: string }) {
+  const currentIndex = STEPS.findIndex((item) => item.step === request.step);
 
   return (
     <nav aria-label="Avance del trámite" className="mt-4">

@@ -1,9 +1,10 @@
 import "server-only";
-import { listClinics, type Clinic } from "@/lib/api/catalog";
-import type { ApiFailure } from "@/lib/api/client";
+import { generalData } from "@/lib/composition";
+import type { Failure } from "@/lib/domain/errors";
+import type { Clinic } from "@/lib/domain/model";
 import { PAGE_SIZE, normalizeText } from "./params";
 
-// El contrato no filtra por ciudad. Con ese filtro, el portal recorre el listado de la API
+// El catálogo no filtra por ciudad. Con ese filtro, el portal recorre el listado
 // en páginas del tamaño máximo y filtra los resultados en el servidor.
 const SCAN_PAGE_SIZE = 100;
 const MAX_SCAN_PAGES = 5;
@@ -21,11 +22,11 @@ export type ClinicSearch = {
 
 type Search = { q: string; city: string; page: number };
 
-export async function searchClinics({ q, city, page }: Search): Promise<ClinicSearch | ApiFailure> {
-  const name = q || undefined;
+export async function searchClinics({ q, city, page }: Search): Promise<ClinicSearch | Failure> {
+  const search = q || undefined;
 
   if (!city) {
-    const result = await listClinics({ page, limit: PAGE_SIZE, q: name });
+    const result = await generalData.listClinics({ page, limit: PAGE_SIZE, search });
     if (!result.ok) return result;
     return { ok: true, items: result.data.items, hasMore: result.data.hasMore, truncated: false };
   }
@@ -37,7 +38,7 @@ export async function searchClinics({ q, city, page }: Search): Promise<ClinicSe
   let truncated = false;
 
   for (let scanPage = 1; scanPage <= MAX_SCAN_PAGES; scanPage++) {
-    const result = await listClinics({ page: scanPage, limit: SCAN_PAGE_SIZE, q: name });
+    const result = await generalData.listClinics({ page: scanPage, limit: SCAN_PAGE_SIZE, search });
     if (!result.ok) return result;
 
     for (const clinic of result.data.items) {

@@ -4,9 +4,8 @@ import { ServiceUnavailable } from "@/components/service-unavailable";
 import { formatPrice, isUuid } from "@/features/catalog/params";
 import { PendingList } from "@/features/requests/pending-list";
 import { StartForm } from "@/features/requests/start-form";
-import { getStudy } from "@/lib/api/catalog";
-import { listPendingRequests } from "@/lib/api/requests";
-import { expireSession, requireSession } from "@/lib/session/session";
+import { generalData, requestQuery } from "@/lib/composition";
+import { expireSession, requireAccount } from "@/lib/session/session";
 
 export const metadata: Metadata = { title: "Agendar un estudio" };
 
@@ -16,16 +15,15 @@ export default async function NewRequestPage({ searchParams }: PageProps<"/trami
   const requestedStudy = raw && isUuid(raw) ? raw.toLowerCase() : undefined;
   const path = requestedStudy ? `/tramite/nuevo?estudio=${requestedStudy}` : "/tramite/nuevo";
 
-  const session = await requireSession();
-  if (!session) return <ServiceUnavailable retryHref={path} />;
+  if (!(await requireAccount())) return <ServiceUnavailable retryHref={path} />;
 
   // Esta página solo consulta. El trámite se crea cuando el paciente pulsa el botón.
   const [study, pending] = await Promise.all([
-    requestedStudy ? getStudy(requestedStudy) : undefined,
-    listPendingRequests(session.token),
+    requestedStudy ? generalData.getStudy(requestedStudy) : undefined,
+    requestQuery.listPending({ page: 1, limit: 20 }),
   ]);
   if (!pending.ok) {
-    if (pending.status === 401) await expireSession();
+    if (pending.error.kind === "session") await expireSession();
     return <ServiceUnavailable retryHref={path} />;
   }
 

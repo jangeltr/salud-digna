@@ -3,19 +3,12 @@
 import "server-only";
 import { redirect } from "next/navigation";
 import { isUuid } from "@/features/catalog/params";
-import type { ApiResult } from "@/lib/api/client";
-import {
-  confirmRequest,
-  createRequest,
-  issueAssistanceCode,
-  listPendingRequests,
-  pauseRequest,
-  resumeRequest,
-  updateRequestContext,
-  type RequestSnapshot,
-} from "@/lib/api/requests";
-import { clearSessionCookie, readSessionToken } from "@/lib/session/cookie";
+import { requestNotifier, requestQuery } from "@/lib/composition";
+import type { Result } from "@/lib/domain/errors";
+import type { Receipt } from "@/lib/domain/ports";
+import { clearSessionCookie } from "@/lib/session/cookie";
 import { signInUrl } from "@/lib/session/routes";
+import { hasSessionCookie } from "@/lib/session/session";
 import { formatClock, isOfferedSlot } from "./schedule";
 
 const NOTES_MAX = 500;
@@ -37,35 +30,50 @@ function readVersion(formData: FormData): number | undefined {
   return version >= 1 && version <= 2_147_483_647 ? version : undefined;
 }
 
-/** Identificador, versión y token de una acción sobre un trámite. Sin ellos no se llama a la API. */
-async function readTarget(formData: FormData): Promise<{ id: string; version: number; token: string }> {
-  const id = field(formData, "id");
-  const version = readVersion(formData);
-  if (!isUuid(id) || version === undefined) redirect(PENDING_PATH);
-
-  const token = await readSessionToken();
-  if (!token) redirect(signInUrl(requestPath(id)));
-  return { id, version, token };
+/** Identificador único de un evento. Se genera una vez por cada evento que emite una acción. */
+function newEventId(): string {
+  return crypto.randomUUID();
 }
 
-/** Ante 401, borra la cookie y lleva a /acceso con el trámite como destino. */
+/**
+ * Datos comunes de un evento sobre un trámite: su identificador y la versión que vio el paciente.
+ * Sin ellos, o sin sesión, no se notifica nada.
+ */
+async function readTarget(formData: FormData): Promise<{ eventId: string; requestId: string; expectedVersion: number }> {
+  const requestId = field(formData, "id");
+  const expectedVersion = readVersion(formData);
+  if (!isUuid(requestId) || expectedVersion === undefined) redirect(PENDING_PATH);
+
+  if (!(await hasSessionCookie())) redirect(signInUrl(requestPath(requestId)));
+  return { eventId: newEventId(), requestId, expectedVersion };
+}
+
+/** Con la sesión inválida, borra la cookie y lleva a /acceso con el trámite como destino. */
 async function endSession(destination: string): Promise<never> {
   await clearSessionCookie();
   redirect(signInUrl(destination));
 }
 
 /**
- * Cierra una acción. Siempre redirige a la página del trámite, que vuelve a leer su estado en la API:
- * así la pantalla refleja lo que quedó guardado aunque la respuesta haya sido un error.
+ * Cierra una acción. Siempre redirige a la página del trámite, que vuelve a consultar su estado:
+ * así la pantalla refleja lo que quedó registrado aunque la notificación haya fallado.
  */
-async function settle(result: ApiResult<unknown>, id: string, onSuccess: string): Promise<never> {
+async function settle(result: Result<Receipt>, id: string, onSuccess: string): Promise<never> {
   if (result.ok) redirect(onSuccess);
-  if (result.status === 401) await endSession(requestPath(id));
-  // 404: la página responde «no encontrado», igual para un trámite inexistente que para uno ajeno.
-  if (result.status === 404) redirect(requestPath(id));
-  if (result.status === 409) redirect(requestPath(id, "cambio"));
-  if (result.status === 400) redirect(requestPath(id, "invalido"));
-  redirect(requestPath(id, "servicio"));
+
+  switch (result.error.kind) {
+    case "session":
+      return endSession(requestPath(id));
+    case "not-found":
+      // La página responde «no encontrado», igual para un trámite inexistente que para uno ajeno.
+      redirect(requestPath(id));
+    case "conflict":
+      redirect(requestPath(id, "cambio"));
+    case "invalid":
+      redirect(requestPath(id, "invalido"));
+    default:
+      redirect(requestPath(id, "servicio"));
+  }
 }
 
 export type StartState = {
@@ -74,102 +82,116 @@ export type StartState = {
   blocked?: boolean;
 };
 
-/** Crea un trámite cuando el paciente lo pide y, si llegó un estudio válido, lo guarda en el contexto. */
+/** Inicia un trámite cuando el paciente lo pide y, si llegó un estudio válido, lo elige a continuación. */
 export async function startRequest(_previous: StartState, formData: FormData): Promise<StartState> {
   const studyId = field(formData, "estudio");
   const returnTo = isUuid(studyId) ? `/tramite/nuevo?estudio=${studyId}` : "/tramite/nuevo";
-  const token = await readSessionToken();
-  if (!token) redirect(signInUrl(returnTo));
+  if (!(await hasSessionCookie())) redirect(signInUrl(returnTo));
 
   const known = new Set(field(formData, "conocidos").split(",").filter(isUuid));
   const startedAt = Date.now();
 
-  let request: RequestSnapshot | undefined;
-  const created = await createRequest(token);
+  // Del trámite iniciado solo hacen falta su identificador, su versión y si aún espera estudio.
+  let started: { id: string; version?: number; awaitsStudy: boolean };
+  const created = await requestNotifier.notify({ type: "request-started", eventId: newEventId() });
   if (created.ok) {
-    request = created.data;
+    // Un trámite recién iniciado empieza siempre por el estudio.
+    started = { id: created.data.requestId, version: created.data.version, awaitsStudy: true };
   } else {
-    if (created.status === 401) await endSession(returnTo);
-    if (created.status !== null && created.status < 500) {
+    if (created.error.kind === "session") await endSession(returnTo);
+    if (created.error.kind !== "unavailable") {
       return { message: "No pudimos crear el trámite. Inténtalo de nuevo." };
     }
 
-    // Respuesta incierta: la API pudo crear el trámite. Se consultan los pendientes antes de otro intento.
-    const pending = await listPendingRequests(token, 1, 100);
+    // Resultado incierto: el trámite pudo crearse. Se consultan los pendientes antes de otro intento.
+    const pending = await requestQuery.listPending({ page: 1, limit: 100 });
     if (!pending.ok) {
-      if (pending.status === 401) await endSession(returnTo);
+      if (pending.error.kind === "session") await endSession(returnTo);
       return {
         blocked: true,
         message: "No pudimos confirmar si el trámite se creó. Revisa tus trámites antes de intentarlo otra vez.",
       };
     }
-    request = pending.data.items.find(
+    const found = pending.data.items.find(
       (item) => !known.has(item.id) && Date.parse(item.createdAt) >= startedAt - 120_000,
     );
-    if (!request) return { message: "El servicio no respondió y el trámite no se creó. Inténtalo de nuevo." };
+    if (!found) return { message: "El servicio no respondió y el trámite no se creó. Inténtalo de nuevo." };
+    started = { id: found.id, version: found.version, awaitsStudy: found.step === "study" };
   }
 
-  if (isUuid(studyId) && request.currentStep === "SELECT_STUDY") {
-    const saved = await updateRequestContext(token, request.id, request.version, { studyId });
+  if (isUuid(studyId) && started.awaitsStudy) {
+    const saved = await requestNotifier.notify({
+      type: "study-chosen",
+      eventId: newEventId(),
+      requestId: started.id,
+      expectedVersion: started.version,
+      studyId,
+    });
     if (!saved.ok) {
-      if (saved.status === 401) await endSession(requestPath(request.id));
-      redirect(requestPath(request.id, "estudio"));
+      if (saved.error.kind === "session") await endSession(requestPath(started.id));
+      redirect(requestPath(started.id, "estudio"));
     }
   }
 
-  redirect(requestPath(request.id));
+  redirect(requestPath(started.id));
 }
 
 /** Reanuda un trámite abierto desde este canal. */
 export async function continueRequest(formData: FormData): Promise<void> {
-  const { id, version, token } = await readTarget(formData);
-  await settle(await resumeRequest(token, id, version), id, requestPath(id));
+  const target = await readTarget(formData);
+  const result = await requestNotifier.notify({ type: "request-resumed", ...target });
+  await settle(result, target.requestId, requestPath(target.requestId));
 }
 
 export async function chooseStudy(formData: FormData): Promise<void> {
-  const { id, version, token } = await readTarget(formData);
+  const target = await readTarget(formData);
   const studyId = field(formData, "studyId");
-  if (!isUuid(studyId)) redirect(requestPath(id, "invalido"));
+  if (!isUuid(studyId)) redirect(requestPath(target.requestId, "invalido"));
 
-  await settle(await updateRequestContext(token, id, version, { studyId }), id, requestPath(id));
+  const result = await requestNotifier.notify({ type: "study-chosen", ...target, studyId });
+  await settle(result, target.requestId, requestPath(target.requestId));
 }
 
 export async function chooseClinic(formData: FormData): Promise<void> {
-  const { id, version, token } = await readTarget(formData);
+  const target = await readTarget(formData);
   const clinicId = field(formData, "clinicId");
-  if (!isUuid(clinicId)) redirect(requestPath(id, "invalido"));
+  if (!isUuid(clinicId)) redirect(requestPath(target.requestId, "invalido"));
 
-  await settle(await updateRequestContext(token, id, version, { clinicId }), id, requestPath(id));
+  const result = await requestNotifier.notify({ type: "clinic-chosen", ...target, clinicId });
+  await settle(result, target.requestId, requestPath(target.requestId));
 }
 
 export async function chooseSlot(formData: FormData): Promise<void> {
-  const { id, version, token } = await readTarget(formData);
+  const target = await readTarget(formData);
   const scheduledAt = field(formData, "scheduledAt");
   // Solo se aceptan horarios de la rejilla que sigan siendo futuros.
-  if (!isOfferedSlot(scheduledAt)) redirect(requestPath(id, "invalido"));
+  if (!isOfferedSlot(scheduledAt)) redirect(requestPath(target.requestId, "invalido"));
 
-  await settle(await updateRequestContext(token, id, version, { scheduledAt }), id, requestPath(id));
+  const result = await requestNotifier.notify({ type: "slot-chosen", ...target, scheduledAt });
+  await settle(result, target.requestId, requestPath(target.requestId));
 }
 
 export async function saveNotes(formData: FormData): Promise<void> {
-  const { id, version, token } = await readTarget(formData);
+  const target = await readTarget(formData);
   const notes = field(formData, "notes").trim();
-  if (notes.length > NOTES_MAX) redirect(requestPath(id, "invalido"));
+  if (notes.length > NOTES_MAX) redirect(requestPath(target.requestId, "invalido"));
 
-  // El contrato pide enviar null para quitar la nota.
-  const result = await updateRequestContext(token, id, version, { notes: notes === "" ? null : notes });
-  await settle(result, id, requestPath(id, "nota"));
+  // Una nota vacía la quita.
+  const result = await requestNotifier.notify({ type: "note-saved", ...target, note: notes === "" ? null : notes });
+  await settle(result, target.requestId, requestPath(target.requestId, "nota"));
 }
 
-/** «Guardar y continuar después»: registra la pausa y conserva el contexto. */
+/** «Guardar y continuar después»: registra la pausa y conserva las selecciones. */
 export async function pauseAndLeave(formData: FormData): Promise<void> {
-  const { id, version, token } = await readTarget(formData);
-  await settle(await pauseRequest(token, id, version), id, `${PENDING_PATH}?aviso=guardado`);
+  const target = await readTarget(formData);
+  const result = await requestNotifier.notify({ type: "request-paused", ...target });
+  await settle(result, target.requestId, `${PENDING_PATH}?aviso=guardado`);
 }
 
 export async function confirmAppointment(formData: FormData): Promise<void> {
-  const { id, version, token } = await readTarget(formData);
-  await settle(await confirmRequest(token, id, version), id, requestPath(id));
+  const target = await readTarget(formData);
+  const result = await requestNotifier.notify({ type: "appointment-confirmed", ...target });
+  await settle(result, target.requestId, requestPath(target.requestId));
 }
 
 export type AssistanceState = {
@@ -180,17 +202,22 @@ export type AssistanceState = {
   expiresAt?: string;
 };
 
-/** Emite un código de asistencia. Solo se ejecuta cuando el paciente pulsa el botón. */
+const ASSISTANCE_FAILED = "No pudimos generar el código. Inténtalo de nuevo en unos minutos.";
+
+/** Pide ayuda a un asesor. Solo se ejecuta cuando el paciente pulsa el botón. */
 export async function requestAssistance(_previous: AssistanceState, formData: FormData): Promise<AssistanceState> {
   const id = field(formData, "id");
   if (!isUuid(id)) redirect(PENDING_PATH);
-  const token = await readSessionToken();
-  if (!token) redirect(signInUrl(requestPath(id)));
+  if (!(await hasSessionCookie())) redirect(signInUrl(requestPath(id)));
 
-  const result = await issueAssistanceCode(token, id);
-  if (result.ok) return { code: result.data.code, expiresAt: formatClock(result.data.expiresAt) };
-  if (result.status === 401) await endSession(requestPath(id));
-  if (result.status === 404) redirect(requestPath(id));
-  if (result.status === 409) redirect(requestPath(id, "cambio"));
-  return { message: "No pudimos generar el código. Inténtalo de nuevo en unos minutos." };
+  const result = await requestNotifier.notify({ type: "help-requested", eventId: newEventId(), requestId: id });
+  if (result.ok) {
+    const { assistance } = result.data;
+    if (!assistance) return { message: ASSISTANCE_FAILED };
+    return { code: assistance.code, expiresAt: formatClock(assistance.expiresAt) };
+  }
+  if (result.error.kind === "session") await endSession(requestPath(id));
+  if (result.error.kind === "not-found") redirect(requestPath(id));
+  if (result.error.kind === "conflict") redirect(requestPath(id, "cambio"));
+  return { message: ASSISTANCE_FAILED };
 }

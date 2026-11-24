@@ -5,28 +5,28 @@ import { EmptyState } from "@/features/catalog/empty-state";
 import { Pagination } from "@/features/catalog/pagination";
 import { PAGE_SIZE, formatPrice, listHref } from "@/features/catalog/params";
 import { SearchForm } from "@/features/catalog/search-form";
-import { listStudies } from "@/lib/api/catalog";
-import type { RequestSnapshot } from "@/lib/api/requests";
+import { generalData } from "@/lib/composition";
+import type { BookingRequest } from "@/lib/domain/model";
 import { chooseClinic, chooseSlot, chooseStudy } from "./actions";
 import { RequestForm } from "./parts";
 import { listDays } from "./schedule";
 import type { Editable } from "./steps";
 
 type PickerProps = {
-  request: RequestSnapshot;
+  request: BookingRequest;
   /** Dato que se está cambiando, si el paciente volvió a un paso anterior. */
   editing?: Editable;
   filters: { q: string; city: string; page: number; day: string };
 };
 
-function hrefFor(request: RequestSnapshot, editing: Editable | undefined, filters: Record<string, string | number | undefined>) {
+function hrefFor(request: BookingRequest, editing: Editable | undefined, filters: Record<string, string | number | undefined>) {
   return listHref(`/tramite/${request.id}`, { cambiar: editing, ...filters });
 }
 
 export async function StudyPicker({ request, editing, filters }: PickerProps) {
   const { q, page } = filters;
   const retry = hrefFor(request, editing, { q, pagina: page });
-  const result = await listStudies({ page, limit: PAGE_SIZE, q: q || undefined });
+  const result = await generalData.listStudies({ page, limit: PAGE_SIZE, search: q || undefined });
   if (!result.ok) return <ServiceUnavailable retryHref={retry} />;
 
   const { items, hasMore } = result.data;
@@ -50,7 +50,7 @@ export async function StudyPicker({ request, editing, filters }: PickerProps) {
               {study.description ? <p className="mt-1 text-sm text-muted">{study.description}</p> : null}
               <p className="mt-2 font-semibold">{formatPrice(study.price)}</p>
               <div className="mt-3">
-                {study.id === request.context.studyId ? (
+                {study.id === request.selections.studyId ? (
                   <p className="text-sm font-semibold text-success">Estudio elegido</p>
                 ) : (
                   <RequestForm action={chooseStudy} request={request} values={{ studyId: study.id }} label="Elegir este estudio" />
@@ -99,7 +99,7 @@ export async function ClinicPicker({ request, editing, filters }: PickerProps) {
                 {clinic.city}, {clinic.state}
               </p>
               <div className="mt-3">
-                {clinic.id === request.context.clinicId ? (
+                {clinic.id === request.selections.clinicId ? (
                   <p className="text-sm font-semibold text-success">Clínica elegida</p>
                 ) : (
                   <RequestForm action={chooseClinic} request={request} values={{ clinicId: clinic.id }} label="Elegir esta clínica" />

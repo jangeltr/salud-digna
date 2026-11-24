@@ -9,8 +9,8 @@ import { NoticeBanner, Progress, RequestForm } from "@/features/requests/parts";
 import { ClinicPicker, SlotPicker, StudyPicker } from "@/features/requests/pickers";
 import { ConfirmedStep, ReviewStep } from "@/features/requests/review";
 import { continuityNotice, isOpen, readEditable, readNotice, type Editable } from "@/features/requests/steps";
-import { getRequest } from "@/lib/api/requests";
-import { expireSession, requireSession } from "@/lib/session/session";
+import { requestQuery } from "@/lib/composition";
+import { expireSession, requireAccount } from "@/lib/session/session";
 
 export const metadata: Metadata = { title: "Trámite" };
 
@@ -22,18 +22,17 @@ const EDIT_WARNINGS: Record<Editable, string> = {
 
 export default async function RequestPage({ params, searchParams }: PageProps<"/tramite/[id]">) {
   const { id } = await params;
-  // Un identificador que no es UUID nunca llega a la API.
+  // Un identificador que no es UUID nunca llega al servicio.
   if (!isUuid(id)) notFound();
 
   const path = `/tramite/${id}`;
-  const session = await requireSession();
-  if (!session) return <ServiceUnavailable retryHref={path} />;
+  if (!(await requireAccount())) return <ServiceUnavailable retryHref={path} />;
 
-  const result = await getRequest(session.token, id);
+  const result = await requestQuery.getRequest(id);
   if (!result.ok) {
-    if (result.status === 401) await expireSession();
-    // 404 cubre por igual el trámite inexistente y el de otro paciente.
-    if (result.status === 404 || result.status === 400) notFound();
+    if (result.error.kind === "session") await expireSession();
+    // «No encontrado» cubre por igual el trámite inexistente y el de otro paciente.
+    if (result.error.kind === "not-found" || result.error.kind === "invalid") notFound();
     return <ServiceUnavailable retryHref={path} />;
   }
 
@@ -41,16 +40,16 @@ export default async function RequestPage({ params, searchParams }: PageProps<"/
   const query = await searchParams;
   const notice = readNotice(query.aviso);
   const open = isOpen(request);
-  // La pantalla la deciden `status` y `currentStep`. `cambiar` solo abre el selector de un dato ya elegido.
+  // La pantalla la deciden el estado y el paso del trámite. `cambiar` solo abre el selector de un dato ya elegido.
   const editing = readEditable(query.cambiar, request);
-  const view = editing ?? (open ? request.currentStep : request.status);
+  const view = editing ?? (open ? request.step : request.status);
   const filters = {
     q: readText(query.q),
     city: readText(query.ciudad),
     page: readPage(query.pagina),
     day: readText(query.dia),
   };
-  const selections = await loadSelections(request.context);
+  const selections = await loadSelections(request.selections);
   const continuity = continuityNotice(request);
   const chosen = [selections.study?.name, selections.clinic?.name].filter(Boolean).join(" · ");
 
@@ -64,7 +63,7 @@ export default async function RequestPage({ params, searchParams }: PageProps<"/
         </p>
       ) : null}
       {open ? <Progress request={request} editing={editing} /> : null}
-      {open && chosen && view !== "REVIEW" ? <p className="mt-3 text-sm text-muted">Llevas elegido: {chosen}</p> : null}
+      {open && chosen && view !== "review" ? <p className="mt-3 text-sm text-muted">Llevas elegido: {chosen}</p> : null}
       {editing ? (
         <p role="alert" className="mt-4 rounded-lg border border-warning/30 bg-warning-soft px-3 py-2 text-sm font-medium text-warning">
           {EDIT_WARNINGS[editing]}{" "}
@@ -74,16 +73,16 @@ export default async function RequestPage({ params, searchParams }: PageProps<"/
         </p>
       ) : null}
 
-      {view === "SELECT_STUDY" || view === "estudio" ? (
+      {view === "study" || view === "estudio" ? (
         <StudyPicker request={request} editing={editing} filters={filters} />
-      ) : view === "SELECT_CLINIC" || view === "clinica" ? (
+      ) : view === "clinic" || view === "clinica" ? (
         <ClinicPicker request={request} editing={editing} filters={filters} />
-      ) : view === "SELECT_DATETIME" || view === "horario" ? (
+      ) : view === "datetime" || view === "horario" ? (
         <SlotPicker request={request} editing={editing} filters={filters} />
-      ) : view === "REVIEW" ? (
+      ) : view === "review" ? (
         <ReviewStep request={request} selections={selections} />
-      ) : view === "COMPLETED" ? (
-        <ConfirmedStep request={request} selections={selections} appointment={await findAppointment(session.token, id)} />
+      ) : view === "completed" ? (
+        <ConfirmedStep request={request} selections={selections} appointment={await findAppointment(id)} />
       ) : (
         <section>
           <h2 className="mt-6 text-xl font-semibold">Trámite cerrado</h2>
