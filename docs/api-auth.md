@@ -8,6 +8,9 @@ Las rutas usan el prefijo `/api/v1/auth`. Los cuerpos de las solicitudes y respu
 | `POST /api/v1/auth/login` | Pública | `200 OK` con el JWT y datos mínimos de la cuenta. |
 | `GET /api/v1/auth/me` | `Authorization: Bearer <accessToken>` | `200 OK` con los datos públicos de la cuenta activa y su perfil, si está vinculado. |
 
+Las [acreditaciones institucionales](api-patient-assertions.md) usan la
+sesión humana y una credencial privada del backend del canal.
+
 ## Registro
 
 `firstName` y `lastName` requieren de 1 a 100 caracteres tras recortar espacios. `email` requiere un correo válido de hasta 254 caracteres y se almacena en minúsculas, sin espacios exteriores. `password` requiere de 12 a 128 caracteres y conserva los espacios ingresados. `phone` admite de 1 a 32 caracteres si se envía. Omítelo cuando no se conozca. Los campos adicionales se rechazan con `400`.

@@ -126,8 +126,8 @@ El [contrato de consultas](docs/journey-queries.md) describe las rutas de
 estado y contexto y los encabezados requeridos por los backends de canal.
 El [contrato de escritura](docs/journey-writes.md) describe la creación
 de trámites, la publicación de avances y el traspaso de la demo.
-La [guía de identidad ficticia](docs/patient-identity.md) explica cómo
-aprovisionar y recuperar trámites de un paciente entre canales.
+La [guía de identidad](docs/patient-identity.md) documenta la recuperación
+automática y el contrato de firma pendiente en la API central.
 El [contrato de continuidad](docs/continuity-codes.md) documenta la emisión
 y el canje entre Web, WhatsApp y Call Center. Requiere la migración
 [`20261124082308_add_continuity_codes`](prisma/migrations/20261124082308_add_continuity_codes/migration.sql)

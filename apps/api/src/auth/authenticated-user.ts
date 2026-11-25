@@ -4,6 +4,7 @@ import type { AccountDto } from './auth.dto';
 export interface AuthRequest {
   headers: { authorization?: string };
   user?: AccountDto;
+  sessionExpiresAt?: number;
 }
 
 export const CurrentUser = createParamDecorator((_data: unknown, context: ExecutionContext) => {
