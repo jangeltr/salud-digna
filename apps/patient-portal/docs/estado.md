@@ -1,13 +1,13 @@
 # Estado del portal del paciente
 
-**Fecha.** 2026-11-24. **Rama.** `dev/patient-portal`, con las fases 7, 6a y 6b en commits locales sin subir. Este documento sirve para retomar el trabajo en otra sesión. Las decisiones y sus motivos están en [decisions.md](decisions.md).
+**Fecha.** 2026-11-24. **Rama.** `dev/patient-portal`, publicada en `origin` hasta la integración del emisor, `a8ddcc4`. Este documento sirve para retomar el trabajo en otra sesión. Las decisiones y sus motivos están en [decisions.md](decisions.md).
 
 ## Resumen
 
 1. El portal es el sitio web del paciente, con Next.js: acceso, catálogo de estudios y clínicas, y trámite de agendamiento.
 2. Registra los trámites en la API general o en el orquestador, según `REQUESTS_BACKEND`, y en el orquestador emite y canjea códigos de continuidad.
-3. Producción corre la versión fusionada con el PR #8. La fase 5, de rendimiento, está en la rama sin publicar. Las fases 7, continuidad identificada, 6a, pruebas en el repositorio, y 6b, documentación de entrega, solo están en local.
-4. La continuidad identificada ya usa el emisor de acreditaciones de la API central y `access-grants` del orquestador, publicados en `main` en `17c9b27`. Falta la prueba del portal contra los servicios reales.
+3. Producción corre la versión fusionada con el PR #8. La fase 5, de rendimiento, está en la rama sin publicar. Las fases 7, 6a, 6b y la integración del emisor están en `origin/dev/patient-portal`, sin fusionar en `main`.
+4. La continuidad identificada ya usa el emisor de acreditaciones de la API central y `access-grants` del orquestador, publicados en `main` en `17c9b27`. La prueba real del portal pasó el 2026-11-24. Falta la autorización del paciente para Call Center, bloqueada por el contrato.
 5. **Bloquea la demo:** el portal publicado responde «No pudimos crear el trámite. Inténtalo de nuevo.» al crear un trámite.
 6. El diagnóstico apunta a la clave del canal o a la URL del orquestador en el servidor. Faltan las comprobaciones del responsable del servidor.
 
@@ -56,7 +56,9 @@ El portal llama a los dos desde su servidor. La clave del canal Web y los permis
 | 5 | Rendimiento: catálogo servido desde caché, caché de sesión, índice del catálogo y estado detrás de interfaces | `17cf8ed` |
 | 7 | Continuidad identificada tras `PATIENT_IDENTITY_MODE`, emisor de acreditaciones pendiente, registro mínimo de errores, textos sin WhatsApp y selección sin cambios sin evento. Integra `main` (`f9ffcf3`) | Commit local, sin subir |
 | 6a | Suites y servicios simulados dentro del repositorio, en `tests/`, con lanzador propio, credenciales sintéticas por ejecución y scripts `pnpm test` | `8ec9c78` |
-| 6b | Documentación de entrega: README completo del portal, [guion de la demostración](demo.md), [sección para el README de la raíz](readme-raiz-portal.md) y `CATALOG_CACHE_SECONDS` en `.env.example` | Commit local, sin subir |
+| 6b | Documentación de entrega: README completo del portal, [guion de la demostración](demo.md), [sección para el README de la raíz](readme-raiz-portal.md) y `CATALOG_CACHE_SECONDS` en `.env.example` | `ff4b912` |
+| 8 | Emisor de acreditaciones de la API central conectado, `access-grants` según el contrato publicado y prueba real contra los servicios publicados | `a8ddcc4`, publicado |
+| 9 | Guion de demo sin código y medición del catálogo por petición. La autorización para Call Center queda bloqueada, con sus preguntas en [decisions.md](decisions.md) | Este commit |
 
 **Diagnóstico posterior.** El error de creación en producción, sin cambios de código. El resultado está en «Estado del despliegue».
 
@@ -68,7 +70,7 @@ El portal llama a los dos desde su servidor. La clave del canal Web y los permis
 
 **Versión en `main`.** El portal tal como quedó en `7407038`, fusionado con el PR #8. Ningún commit posterior de `main` toca `apps/patient-portal`. Que el servidor corra exactamente esa revisión, y con qué variables, está por confirmar con su responsable.
 
-**En la rama, sin publicar.** `17cf8ed`, la fase 5, ya subida. En local, sin subir: el merge de `main` (`f9ffcf3`) y las fases 7, 6a y 6b.
+**En la rama.** `origin/dev/patient-portal` incluye las fases 5, 7, 6a, 6b y 8, y los merges de `main` hasta `17c9b27`. Nada de eso está todavía en `main`.
 
 **Error «No pudimos crear el trámite. Inténtalo de nuevo.»**
 
@@ -97,7 +99,7 @@ En pantalla se distingue el modo:
 En este orden:
 
 1. **Resolver el error de creación en producción**, con las comprobaciones de arriba.
-2. **Probar la continuidad identificada contra los servicios reales**, con `PATIENT_IDENTITY_MODE=assertion` y `PATIENT_ASSERTION_CHANNEL_KEY` en `.env.local`. El emisor ya está conectado: ver «Emisor conectado» en [decisions.md](decisions.md).
+2. **Autorización del paciente para Call Center**, cuando el equipo de backend responda las preguntas de «Autorización para Call Center» en [decisions.md](decisions.md).
 3. **Abrir el PR contra `main`**, cuando se autorice subir. Incluiría las fases 5 y 7.
 4. **Prueba conjunta del código de continuidad con la app móvil.**
 5. **Prueba del portal publicado desde el navegador de un teléfono.**
@@ -135,7 +137,7 @@ En este orden:
 | Call Center | Prueba conjunta del código de continuidad | Por confirmar |
 | Backend | Contrato del emisor `POST /auth/patient-assertions` | Resuelto en `main`, `17c9b27` |
 | Backend | Publicar en el repositorio `POST /journeys/:id/access-grants` y el filtro `active` del listado | Resuelto en `main`, `17c9b27` |
-| Backend | Cómo identificar al asesor y entregar el consentimiento del paciente entre backends | Por confirmar |
+| Backend | Autorización para Call Center: UUID del asesor, código del canal, entrega del consentimiento entre backends, momento y lo que ve el paciente. Las preguntas están en [decisions.md](decisions.md) | Por confirmar |
 | Backend | Que el orquestador acepte la acreditación JWS Ed25519 del emisor | Resuelto en `main`, `17c9b27` |
 
 ## Riesgos conocidos
@@ -146,7 +148,7 @@ En este orden:
 | Estado en memoria y una sola instancia | Permisos, límites, claves pendientes y caché de sesión viven en el proceso, y el registro del canal en un archivo local. Al reiniciar se pierden los permisos, y dos instancias no comparten nada. |
 | Permiso de cinco minutos | Pasado ese tiempo, el portal no puede leer ni cambiar el trámite hasta recibir un código de continuidad emitido en otro canal. |
 | Trámites que no llegan a `COMPLETED` | El contrato del orquestador no admite fecha ni cierre con cita. En el portal, el trámite termina en «Pendiente de confirmación». |
-| Continuidad identificada sin probar contra servicios reales | Solo se probó contra servicios simulados con el mismo contrato. Necesita que los servicios desplegados incluyan `17c9b27`. |
+| Lista vacía ante una acreditación rechazada | El orquestador responde igual a una identidad sin trámites que a una acreditación inválida. El portal muestra la lista vacía, y el error aparece al intentar crear. |
 
 ## Cómo retomar
 

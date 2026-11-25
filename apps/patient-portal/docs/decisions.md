@@ -415,7 +415,35 @@ Revisado el 2026-11-24 en el código de `apps/orchestrator` que hay en `main`, e
 | Formato | JWS `EdDSA`, `typ: sd-patient+jwt`, con `channel`, `customerId`, `sub`, `jti`, `iat` y `exp`, cinco minutos como máximo. | Opaco salvo `exp`. |
 | `GET /journeys?active=true` | Ya filtra a `DRAFT`, `IN_PROGRESS` y `PENDING_CONFIRMATION`. Una identidad sin vínculo recibe `404`. | Lista vacía ante ese `404`. Conserva su propio filtro. |
 | `access-grants` | Existe: `JOURNEYS_READ`, sin cuerpo, `201` con `journeyId`, `grant` y `grantExpiresAt`. Añade `PUBLISH_EVENT` si la clave lo tiene. Vence con la acreditación. | Lee esos tres campos y comprueba `journeyId`. |
-| Consentimiento para el asesor | `POST /api/v1/auth/patient-assertion-consents`, dirigido al UUID del asesor y al canal de Call Center. | **Fuera de esta fase.** La transferencia entre backends no está implementada en los canales, y el contrato deja abierto cómo se identifica al asesor. |
+| Consentimiento para el asesor | `POST /api/v1/auth/patient-assertion-consents`, dirigido al UUID del asesor y al canal de Call Center. | **Bloqueado:** ver «Autorización para Call Center», a continuación. |
+
+**Prueba real.** El 2026-11-24, con `a8ddcc4` contra la API central y el orquestador publicados, se probó todo esto: creación identificada con estudio y clínica, listado por identidad, renovación del permiso tras el vencimiento de la acreditación, historial y cancelación. No apareció ninguna diferencia con el contrato.
+
+#### Autorización para Call Center
+
+**Fecha.** 2026-11-24. **Estado: bloqueada por el contrato.** No está implementada.
+
+**Lo que dice el contrato.** [`docs/api-patient-assertions.md`](../../../docs/api-patient-assertions.md) y `apps/api/src/auth/`:
+
+- **Petición.** `POST /api/v1/auth/patient-assertion-consents` con la sesión `PATIENT`, la credencial del canal Web en `X-Patient-Assertion-Channel-Key`, sin `Origin`, y el cuerpo `{"advisorId":"<UUID de cuenta del asesor>","channel":"<código del canal de Call Center>"}`.
+  - Fuentes: líneas 58 y 79-84 del contrato, `patient-assertions.controller.ts:26-36` y `:47-57`.
+- **Qué autoriza.** A ese asesor concreto, y solo en ese canal con rol `ADVISOR`, a obtener acreditaciones del paciente para listar sus trámites activos y pedir permisos.
+  - Fuentes: `patient-assertions.service.ts:120-133` y `:99-107`.
+- **Vigencia.** Como mucho cinco minutos, acotada por la sesión del paciente. Es reutilizable mientras dura y no se puede revocar antes en el MVP, así que no cabe «Retirar autorización».
+  - Fuentes: `patient-assertions.service.ts:15`, `:54-57` y `:130`, y líneas 91-94 del contrato.
+- **Respuesta.** `200` con `{"consent":"<JWS>"}`. Es una credencial: el contrato pide guardarla en el servidor y no devolverla al navegador.
+  - Fuentes: línea 58 y líneas 52-53 del contrato.
+- **Cómo la usa el Call Center.** Presenta el consentimiento a `POST /api/v1/auth/patient-assertions` con su JWT de asesor y su credencial de canal. Recibe una acreditación con la que lista los trámites y pide permisos.
+  - Fuentes: líneas 59 y 85-89 del contrato, `patient-assertions.service.ts:99-117`.
+  - `apps/call-center/src` no tiene todavía ningún código que lo haga.
+
+**Lo que falta para implementarla.** El contrato lo deja abierto: «Los backends deben acordar cómo identificar al asesor y entregar el consentimiento de forma privada» y «La transferencia entre backends queda pendiente de implementación» (líneas 81-84 y 95-97).
+
+1. **UUID de la cuenta del asesor.** ¿De dónde lo obtiene el servidor del portal? No hay ninguna operación que lo devuelva al canal del paciente, y el contrato no dice que el paciente lo escriba ni lo elija.
+2. **Código del canal de Call Center.** ¿Cuál es en el despliegue? El contrato usa `demo-callcenter` como ejemplo de `PATIENT_ASSERTION_CHANNELS`.
+3. **Entrega del consentimiento.** ¿Cómo llega el JWS de consentimiento al backend del Call Center: qué operación, qué servicio y qué autenticación? El portal no puede mostrarlo ni enviarlo por el navegador.
+4. **Momento de la autorización.** ¿Durante una llamada en curso, con un asesor ya asignado, o antes de que exista? Con cinco minutos de vigencia, eso decide el diseño de la pantalla.
+5. **Lo que ve el paciente.** ¿Puede saber qué asesor autorizó, su nombre por ejemplo, para cumplir con «un asesor identificado» (línea 80)?
 
 ### Publicación del portal
 
@@ -504,6 +532,17 @@ base-uri 'self'; form-action 'self'; frame-ancestors 'none'
 Lo comprobado y correcto: cookie `__Host-` con `Secure`, `HttpOnly` y `SameSite=Lax`; `403` ante un origen ajeno o nulo; todas las rutas protegidas redirigen a `/acceso` sin sesión y una cookie inventada se borra; las acciones comprueban la sesión; el trámite ajeno responde igual que el inexistente; los mensajes de los servicios nunca llegan a la interfaz; las páginas no se almacenan en caché. `pnpm audit` no encontró avisos en las dependencias del portal.
 
 ### Rendimiento y caché
+
+**Catálogo por petición, medido el 2026-11-24.** Contra los simuladores, con el proceso recién arrancado, cada petición pide el catálogo una vez como mucho:
+
+| Petición | Lecturas del catálogo |
+| --- | --- |
+| `/tramite/nuevo?estudio` | 1, el índice de estudios |
+| Paso de clínica | 1, la página de clínicas |
+| Elegir clínica | 1, el índice de clínicas para validar |
+| La segunda vuelta completa | Ninguna |
+
+Las dos lecturas que se vieron en un paso de la prueba real eran revalidaciones en segundo plano de la caché de datos de Next, vencida desde la compilación: la de la página anterior terminó durante la siguiente. No hubo nada que cambiar.
 
 **Fecha.** 2026-11-24. Objetivo de referencia: 5 millones de consultas diarias en el portal.
 
