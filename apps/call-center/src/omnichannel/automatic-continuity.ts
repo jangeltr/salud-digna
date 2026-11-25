@@ -1,5 +1,7 @@
-import { open } from "node:fs/promises";
-import { isAbsolute, join } from "node:path";
+import { constants } from "node:fs";
+import { lstat, open, realpath, type FileHandle } from "node:fs/promises";
+import { isAbsolute, posix } from "node:path";
+import process from "node:process";
 import { isId, readRedemption, record } from "./contract";
 
 export const automaticContinuityActions = ["verify-patient", "active-journeys", "authorize-journey"];
@@ -20,22 +22,71 @@ export function institutionalConfiguration() {
     ? { directory, channelKey } : undefined;
 }
 
+async function outsideApplication(directory: string) {
+  let parent = await realpath(process.cwd());
+  const contains = () => directory === parent || directory.startsWith(parent + "/");
+  if (contains()) return false;
+  while (parent !== "/") {
+    const git = await lstat(posix.join(parent, ".git")).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return null;
+      throw error;
+    });
+    if (git && contains()) return false;
+    parent = posix.dirname(parent);
+  }
+  return true;
+}
+
 export async function readAdvisorConsent(directory: string, advisorId: string) {
   if (!isId(advisorId)) throw new Error("Invalid advisor");
-  const file = await open(join(directory, advisorId.toLowerCase() + ".jws"), "r").catch((error: NodeJS.ErrnoException) => {
-    if (error.code === "ENOENT") return null;
-    throw error;
-  });
-  if (!file) return null;
+  const { O_RDONLY, O_NOFOLLOW, O_NONBLOCK, O_DIRECTORY } = constants;
+  if (process.platform !== "linux" || !O_NOFOLLOW || !O_NONBLOCK || !O_DIRECTORY ||
+      !posix.isAbsolute(directory) || directory.includes("\0")) return null;
+  const group = process.getgid?.();
+  const user = process.getuid?.();
+  if (!group || !user || process.getegid?.() !== group || process.geteuid?.() !== user) return null;
+
+  const path = posix.resolve(directory);
+  if (path === "/") return null;
+  const handles: FileHandle[] = [];
+  const flags = O_RDONLY | O_NOFOLLOW | O_NONBLOCK;
+  async function pin(name: string, mode: number) {
+    const handle = await open(name, mode);
+    handles.push(handle);
+    return handle;
+  }
+
   try {
-    if (!(await file.stat()).isFile()) return null;
+    if (!await outsideApplication(path)) return null;
+    let parent = await pin("/", flags | O_DIRECTORY);
+    let metadata = await parent.stat();
+    if (!metadata.isDirectory() || metadata.uid !== 0 || metadata.mode & 0o022) return null;
+    // Anchor each lookup to the checked directory descriptor, without traversing symlinks.
+    for (const component of path.slice(1).split("/")) {
+      parent = await pin(`/proc/self/fd/${parent.fd}/${component}`, flags | O_DIRECTORY);
+      metadata = await parent.stat();
+      if (!metadata.isDirectory() || metadata.uid !== 0 || metadata.mode & 0o022) return null;
+    }
+    if (metadata.gid !== group || (metadata.mode & 0o7777) !== 0o750) return null;
+
+    const file = await pin(`/proc/self/fd/${parent.fd}/${advisorId.toLowerCase()}.jws`, flags);
     const buffer = Buffer.alloc(2052);
-    const { bytesRead } = await file.read(buffer);
-    if (bytesRead === buffer.length) return null;
-    const consent = buffer.toString("utf8", 0, bytesRead).trim();
+    const stat = await file.stat();
+    if (!stat.isFile() || stat.uid !== 0 || stat.gid !== group ||
+        (stat.mode & 0o7777) !== 0o640 || stat.size >= buffer.length) return null;
+    let length = 0;
+    while (length < buffer.length) {
+      const { bytesRead } = await file.read(buffer, length, buffer.length - length, length);
+      if (!bytesRead) break;
+      length += bytesRead;
+    }
+    if (length === buffer.length) return null;
+    const consent = buffer.toString("utf8", 0, length).trim();
     return consent.length <= 2048 && compact.test(consent) ? consent : null;
+  } catch {
+    return null;
   } finally {
-    await file.close();
+    for (const handle of handles.reverse()) await handle.close().catch(() => undefined);
   }
 }
 
