@@ -14,7 +14,7 @@ export class PrismaService implements OnApplicationShutdown {
     }
 
     const adapter = new PrismaPg(
-      { connectionString: url.href, connectionTimeoutMillis: 3000 },
+      { connectionString: url.href, connectionTimeoutMillis: 3000, options: '-c timezone=UTC' },
       { schema: url.searchParams.get('schema') ?? 'public' },
     );
     this.client = new PrismaClient({ adapter });
