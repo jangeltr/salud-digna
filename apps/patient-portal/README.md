@@ -344,5 +344,4 @@ Viven en memoria y se vacían al reiniciar.
 - [Estado del portal, para retomar el trabajo](docs/estado.md)
 - [Decisiones y sus motivos](docs/decisions.md)
 - [Contrato de continuidad identificada](docs/contratos/continuidad-identificada.md)
-- [Sección del portal para el README de la raíz](docs/readme-raiz-portal.md)
 - [Instrucciones para agentes del portal](CLAUDE.md)

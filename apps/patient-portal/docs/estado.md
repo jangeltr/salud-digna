@@ -62,13 +62,15 @@ El código de continuidad queda como contingencia. Los pasos del portal están e
 | 5 | Rendimiento: catálogo servido desde caché, caché de sesión, índice del catálogo y estado detrás de interfaces | `17cf8ed` |
 | 7 | Continuidad identificada tras `PATIENT_IDENTITY_MODE`, emisor de acreditaciones pendiente, registro mínimo de errores, textos sin WhatsApp y selección sin cambios sin evento. Integra `main` (`f9ffcf3`) | `f69d8d4` |
 | 6a | Suites y servicios simulados dentro del repositorio, en `tests/`, con lanzador propio, credenciales sintéticas por ejecución y scripts `pnpm test` | `8ec9c78` |
-| 6b | Documentación de entrega: README completo del portal, [guion de la demostración](demo.md), [sección para el README de la raíz](readme-raiz-portal.md) y `CATALOG_CACHE_SECONDS` en `.env.example` | `ff4b912` |
+| 6b | Documentación de entrega: README completo del portal, [guion de la demostración](demo.md), sección para el README de la raíz (retirada en la fase 13) y `CATALOG_CACHE_SECONDS` en `.env.example` | `ff4b912` |
 | 8 | Emisor de acreditaciones de la API central conectado, `access-grants` según el contrato publicado y prueba real contra los servicios publicados | `a8ddcc4`, publicado |
 | 9 | Guion de demo sin código y medición del catálogo por petición | `6e45140` |
 | 10 | Documentación: autorización del paciente para Call Center pospuesta después del MVP, orden de integración y lo que falta para publicar | `82d0235` |
 | — | Merge de `main` hasta `bff1f58` | `224aa20` |
 | 11 | Documentación de entrega: README con instalación, credenciales y pasos de la demostración; READMEs de subcarpetas al día | `d188fda` |
-| 12 | Documentación: una sola forma de arrancar, contra los servicios publicados; credenciales administradas en el servidor; contradicciones entre documentos | Este commit |
+| 12 | Documentación: una sola forma de arrancar, contra los servicios publicados; credenciales administradas en el servidor; contradicciones entre documentos | `fd49230` |
+| — | Merge de `main` hasta `f3d7899` | `8a64feb` |
+| 13 | Documentación: se retira la sección para el README de la raíz, que ya existe y es de otro integrante | Este commit |
 
 **Diagnóstico posterior.** El error de creación en producción, sin cambios de código. El resultado está en «Estado del despliegue».
 
@@ -80,7 +82,7 @@ El código de continuidad queda como contingencia. Los pasos del portal están e
 
 **Versión en `main`.** El portal hasta la fase 8, `a8ddcc4`, fusionado en `7df5c1b`. Qué revisión corre el servidor publicado, y con qué variables, está por confirmar con su responsable.
 
-**En la rama.** `origin/dev/patient-portal` añade a `main` solo documentación: las fases 9 a 12. Integra `main` hasta `bff1f58`.
+**En la rama.** `origin/dev/patient-portal` añade a `main` solo documentación: las fases 9 a 13. Integra `main` hasta `f3d7899`.
 
 **Error «No pudimos crear el trámite. Inténtalo de nuevo.»**
 
@@ -134,7 +136,7 @@ En este orden:
 4. **Fase 6:**
    - suites y servicios simulados dentro del repositorio: hecho en la fase 6a, en [`tests/`](../tests/);
    - README completo del portal y `CATALOG_CACHE_SECONDS` en `.env.example`: hecho en la fase 6b;
-   - texto de la sección del portal para el README de la raíz: preparado en [readme-raiz-portal.md](readme-raiz-portal.md). Falta pegarlo en la raíz, que está fuera del portal y la decide su responsable.
+   - sección del portal para el README de la raíz: retirada. El README de la raíz ya existe y es de otro integrante.
 
 **Rendimiento: en pausa hasta terminar el MVP.** Dato de Salud Digna: unos 5 millones de consultas diarias en el portal web. Las mediciones y la estimación de capacidad están en [decisions.md](decisions.md), «Rendimiento y caché».
 
@@ -217,7 +219,6 @@ pnpm --filter @salud-digna/patient-portal test:legacy         # o un grupo: lega
 
 - [Decisiones del portal](decisions.md)
 - [Notas para presentar la demostración](demo.md). Los pasos están en el [README](../README.md), «Demostración».
-- [Sección del portal para el README de la raíz](readme-raiz-portal.md)
 - [Contrato de continuidad identificada](contratos/continuidad-identificada.md)
 - [README del portal](../README.md)
 - [Instrucciones para agentes del portal](../CLAUDE.md)
