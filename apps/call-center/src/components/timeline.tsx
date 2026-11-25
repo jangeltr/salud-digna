@@ -11,7 +11,7 @@ const channelIcons = {
 // Modelo de presentación. La integración adaptará el contrato real a esta vista.
 export type TimelineEvent = {
   id: string;
-  channel: keyof typeof channelIcons;
+  channel: string;
   timestamp: string;
   timeLabel: string;
   title: string;
@@ -19,7 +19,7 @@ export type TimelineEvent = {
 } & ({ kind: "event" | "call" | "note" } | { kind: "message"; direction: "incoming" | "outgoing" });
 
 function TimelineItem({ event }: { event: TimelineEvent }) {
-  const Icon = event.kind === "note" ? NotebookPen : event.kind === "call" ? Phone : channelIcons[event.channel];
+  const Icon = event.kind === "note" ? NotebookPen : event.kind === "call" ? Phone : (channelIcons[event.channel as keyof typeof channelIcons] ?? Clock3);
   const labels = { event: "Evento", call: "Llamada", note: "Nota interna", message: "Mensaje" };
   const label = event.kind === "message"
     ? (event.direction === "incoming" ? "Mensaje entrante" : "Mensaje saliente")
