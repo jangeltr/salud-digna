@@ -415,13 +415,17 @@ Revisado el 2026-11-24 en el código de `apps/orchestrator` que hay en `main`, e
 | Formato | JWS `EdDSA`, `typ: sd-patient+jwt`, con `channel`, `customerId`, `sub`, `jti`, `iat` y `exp`, cinco minutos como máximo. | Opaco salvo `exp`. |
 | `GET /journeys?active=true` | Ya filtra a `DRAFT`, `IN_PROGRESS` y `PENDING_CONFIRMATION`. Una identidad sin vínculo recibe `404`. | Lista vacía ante ese `404`. Conserva su propio filtro. |
 | `access-grants` | Existe: `JOURNEYS_READ`, sin cuerpo, `201` con `journeyId`, `grant` y `grantExpiresAt`. Añade `PUBLISH_EVENT` si la clave lo tiene. Vence con la acreditación. | Lee esos tres campos y comprueba `journeyId`. |
-| Consentimiento para el asesor | `POST /api/v1/auth/patient-assertion-consents`, dirigido al UUID del asesor y al canal de Call Center. | **Bloqueado:** ver «Autorización para Call Center», a continuación. |
+| Consentimiento para el asesor | `POST /api/v1/auth/patient-assertion-consents`, dirigido al UUID del asesor y al canal de Call Center. | **Pospuesto después del MVP:** ver «Autorización para Call Center», a continuación. |
 
 **Prueba real.** El 2026-11-24, con `a8ddcc4` contra la API central y el orquestador publicados, se probó todo esto: creación identificada con estudio y clínica, listado por identidad, renovación del permiso tras el vencimiento de la acreditación, historial y cancelación. No apareció ninguna diferencia con el contrato.
 
 #### Autorización para Call Center
 
-**Fecha.** 2026-11-24. **Estado: bloqueada por el contrato.** No está implementada.
+**Fecha.** 2026-11-24, revisada el 2026-11-25. **Estado: pospuesta después del MVP.** No está implementada.
+
+**En el MVP.** El Call Center recupera los trámites del paciente a través del orquestador, sin intervención del portal y sin código. El portal no emite ninguna autorización para el asesor.
+
+Lo que sigue se conserva como referencia para una fase posterior.
 
 **Lo que dice el contrato.** [`docs/api-patient-assertions.md`](../../../docs/api-patient-assertions.md) y `apps/api/src/auth/`:
 
@@ -437,7 +441,7 @@ Revisado el 2026-11-24 en el código de `apps/orchestrator` que hay en `main`, e
   - Fuentes: líneas 59 y 85-89 del contrato, `patient-assertions.service.ts:99-117`.
   - `apps/call-center/src` no tiene todavía ningún código que lo haga.
 
-**Lo que falta para implementarla.** El contrato lo deja abierto: «Los backends deben acordar cómo identificar al asesor y entregar el consentimiento de forma privada» y «La transferencia entre backends queda pendiente de implementación» (líneas 81-84 y 95-97).
+**Preguntas para una fase posterior.** No bloquean el MVP. El contrato lo deja abierto: «Los backends deben acordar cómo identificar al asesor y entregar el consentimiento de forma privada» y «La transferencia entre backends queda pendiente de implementación» (líneas 81-84 y 95-97).
 
 1. **UUID de la cuenta del asesor.** ¿De dónde lo obtiene el servidor del portal? No hay ninguna operación que lo devuelva al canal del paciente, y el contrato no dice que el paciente lo escriba ni lo elija.
 2. **Código del canal de Call Center.** ¿Cuál es en el despliegue? El contrato usa `demo-callcenter` como ejemplo de `PATIENT_ASSERTION_CHANNELS`.

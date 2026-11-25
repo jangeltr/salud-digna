@@ -9,7 +9,9 @@ Un recorrido principal, sin código, y una contingencia con código de continuid
 - renovación automática del permiso a los cinco minutos;
 - historial y cancelación.
 
-La recuperación desde Call Center sin código la validó el equipo de backend con las APIs reales. El portal todavía no emite la autorización del paciente para el asesor: ver «Autorización para Call Center» en [decisions.md](decisions.md).
+La recuperación desde Call Center sin código la validó el equipo de backend con las APIs reales. El Call Center recupera el trámite a través del orquestador, sin intervención del portal.
+
+La autorización del paciente para Call Center, `patient-assertion-consents`, queda pospuesta después del MVP y no forma parte de esta demostración. Sus preguntas, para una fase posterior, están en «Autorización para Call Center» en [decisions.md](decisions.md).
 
 ## Antes de empezar
 
@@ -46,9 +48,8 @@ La recuperación desde Call Center sin código la validó el equipo de backend c
 
 ### En el Call Center
 
-6. **Recuperar el trámite del paciente, sin código.** El Call Center presenta la autorización del paciente al emisor, lista sus trámites activos y pide un permiso para el elegido ([contrato](../../../docs/api-patient-assertions.md), «Web → Call Center»). El equipo de backend lo validó con las APIs reales.
-   - **Pendiente:** cómo llega esa autorización al Call Center. El portal no la emite todavía.
-   - Si no está disponible, usa la contingencia de abajo para este paso.
+6. **Recuperar el trámite del paciente, sin código.** El Call Center recupera los trámites activos del paciente a través del orquestador y abre el elegido. El portal no interviene y no hace falta código. El equipo de backend lo validó con las APIs reales.
+   - Si el trámite no aparece, usa la contingencia de abajo para este paso.
 7. **Continuar.** El asesor revisa estudio y clínica y deja el trámite pendiente de confirmación.
 
 ### De vuelta en el portal

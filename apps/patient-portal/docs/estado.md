@@ -1,13 +1,13 @@
 # Estado del portal del paciente
 
-**Fecha.** 2026-11-24. **Rama.** `dev/patient-portal`, publicada en `origin` hasta la integración del emisor, `a8ddcc4`. Este documento sirve para retomar el trabajo en otra sesión. Las decisiones y sus motivos están en [decisions.md](decisions.md).
+**Fecha.** 2026-11-25. **Rama.** `dev/patient-portal`, publicada en `origin` y sin fusionar en `main`. Este documento sirve para retomar el trabajo en otra sesión. Las decisiones y sus motivos están en [decisions.md](decisions.md).
 
 ## Resumen
 
 1. El portal es el sitio web del paciente, con Next.js: acceso, catálogo de estudios y clínicas, y trámite de agendamiento.
 2. Registra los trámites en la API general o en el orquestador, según `REQUESTS_BACKEND`, y en el orquestador emite y canjea códigos de continuidad.
 3. Producción corre la versión fusionada con el PR #8. La fase 5, de rendimiento, está en la rama sin publicar. Las fases 7, 6a, 6b y la integración del emisor están en `origin/dev/patient-portal`, sin fusionar en `main`.
-4. La continuidad identificada ya usa el emisor de acreditaciones de la API central y `access-grants` del orquestador, publicados en `main` en `17c9b27`. La prueba real del portal pasó el 2026-11-24. Falta la autorización del paciente para Call Center, bloqueada por el contrato.
+4. La continuidad identificada ya usa el emisor de acreditaciones de la API central y `access-grants` del orquestador, publicados en `main` en `17c9b27`. La prueba real del portal pasó el 2026-11-24. El Call Center recupera los trámites del paciente a través del orquestador, sin intervención del portal y sin código. La autorización del paciente para Call Center, `patient-assertion-consents`, queda pospuesta después del MVP.
 5. **Bloquea la demo:** el portal publicado responde «No pudimos crear el trámite. Inténtalo de nuevo.» al crear un trámite.
 6. El diagnóstico apunta a la clave del canal o a la URL del orquestador en el servidor. Faltan las comprobaciones del responsable del servidor.
 
@@ -24,6 +24,14 @@
 
 WhatsApp quedó fuera del MVP el 2026-11-24. Desde la fase 7 la interfaz del portal ya no lo ofrece como canal.
 
+**Orden de integración del equipo.**
+
+1. Portal web y Call Center.
+2. Administración.
+3. App móvil, si da tiempo.
+
+WhatsApp queda fuera del MVP.
+
 **Servicios.** Cada uno con su propia base de datos.
 
 | Servicio | Qué atiende | Contrato |
@@ -35,11 +43,11 @@ El portal llama a los dos desde su servidor. La clave del canal Web y los permis
 
 **Recorrido de la demo.**
 
-1. Web inicia el trámite y elige el estudio.
-2. Web genera un código de continuidad.
-3. La app móvil canjea el código y continúa el mismo trámite.
-4. El Call Center lo concluye.
-5. Administración muestra el recorrido completo.
+1. Web inicia el trámite y elige el estudio y la clínica.
+2. El Call Center recupera el trámite a través del orquestador, sin código, y lo deja pendiente de confirmación.
+3. Administración muestra el recorrido completo.
+
+El código de continuidad queda como contingencia. El guion está en [demo.md](demo.md).
 
 ## Lo terminado
 
@@ -54,15 +62,16 @@ El portal llama a los dos desde su servidor. La clave del canal Web y los permis
 | 3 | Preparación para publicar: registro controlado, límites propios, cabeceras de seguridad y páginas de error | `7407038` |
 | 4 | PR #8 contra `main`, fusionado el 2026-11-24 | `1b32a24` (merge en `main`) |
 | 5 | Rendimiento: catálogo servido desde caché, caché de sesión, índice del catálogo y estado detrás de interfaces | `17cf8ed` |
-| 7 | Continuidad identificada tras `PATIENT_IDENTITY_MODE`, emisor de acreditaciones pendiente, registro mínimo de errores, textos sin WhatsApp y selección sin cambios sin evento. Integra `main` (`f9ffcf3`) | Commit local, sin subir |
+| 7 | Continuidad identificada tras `PATIENT_IDENTITY_MODE`, emisor de acreditaciones pendiente, registro mínimo de errores, textos sin WhatsApp y selección sin cambios sin evento. Integra `main` (`f9ffcf3`) | `f69d8d4` |
 | 6a | Suites y servicios simulados dentro del repositorio, en `tests/`, con lanzador propio, credenciales sintéticas por ejecución y scripts `pnpm test` | `8ec9c78` |
 | 6b | Documentación de entrega: README completo del portal, [guion de la demostración](demo.md), [sección para el README de la raíz](readme-raiz-portal.md) y `CATALOG_CACHE_SECONDS` en `.env.example` | `ff4b912` |
 | 8 | Emisor de acreditaciones de la API central conectado, `access-grants` según el contrato publicado y prueba real contra los servicios publicados | `a8ddcc4`, publicado |
-| 9 | Guion de demo sin código y medición del catálogo por petición. La autorización para Call Center queda bloqueada, con sus preguntas en [decisions.md](decisions.md) | Este commit |
+| 9 | Guion de demo sin código y medición del catálogo por petición | `6e45140` |
+| 10 | Documentación: el Call Center recupera el trámite sin el portal, la autorización del paciente queda pospuesta después del MVP, orden de integración y lo que falta para publicar | Este commit |
 
 **Diagnóstico posterior.** El error de creación en producción, sin cambios de código. El resultado está en «Estado del despliegue».
 
-**Prompt anterior a la fase 7.** Pedía registro mínimo, cambiar los textos de WhatsApp por app móvil y preparar la descripción del PR. Los dos primeros quedaron hechos en la fase 7. La descripción del PR sigue pendiente, y el trabajo es solo local: ni push ni PR hasta nueva orden.
+**Prompt anterior a la fase 7.** Pedía registro mínimo, cambiar los textos de WhatsApp por app móvil y preparar la descripción del PR. Los dos primeros quedaron hechos en la fase 7. La descripción del PR sigue pendiente. El PR no se abre sin autorización.
 
 **Fase 7 en detalle.** Ver «Continuidad identificada» en [decisions.md](decisions.md), con la comparación entre el contrato y el código del orquestador.
 
@@ -70,7 +79,7 @@ El portal llama a los dos desde su servidor. La clave del canal Web y los permis
 
 **Versión en `main`.** El portal tal como quedó en `7407038`, fusionado con el PR #8. Ningún commit posterior de `main` toca `apps/patient-portal`. Que el servidor corra exactamente esa revisión, y con qué variables, está por confirmar con su responsable.
 
-**En la rama.** `origin/dev/patient-portal` incluye las fases 5, 7, 6a, 6b y 8, y los merges de `main` hasta `17c9b27`. Nada de eso está todavía en `main`.
+**En la rama.** `origin/dev/patient-portal` incluye las fases 5, 7, 6a, 6b, 8 y 9, y los merges de `main` hasta `17c9b27`. Nada de eso está todavía en `main`.
 
 **Error «No pudimos crear el trámite. Inténtalo de nuevo.»**
 
@@ -94,15 +103,35 @@ En pantalla se distingue el modo:
 - **Modo orquestador:** `/tramite/nuevo` dice «Elegirás el estudio y la clínica paso a paso.» y `/continuar` ofrece «Tengo un código de continuidad».
 - **Modo legacy:** `/tramite/nuevo` menciona el horario.
 
+## Lo que falta para publicar
+
+1. **Integración en `main`.** `dev/patient-portal` incluye las fases 5, 7, 6a, 6b, 8 y 9 y los merges de `main` hasta `17c9b27`. Falta fusionarla en `main` con un PR, cuando se autorice abrirlo.
+2. **Variables de producción**, en la configuración privada del servicio. Aquí solo van los nombres. Los valores los pone el responsable del servidor.
+
+| Variable | Valor en producción |
+| --- | --- |
+| `API_BASE_URL` | URL de la API central de producción, con `/api/v1` y `https`. |
+| `REQUESTS_BACKEND` | `orchestrator`. |
+| `ORCHESTRATOR_BASE_URL` | URL del orquestador de producción, con `/api/v1` y `https`. |
+| `ORCHESTRATOR_API_KEY` | Clave del canal Web emitida contra la base de producción. Secreto. |
+| `PATIENT_IDENTITY_MODE` | `assertion`. |
+| `PATIENT_ASSERTION_CHANNEL_KEY` | Credencial del canal Web ante el emisor de producción. Secreto, distinto de `ORCHESTRATOR_API_KEY`. |
+| `REGISTRATION_ENABLED` | Sin definir o `false`. |
+| `FORWARD_CLIENT_IP` | Sin definir, hasta acordarla con backend. |
+| `CATALOG_CACHE_SECONDS` | Opcional, 300 por defecto. Se lee al compilar. |
+| `PORTAL_DATA_DIR` | No se usa con `assertion`. |
+
+La API central y el orquestador de producción deben incluir `17c9b27` de `main`. El resto de la publicación está en el [README](../README.md), «Arrancar en producción» y «Lista de publicación».
+
 ## Pendientes del portal
 
 En este orden:
 
 1. **Resolver el error de creación en producción**, con las comprobaciones de arriba.
-2. **Autorización del paciente para Call Center**, cuando el equipo de backend responda las preguntas de «Autorización para Call Center» en [decisions.md](decisions.md).
-3. **Abrir el PR contra `main`**, cuando se autorice subir. Incluiría las fases 5 y 7.
-4. **Prueba conjunta del código de continuidad con la app móvil.**
-5. **Prueba del portal publicado desde el navegador de un teléfono.**
+2. **Integración en `main` y variables de producción**, según «Lo que falta para publicar».
+3. **Ensayo conjunto con el Call Center** del recorrido de [demo.md](demo.md).
+4. **Prueba del portal publicado desde el navegador de un teléfono.**
+5. **Prueba conjunta con la app móvil**, si se integra a tiempo.
 6. **Fase 6:**
    - suites y servicios simulados dentro del repositorio: hecho en la fase 6a, en [`tests/`](../tests/);
    - README completo del portal y `CATALOG_CACHE_SECONDS` en `.env.example`: hecho en la fase 6b;
@@ -137,7 +166,7 @@ En este orden:
 | Call Center | Prueba conjunta del código de continuidad | Por confirmar |
 | Backend | Contrato del emisor `POST /auth/patient-assertions` | Resuelto en `main`, `17c9b27` |
 | Backend | Publicar en el repositorio `POST /journeys/:id/access-grants` y el filtro `active` del listado | Resuelto en `main`, `17c9b27` |
-| Backend | Autorización para Call Center: UUID del asesor, código del canal, entrega del consentimiento entre backends, momento y lo que ve el paciente. Las preguntas están en [decisions.md](decisions.md) | Por confirmar |
+| Backend | Autorización del paciente para Call Center, `patient-assertion-consents`: UUID del asesor, código del canal, entrega del consentimiento entre backends, momento y lo que ve el paciente. Preguntas para una fase posterior, en [decisions.md](decisions.md) | Después del MVP |
 | Backend | Que el orquestador acepte la acreditación JWS Ed25519 del emisor | Resuelto en `main`, `17c9b27` |
 
 ## Riesgos conocidos
@@ -194,7 +223,7 @@ pnpm --filter @salud-digna/patient-portal test:legacy         # o un grupo: lega
 **Reglas de trabajo que se mantienen.**
 
 - No escribir fuera de `apps/patient-portal`, salvo `pnpm-lock.yaml` cuando un merge o una instalación lo exijan.
-- Desde la fase 7, trabajo solo local: ni push, ni PR, ni ningún comando que escriba en GitHub. `git fetch` sí, para leer.
+- Push solo a `dev/patient-portal` y solo cuando se autorice. Nunca a `main` ni a otra rama, nunca force push y ningún PR sin autorización. `git fetch` sí, para leer.
 - Un solo PR por entrega, contra `main`.
 - No usar endpoints ni propiedades fuera de los contratos. Lo que falte se reporta.
 - Las credenciales solo van en `.env.local`, y las escribe el responsable del portal.
