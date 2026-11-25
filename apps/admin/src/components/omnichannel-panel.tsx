@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useEffectEvent, useRef, useState, type FormEvent, type ReactNode } from "react";
 import type { HistoryPage, Outcome, View } from "../omnichannel/contract";
 
 export type OmnichannelApi = <T>(body: object) => Promise<T>;
 type AccessView = View & { expiresAt: number };
+type PollResult = Omit<AccessView, "history"> & { history?: HistoryPage | null };
+const pollIntervalMs = 20000;
 const referenceLabels: Record<string, string> = {
   studyId: "Estudio (UUID)", clinicId: "Clínica (UUID)", appointmentId: "Cita (UUID)",
 };
@@ -17,7 +19,7 @@ class ReadError extends Error {
 export async function omnichannelRequest<T>(token: string, instanceId: string, body: object) {
   const response = await fetch("/api/omnichannel", {
     method: "POST", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json", "X-Staff-Instance": instanceId },
-    body: JSON.stringify(body), cache: "no-store", keepalive: true, signal: AbortSignal.timeout(25000),
+    body: JSON.stringify(body), cache: "no-store", keepalive: true, signal: AbortSignal.timeout(35000),
   });
   if (!response.ok) throw new ReadError(response.status);
   return await response.json() as T;
@@ -35,8 +37,8 @@ function errorText(error: unknown) {
   } as Record<number, string>)[error.status] ?? "El servicio no está disponible. Intenta más tarde.";
 }
 
-export function OmnichannelPanel({ api, writable = false, enabled, frame, initialId = "" }: {
-  api: OmnichannelApi; initialId?: string; writable?: boolean; enabled: boolean; frame: (contents: ReactNode) => ReactNode;
+export function OmnichannelPanel({ api, writable = false, enabled, active, frame, initialId = "" }: {
+  api: OmnichannelApi; initialId?: string; writable?: boolean; enabled: boolean; active: boolean; frame: (contents: ReactNode) => ReactNode;
 }) {
   const [journeyId, setJourneyId] = useState(initialId);
   const [activeId, setActiveId] = useState("");
@@ -46,6 +48,8 @@ export function OmnichannelPanel({ api, writable = false, enabled, frame, initia
   const [outcome, setOutcome] = useState("");
   const [pending, setPending] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [lastCheckedAt, setLastCheckedAt] = useState<number | null>(null);
+  const [pollPaused, setPollPaused] = useState(false);
   const lock = useRef(false);
   const live = useRef(0);
 
@@ -55,6 +59,8 @@ export function OmnichannelPanel({ api, writable = false, enabled, frame, initia
     setActiveId("");
     setJourneyId("");
     setExpiresAt(null);
+    setLastCheckedAt(null);
+    setPollPaused(false);
     setPending(null);
   }
 
@@ -66,6 +72,38 @@ export function OmnichannelPanel({ api, writable = false, enabled, frame, initia
     }, Math.max(0, expiresAt - Date.now()));
     return () => window.clearTimeout(timer);
   }, [expiresAt]);
+
+  const poll = useEffectEvent(async () => {
+    if (!active || !enabled || lock.current || document.hidden || !activeId ||
+        !view || pollPaused || expiresAt === null || Date.now() >= expiresAt) return;
+    lock.current = true;
+    const generation = live.current;
+    try {
+      const known = view.history ? { knownVersion: view.context.version, knownStatus: view.status } : {};
+      const result = await api<PollResult>({ action: "read", journeyId: activeId, ...known });
+      if (generation !== live.current || Date.now() >= expiresAt) return;
+      setView({ ...result, history: result.history === undefined ? view.history : result.history });
+      setLastCheckedAt(Date.now());
+      setMessage("");
+    } catch (error) {
+      if (generation !== live.current) return;
+      if (error instanceof ReadError && [401, 403, 404].includes(error.status)) {
+        clear();
+        setMessage(errorText(error));
+      } else if (!(error instanceof ReadError && error.status === 409)) {
+        setPollPaused(true);
+        setMessage(errorText(error));
+      }
+    } finally {
+      lock.current = false;
+    }
+  });
+
+  useEffect(() => {
+    if (!enabled || !active || !activeId || expiresAt === null || pollPaused) return;
+    const interval = window.setInterval(() => { void poll(); }, pollIntervalMs);
+    return () => window.clearInterval(interval);
+  }, [enabled, active, activeId, expiresAt, pollPaused]);
 
   function run(task: (generation: number) => Promise<void>) {
     if (lock.current || !enabled) return;
@@ -94,13 +132,18 @@ export function OmnichannelPanel({ api, writable = false, enabled, frame, initia
       setExpiresAt(result.expiresAt);
       setOutcome("");
       setView(result);
+      setLastCheckedAt(Date.now());
+      setPollPaused(false);
     });
   }
 
   function refresh() {
     run(async (generation) => {
       const result = await api<AccessView>({ action: "read", journeyId: activeId });
-      if (generation === live.current) setView(result);
+      if (generation !== live.current) return;
+      setView(result);
+      setLastCheckedAt(Date.now());
+      setPollPaused(false);
     });
   }
 
@@ -190,6 +233,8 @@ export function OmnichannelPanel({ api, writable = false, enabled, frame, initia
     </form>
     <p role="status">{busy ? "Consultando el servicio… " : ""}{outcome} {message}</p>
     {activeId && <>
+      <p>{pollPaused ? "Actualización automática pausada. Actualiza manualmente para reanudarla." : "Actualización automática cada 20 segundos mientras esta vista esté activa."}</p>
+      {lastCheckedAt !== null && <p>Última consulta exitosa: <time dateTime={new Date(lastCheckedAt).toISOString()}>{new Date(lastCheckedAt).toLocaleString("es-MX")}</time></p>}
       <button type="button" disabled={busy} onClick={refresh}>Actualizar desde el orquestador</button>
       <button type="button" disabled={busy} onClick={close}>Cerrar acceso al trámite</button>
     </>}

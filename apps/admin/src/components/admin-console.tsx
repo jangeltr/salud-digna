@@ -116,6 +116,7 @@ function Audit() {
 export function AdminConsole({ api, exit, omni, enabled = false }: { api?: Api; exit?: () => void; omni?: OmnichannelApi; enabled?: boolean }) {
   const [section, setSection] = useState<Section>("Dashboard");
   const [selected, setSelected] = useState<RequestRow>();
+  const observing = section === "Patient Journey" || section === "Centro de Orquestación";
   const renderNavigation = (items: typeof operations | typeof management) => items.map(({ name, icon: Icon }) => (
     <button type="button" className="nav-item" aria-current={section === name ? "page" : undefined} key={name} onClick={() => setSection(name)}>
       <Icon size={19} aria-hidden="true" /><span>{name}</span>
@@ -141,14 +142,20 @@ export function AdminConsole({ api, exit, omni, enabled = false }: { api?: Api; 
         </header>
         <div className="workspace-content">
           {section === "Dashboard" && (api
-            ? <><p>Indicadores de la API general.</p><LiveDashboard api={api} openSupervision={() => setSection("Supervisión")} /></>
+            ? <>
+              <p>Indicadores de la API general.</p>
+              <LiveDashboard api={api} openSupervision={() => setSection("Supervisión")} />
+              <Panel title="Indicadores del orquestador">
+                <Pending>Totales, estados y actividad por canal no disponibles. Consulta un trámite autorizado en Patient Journey.</Pending>
+              </Panel>
+            </>
             : <Dashboard openSupervision={() => setSection("Supervisión")} />)}
           {section === "Supervisión" && (api
             ? <LiveSupervision api={api} openJourney={(row) => { setSelected(row); setSection("Recorrido API general"); }} />
             : <Supervision openJourney={() => setSection("Patient Journey")} />)}
           {section === "Recorrido API general" && (api ? <RequestJourney api={api} selected={selected} /> : <Journey events={[]} />)}
-          {omni && <div hidden={section !== "Patient Journey" && section !== "Centro de Orquestación"}>
-            <OmnichannelPanel api={omni} enabled={enabled} frame={(content) => <Panel title="Seguimiento por trámite">{content}</Panel>} />
+          {omni && <div hidden={!observing}>
+            <OmnichannelPanel api={omni} enabled={enabled} active={observing} frame={(content) => <Panel title="Seguimiento por trámite">{content}</Panel>} />
           </div>}
           {section === "Patient Journey" && !omni && <Journey events={[]} />}
           {section === "Centro de Orquestación" && !omni && (

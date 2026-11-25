@@ -162,16 +162,27 @@ async function operate(key: string, id: string, body: Record<string, unknown>, a
 
     if (opening || action === "read") {
       if (opening && !grants.has(key) && grants.size >= maxSessions) return reply({ error: "capacity" }, 503);
-      const [summary, context, history] = await Promise.allSettled([
+      const [summary, contextResult] = await Promise.allSettled([
         upstream(journey).then((value) => readSummary(value, id)),
         upstream(journey + "/context").then((value) => readContext(value, id)),
-        upstream(journey + "/history?limit=20").then(readHistory),
       ]);
-      for (const result of [summary, context, history]) {
+      for (const result of [summary, contextResult]) {
         if (result.status === "rejected" && accessDenied(result.reason)) throw result.reason;
       }
       if (summary.status === "rejected") throw summary.reason;
-      if (context.status === "rejected") throw context.reason;
+      if (contextResult.status === "rejected") throw contextResult.reason;
+      const status = summary.value;
+      const context = contextResult.value;
+      const unchanged = !opening && body.knownVersion === context.version && body.knownStatus === status;
+      let history: ReturnType<typeof readHistory> | null | undefined;
+      if (!unchanged) {
+        try {
+          history = readHistory(await upstream(journey + "/history?limit=20"));
+        } catch (error) {
+          if (accessDenied(error)) throw error;
+          history = null;
+        }
+      }
       if (signal.aborted || Date.now() >= expiresAt) return reply({ error: "grant" }, 404);
       if (opening) {
         if (!grants.has(key) && grants.size >= maxSessions) return reply({ error: "capacity" }, 503);
@@ -180,8 +191,7 @@ async function operate(key: string, id: string, body: Record<string, unknown>, a
         timer.unref();
         grants.set(key, { id, grant, expiresAt, timer });
       }
-      return reply({ status: summary.value, context: context.value,
-        history: history.status === "fulfilled" ? history.value : null, expiresAt });
+      return reply({ status, context, history, expiresAt });
     }
 
     if (!isId(body.operationId)) return reply({ error: "input" }, 400);
