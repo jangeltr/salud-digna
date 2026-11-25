@@ -2201,6 +2201,407 @@
         ]
       }
     },
+    "/api/v1/mobile/journeys": {
+      "get": {
+        "operationId": "MobileJourneysController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileJourneyListDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Entrada inválida."
+          },
+          "401": {
+            "description": "Se requiere una sesión JWT activa."
+          },
+          "403": {
+            "description": "Se requiere una cuenta de paciente con perfil."
+          },
+          "404": {
+            "description": "Identidad institucional aún sin vínculo o trámite inaccesible."
+          },
+          "429": {
+            "description": "La integración está temporalmente limitada."
+          },
+          "502": {
+            "description": "Falló la comunicación con el orquestador o la respuesta fue inválida."
+          },
+          "503": {
+            "description": "La integración no está disponible."
+          },
+          "504": {
+            "description": "El orquestador excedió el tiempo de respuesta."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Listar trámites activos del paciente autenticado",
+        "tags": [
+          "Mobile Journeys"
+        ]
+      },
+      "post": {
+        "operationId": "MobileJourneysController_create",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "32 bytes aleatorios en base64url sin relleno.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMobileJourneyDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileJourneyCreatedDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Entrada inválida."
+          },
+          "401": {
+            "description": "Se requiere una sesión JWT activa."
+          },
+          "403": {
+            "description": "Se requiere una cuenta de paciente con perfil."
+          },
+          "404": {
+            "description": "Identidad institucional aún sin vínculo o trámite inaccesible."
+          },
+          "409": {
+            "description": "Conflicto de idempotencia."
+          },
+          "429": {
+            "description": "La integración está temporalmente limitada."
+          },
+          "502": {
+            "description": "Falló la comunicación con el orquestador o la respuesta fue inválida."
+          },
+          "503": {
+            "description": "La integración no está disponible."
+          },
+          "504": {
+            "description": "El orquestador excedió el tiempo de respuesta."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Crear un trámite de cita identificado desde el canal móvil",
+        "tags": [
+          "Mobile Journeys"
+        ]
+      }
+    },
+    "/api/v1/mobile/journeys/{journeyId}": {
+      "get": {
+        "operationId": "MobileJourneysController_summary",
+        "parameters": [
+          {
+            "name": "journeyId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileJourneySummaryDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Entrada inválida."
+          },
+          "401": {
+            "description": "Se requiere una sesión JWT activa."
+          },
+          "403": {
+            "description": "Se requiere una cuenta de paciente con perfil."
+          },
+          "404": {
+            "description": "Identidad institucional aún sin vínculo o trámite inaccesible."
+          },
+          "429": {
+            "description": "La integración está temporalmente limitada."
+          },
+          "502": {
+            "description": "Falló la comunicación con el orquestador o la respuesta fue inválida."
+          },
+          "503": {
+            "description": "La integración no está disponible."
+          },
+          "504": {
+            "description": "El orquestador excedió el tiempo de respuesta."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Consultar el estado de un trámite autorizado",
+        "tags": [
+          "Mobile Journeys"
+        ]
+      }
+    },
+    "/api/v1/mobile/journeys/{journeyId}/context": {
+      "get": {
+        "operationId": "MobileJourneysController_context",
+        "parameters": [
+          {
+            "name": "journeyId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileJourneyContextDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Entrada inválida."
+          },
+          "401": {
+            "description": "Se requiere una sesión JWT activa."
+          },
+          "403": {
+            "description": "Se requiere una cuenta de paciente con perfil."
+          },
+          "404": {
+            "description": "Identidad institucional aún sin vínculo o trámite inaccesible."
+          },
+          "429": {
+            "description": "La integración está temporalmente limitada."
+          },
+          "502": {
+            "description": "Falló la comunicación con el orquestador o la respuesta fue inválida."
+          },
+          "503": {
+            "description": "La integración no está disponible."
+          },
+          "504": {
+            "description": "El orquestador excedió el tiempo de respuesta."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Recuperar el contexto de un trámite autorizado",
+        "tags": [
+          "Mobile Journeys"
+        ]
+      }
+    },
+    "/api/v1/mobile/journeys/{journeyId}/history": {
+      "get": {
+        "operationId": "MobileJourneysController_history",
+        "parameters": [
+          {
+            "name": "journeyId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "cursor",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "maxLength": 200,
+              "pattern": "^[A-Za-z0-9_-]{1,200}(?![\\s\\S])",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileJourneyHistoryDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Entrada inválida."
+          },
+          "401": {
+            "description": "Se requiere una sesión JWT activa."
+          },
+          "403": {
+            "description": "Se requiere una cuenta de paciente con perfil."
+          },
+          "404": {
+            "description": "Identidad institucional aún sin vínculo o trámite inaccesible."
+          },
+          "429": {
+            "description": "La integración está temporalmente limitada."
+          },
+          "502": {
+            "description": "Falló la comunicación con el orquestador o la respuesta fue inválida."
+          },
+          "503": {
+            "description": "La integración no está disponible."
+          },
+          "504": {
+            "description": "El orquestador excedió el tiempo de respuesta."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Consultar el historial cronológico de un trámite autorizado",
+        "tags": [
+          "Mobile Journeys"
+        ]
+      }
+    },
+    "/api/v1/mobile/journeys/{journeyId}/events": {
+      "post": {
+        "operationId": "MobileJourneysController_publish",
+        "parameters": [
+          {
+            "name": "journeyId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishMobileEventDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileEventReceiptDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Entrada inválida."
+          },
+          "401": {
+            "description": "Se requiere una sesión JWT activa."
+          },
+          "403": {
+            "description": "Se requiere una cuenta de paciente con perfil."
+          },
+          "404": {
+            "description": "Identidad institucional aún sin vínculo o trámite inaccesible."
+          },
+          "409": {
+            "description": "Versión obsoleta, transición inválida o ID de evento reutilizado con otro contenido."
+          },
+          "429": {
+            "description": "La integración está temporalmente limitada."
+          },
+          "502": {
+            "description": "Falló la comunicación con el orquestador o la respuesta fue inválida."
+          },
+          "503": {
+            "description": "La integración no está disponible."
+          },
+          "504": {
+            "description": "El orquestador excedió el tiempo de respuesta."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Registrar un avance idempotente desde el canal móvil",
+        "tags": [
+          "Mobile Journeys"
+        ]
+      }
+    },
     "/api/v1/webhooks/twilio/whatsapp": {
       "post": {
         "operationId": "TwilioWebhookController_receive",
@@ -3923,6 +4324,322 @@
           "page",
           "limit",
           "hasMore"
+        ]
+      },
+      "MobileJourneySummaryDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "IN_PROGRESS",
+              "PENDING_CONFIRMATION",
+              "COMPLETED",
+              "CANCELLED"
+            ]
+          },
+          "type": {
+            "type": "string",
+            "example": "APPOINTMENT"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "type",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "MobileJourneyListDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MobileJourneySummaryDto"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "CreateMobileJourneyDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "APPOINTMENT"
+            ]
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "MobileJourneyCreatedDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "IN_PROGRESS",
+              "PENDING_CONFIRMATION",
+              "COMPLETED",
+              "CANCELLED"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "status"
+        ]
+      },
+      "MobileExternalRefsDto": {
+        "type": "object",
+        "properties": {
+          "appointmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "clinicId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "studyId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "MobileJourneyContextDto": {
+        "type": "object",
+        "properties": {
+          "journeyId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "currentStep": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "externalRefs": {
+            "$ref": "#/components/schemas/MobileExternalRefsDto"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "journeyId",
+          "currentStep",
+          "version",
+          "externalRefs",
+          "updatedAt"
+        ]
+      },
+      "MobileHistoryDataDto": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "currentStep": {
+            "type": "string",
+            "enum": [
+              "SELECT_STUDY",
+              "SELECT_CLINIC",
+              "SELECT_DATETIME",
+              "REVIEW",
+              "CONFIRMED"
+            ]
+          },
+          "from": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "IN_PROGRESS",
+              "PENDING_CONFIRMATION",
+              "COMPLETED",
+              "CANCELLED"
+            ]
+          },
+          "to": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "IN_PROGRESS",
+              "PENDING_CONFIRMATION",
+              "COMPLETED",
+              "CANCELLED"
+            ]
+          }
+        }
+      },
+      "MobileHistoryItemDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "type": {
+            "type": "string"
+          },
+          "producerCode": {
+            "type": "string"
+          },
+          "occurredAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "receivedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "schemaVersion": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "data": {
+            "$ref": "#/components/schemas/MobileHistoryDataDto"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "producerCode",
+          "occurredAt",
+          "receivedAt",
+          "schemaVersion",
+          "data"
+        ]
+      },
+      "MobileJourneyHistoryDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MobileHistoryItemDto"
+            }
+          },
+          "nextCursor": {
+            "type": "string",
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "MobileEventPayloadDto": {
+        "type": "object",
+        "properties": {
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647
+          },
+          "studyId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "clinicId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "to": {
+            "type": "string",
+            "enum": [
+              "PENDING_CONFIRMATION",
+              "CANCELLED"
+            ]
+          }
+        },
+        "required": [
+          "expectedVersion"
+        ]
+      },
+      "PublishMobileEventDto": {
+        "type": "object",
+        "properties": {
+          "externalEventId": {
+            "type": "string",
+            "maxLength": 128,
+            "pattern": "^(?!system:)[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}(?![\\s\\S])",
+            "example": "demo-study-01"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "JOURNEY_CONTEXT_UPDATED",
+              "JOURNEY_STATUS_CHANGED"
+            ]
+          },
+          "schemaVersion": {
+            "type": "integer",
+            "enum": [
+              1
+            ]
+          },
+          "occurredAt": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-11-24T06:31:00.000Z"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/MobileEventPayloadDto"
+          }
+        },
+        "required": [
+          "externalEventId",
+          "type",
+          "schemaVersion",
+          "occurredAt",
+          "payload"
+        ]
+      },
+      "MobileEventReceiptDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "journeyId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "id",
+          "journeyId"
         ]
       }
     }

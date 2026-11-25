@@ -4,7 +4,7 @@ Salud Digna ofrece una API REST para el flujo omnicanal de solicitudes, citas y 
 
 | Equipo | Punto de partida |
 | --- | --- |
-| Público y móvil | [Guía de frontend público](frontend-publico.md). Registro, perfil, catálogos, solicitudes propias, citas y continuidad por WhatsApp. |
+| Público y móvil | [Guía de frontend público](frontend-publico.md) y [contrato de trámites omnicanal para Flutter](api-mobile-journeys.md). |
 | Call Center y administración | [Guía de Call Center](frontend-callcenter.md). Canje, recuperación de contexto, confirmación asistida, Journey y monitoreo para `ADMIN`. |
 | Ambos | [OpenAPI generado](openapi.json) y [contrato de autenticación](api-auth.md). |
 
