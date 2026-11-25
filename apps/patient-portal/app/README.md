@@ -4,14 +4,12 @@ Rutas del portal con el App Router de Next.js. Los grupos entre paréntesis orga
 
 | Carpeta | Contenido |
 | --- | --- |
-| `(public)/` | Páginas que se ven sin sesión, con el encabezado decidido en el navegador. `/`, `/estudios`, `/clinicas` y `/estudios/[id]` se sirven desde caché; la búsqueda está en `/estudios/buscar` y `/clinicas/buscar`. Además: `/`, `/estudios`, `/estudios/[id]`, `/clinicas`, `/acceso` y `/registro`. La última solo existe con `REGISTRATION_ENABLED` encendida. |
-| `(booking)/` | Flujo de la solicitud de agendamiento: `/tramite/nuevo`, `/tramite/[id]` y `/tramite/[id]/historial`, que solo existe cuando el servicio activo ofrece historial. |
-| `(account)/` | Área personal del paciente: `/mi-espacio`, `/continuar`, `/citas`, `/citas/[id]`, `/ayuda` y `/perfil`. |
-| `api/` | Manejadores de servidor del portal. Reciben las peticiones del navegador y llaman a la API de Salud Digna desde el servidor. Hoy contiene `session/expired`, que borra la cookie de una sesión vencida. |
-| `icons/` | Figura de la marca que comparten el icono de pestaña y el de iOS. No publica rutas. |
+| `(public)/` | Páginas sin sesión: `/`, `/estudios`, `/estudios/[id]` y `/clinicas`, servidas desde caché; la búsqueda, en `/estudios/buscar` y `/clinicas/buscar`; `/acceso`, y `/registro`, que solo existe con `REGISTRATION_ENABLED` encendida. Su `layout.tsx` usa `PageFrame`, con el encabezado decidido en el navegador. |
+| `(booking)/` | Trámite de agendamiento: `/tramite/nuevo`, `/tramite/[id]` y `/tramite/[id]/historial`, que solo existe cuando el servicio activo ofrece historial. Su `layout.tsx` usa `AccountFrame`. |
+| `(account)/` | Área del paciente: `/mi-espacio`, `/continuar` y `/perfil`. `/citas`, `/citas/[id]` y `/ayuda` existen, pero muestran un aviso de pantalla sin contenido. Su `layout.tsx` usa `AccountFrame`. |
+| `api/` | Manejadores de servidor del portal. Hoy solo `session/expired`, que borra la cookie de una sesión vencida. |
+| `icons/` | `mark.tsx`, la figura que comparten el icono de pestaña y el de iOS. No publica rutas. |
 
-`layout.tsx` monta la franja de prototipo y el encabezado con la navegación, y marca todas las páginas como no indexables. `icon.tsx` y `apple-icon.tsx` generan el icono de pestaña y el de iOS. `robots.txt` excluye todo el sitio. `error.tsx` y `global-error.tsx` son las páginas de error, sin detalles técnicos.
+`layout.tsx` monta la franja de prototipo y marca todas las páginas como no indexables. El encabezado lo pone el `layout.tsx` de cada grupo. `icon.tsx` y `apple-icon.tsx` generan los iconos, y `robots.txt` excluye todo el sitio. `error.tsx`, `global-error.tsx` y `not-found.tsx` son las páginas de error, sin detalles técnicos. `globals.css` define la paleta.
 
-El portal es solo un sitio web desde el 2026-11-24, cuando el proyecto cambió de arquitectura y dejó de cubrir el canal móvil. Hasta esa fecha, esta carpeta tenía también `manifest.ts` y la ruta `icons/[file]`, con el manifiesto y los iconos de instalación de la PWA. El motivo y el detalle están en [docs/decisions.md](../docs/decisions.md).
-
-Las rutas de `api/` se publican en `/api/...` del origen del portal y son distintas de `/api/v1` del backend.
+Las rutas de `api/` se publican en `/api/...` del origen del portal y son distintas de `/api/v1` de los servicios.

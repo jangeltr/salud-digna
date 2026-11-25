@@ -6,17 +6,18 @@ Sitio web del paciente de Salud Digna para el Hackatec. Es un prototipo con dato
 
 1. [Qué es el portal](#qué-es-el-portal)
 2. [Requisitos](#requisitos)
-3. [Arrancar en local desde un clon limpio](#arrancar-en-local-desde-un-clon-limpio)
-4. [Cuenta de paciente y clave de canal en local](#cuenta-de-paciente-y-clave-de-canal-en-local)
-5. [Variables de entorno](#variables-de-entorno)
-6. [Modos](#modos)
-7. [Pruebas](#pruebas)
-8. [Seguridad](#seguridad)
-9. [Arrancar en producción](#arrancar-en-producción)
-10. [Lista de publicación](#lista-de-publicación)
-11. [Límites propios del portal](#límites-propios-del-portal)
-12. [Limitaciones conocidas](#limitaciones-conocidas)
-13. [Más documentación](#más-documentación)
+3. [Instalación desde un clon limpio](#instalación-desde-un-clon-limpio)
+4. [Credenciales de prueba por rol](#credenciales-de-prueba-por-rol)
+5. [Demostración](#demostración)
+6. [Variables de entorno](#variables-de-entorno)
+7. [Modos](#modos)
+8. [Pruebas](#pruebas)
+9. [Seguridad](#seguridad)
+10. [Arrancar en producción](#arrancar-en-producción)
+11. [Lista de publicación](#lista-de-publicación)
+12. [Límites propios del portal](#límites-propios-del-portal)
+13. [Limitaciones conocidas](#limitaciones-conocidas)
+14. [Más documentación](#más-documentación)
 
 ## Qué es el portal
 
@@ -36,35 +37,55 @@ Dentro del portal, las páginas y acciones solo conocen el modelo y las interfac
 - **Node.js 24**: el monorepo fija `"node": "24.x"` en `engines`.
 - **pnpm 11.28.11**: fijado en `packageManager` del `package.json` de la raíz.
 - Git y acceso al repositorio.
-- Para levantar los servicios en local: PostgreSQL 17, como indica el [README de la raíz](../../README.md).
+- Para la demostración: las URL y credenciales de los servicios desplegados, que entrega el equipo de backend.
+- Solo para levantar los servicios en local: PostgreSQL 17, como indica el [README de la raíz](../../README.md).
 
-Para probar el portal no hace falta nada de lo anterior salvo Node y pnpm: las pruebas traen sus propios servicios simulados. Ver [Pruebas](#pruebas).
+Las pruebas solo necesitan Node y pnpm: traen sus propios servicios simulados. Ver [Pruebas](#pruebas).
 
-## Arrancar en local desde un clon limpio
+## Instalación desde un clon limpio
 
 Todos los comandos se ejecutan desde la raíz del monorepo.
 
-**1. Instalar dependencias.**
+**1. Clonar e instalar.** Con Node.js 24 y pnpm 11.28.11, por ejemplo con `npm install -g pnpm@11.28.11`:
 
 ```sh
+git clone <URL del repositorio>
+cd salud-digna
 pnpm install --frozen-lockfile
 ```
 
-**2. Levantar la API general.** Sigue el [README de la raíz](../../README.md), secciones «Entorno e instalación inicial» y «Catálogos de demostración», y [docs/development.md](../../docs/development.md) para la base de datos. Con los valores del ejemplo, la API queda en `http://127.0.0.1:3000` y su prefijo es `/api/v1`. Carga los catálogos de demostración para tener estudios y clínicas.
-
-**3. Configurar el portal.**
+**2. Crear la configuración local.** `.env.local` queda fuera de Git.
 
 ```sh
 cp apps/patient-portal/.env.example apps/patient-portal/.env.local
 ```
 
-En `.env.local`, como mínimo:
+Rellénalo con una de estas dos opciones.
+
+**3a. Para la demostración: servicios desplegados.** Es la configuración de la [demostración](#demostración). Solo hacen falta los valores que entrega el equipo de backend por un canal privado:
 
 ```sh
-API_BASE_URL=http://127.0.0.1:3000/api/v1
+API_BASE_URL=<URL de la API central, con /api/v1: entregado por el equipo de backend>
+REQUESTS_BACKEND=orchestrator
+ORCHESTRATOR_BASE_URL=<URL del orquestador, con /api/v1: entregado por el equipo de backend>
+ORCHESTRATOR_API_KEY=<entregado por el equipo de backend>
+PATIENT_IDENTITY_MODE=assertion
+PATIENT_ASSERTION_CHANNEL_KEY=<entregado por el equipo de backend>
+REGISTRATION_ENABLED=false
 ```
 
-Con eso el portal arranca en el modo heredado, que solo necesita la API general. `.env.local` queda fuera de Git.
+- `REGISTRATION_ENABLED=false` evita crear cuentas en los servicios desplegados: en desarrollo el registro está encendido por defecto.
+- La API central y el orquestador desplegados deben incluir `17c9b27` de `main`.
+
+**3b. Sin servicios desplegados: modo heredado en local.** Solo necesita la API general.
+
+1. Levántala según el [README de la raíz](../../README.md), secciones «Entorno e instalación inicial» y «Catálogos de demostración», y [docs/development.md](../../docs/development.md) para la base de datos.
+   - Con los valores del ejemplo, la API queda en `http://127.0.0.1:3000` con el prefijo `/api/v1`.
+   - Carga los catálogos de demostración para tener estudios y clínicas.
+2. En `.env.local`, `API_BASE_URL=http://127.0.0.1:3000/api/v1`.
+3. Crea una cuenta de paciente en `/registro`, como se explica en [Credenciales de prueba por rol](#credenciales-de-prueba-por-rol).
+
+Para el modo orquestador en local, ver «Servicios locales» en esa misma sección.
 
 **4. Arrancar el portal.**
 
@@ -72,39 +93,103 @@ Con eso el portal arranca en el modo heredado, que solo necesita la API general.
 pnpm --filter @salud-digna/patient-portal dev
 ```
 
-El portal queda en `http://127.0.0.1:5173`. En desarrollo el registro está encendido y no se envía `Strict-Transport-Security`. `pnpm --filter @salud-digna/patient-portal check` comprueba los tipos.
+El portal queda en `http://127.0.0.1:5173`. `pnpm --filter @salud-digna/patient-portal check` comprueba los tipos.
 
-**5. Crear una cuenta de paciente.** Abre `/registro` en el portal. Ver la sección siguiente.
+**5. Comprobar el arranque.** El registro del servidor muestra los modos activos, sin ningún secreto. Con la opción 3a:
 
-**6. Opcional: el modo orquestador.** Levanta el orquestador según [su README](../orchestrator/README.md): escucha en `http://127.0.0.1:3300`. Obtén una clave de canal, como se explica abajo, y añade a `.env.local`:
-
-```sh
-REQUESTS_BACKEND=orchestrator
-ORCHESTRATOR_BASE_URL=http://127.0.0.1:3300/api/v1
-ORCHESTRATOR_API_KEY=<clave del canal Web, entregada por quien opera el orquestador>
+```text
+[portal] trámites: orchestrator | identidad del paciente: assertion (emisor: API central) | registro de cuentas: apagado | IP del cliente a la API: apagada | clave del canal: <identificador público>
 ```
 
-Reinicia el servidor de desarrollo para que lea los cambios.
+Si una variable falta o no es válida, el servidor dice cuál, sin mostrar su valor, y responde `500` a todo. Cambiar `.env.local` exige reiniciar el servidor.
 
-## Cuenta de paciente y clave de canal en local
+## Credenciales de prueba por rol
 
-Este repositorio no contiene credenciales y no debe contenerlas.
+El repositorio no contiene credenciales y no debe contenerlas. Se entregan por un canal privado y solo se guardan en `.env.local` o en la configuración privada del servidor. Nunca van en Git, en el navegador, en capturas ni en chats.
 
-**Cuenta de paciente sintética.** El registro público de la API general crea cuentas con el rol `PATIENT`: `POST /api/v1/auth/register`, descrito en [docs/api-auth.md](../../docs/api-auth.md), sección «Registro».
+| Rol | Uso en el portal | Usuario | Contraseña |
+| --- | --- | --- | --- |
+| Paciente (`PATIENT`) | Iniciar sesión en `/acceso` | `<entregado por el equipo de backend>` | `<entregado por el equipo de backend>` |
 
-- En local, el portal lo ofrece en `/registro`, encendido en desarrollo.
-- Usa un correo de un dominio reservado para ejemplos, como `example.com` o `example.test`, y una contraseña que no uses en ningún otro sitio.
-- La API no tiene una carga de pacientes de demostración: solo carga catálogos (`catalogs:seed-demo`) y crea cuentas de administrador y de asesor por CLI.
-- Para la demostración sobre servicios desplegados, la cuenta la entrega el equipo de backend por un canal privado. El registro está apagado en producción.
+El portal solo usa el rol de paciente. Las cuentas de asesor y de administración son de Call Center y Administración: ver su propia documentación.
 
-**Clave de canal del orquestador.** La emite un operador con la utilidad `auth:create-channel-credential`, descrita en [el README del orquestador](../orchestrator/README.md), sección «Credenciales de canal».
+**Credenciales del servidor del portal.** No son de ninguna persona: las lee el servidor.
 
-- El portal necesita los dos scopes, `EVENTS_PUBLISH` y `JOURNEYS_READ`, porque emitir un código de continuidad exige ambos: se repite `--scope`.
-- La utilidad entrega el valor una sola vez por la salida estándar. La clave vence a los 30 días.
-- **No documentado:** la utilidad exige que el canal, por ejemplo `demo-web`, ya exista activo, registrado y aprobado en la base del orquestador. Ningún documento del repositorio explica cómo darlo de alta en local. Hay que pedirlo al equipo del orquestador.
-- La preparación de la base del orquestador sí está documentada en su README: usuario `salud_digna_orchestrator_app`, base `salud_digna_orchestrator` y sección «Prisma».
+| Credencial | Variable | Valor |
+| --- | --- | --- |
+| Clave del canal Web en el orquestador | `ORCHESTRATOR_API_KEY` | `<entregado por el equipo de backend>` |
+| Credencial del canal Web ante el emisor de acreditaciones | `PATIENT_ASSERTION_CHANNEL_KEY` | `<entregado por el equipo de backend>` |
 
-**Dónde se guardan.** En desarrollo, en `apps/patient-portal/.env.local`. En producción, en la configuración privada del servicio. Nunca en Git, en el navegador, en capturas ni en chats.
+**Servicios locales, opción 3b.**
+
+- **Cuenta de paciente sintética.** El registro público de la API general crea cuentas con el rol `PATIENT`: `POST /api/v1/auth/register`, descrito en [docs/api-auth.md](../../docs/api-auth.md), sección «Registro».
+  - En local, el portal lo ofrece en `/registro`, encendido en desarrollo.
+  - Usa un correo de un dominio reservado para ejemplos, como `example.com` o `example.test`, y una contraseña que no uses en ningún otro sitio.
+  - La API no carga pacientes de demostración: solo catálogos.
+- **Clave de canal de un orquestador local.** La emite un operador con la utilidad `auth:create-channel-credential`, descrita en [el README del orquestador](../orchestrator/README.md), sección «Credenciales de canal».
+  - El portal necesita los scopes `EVENTS_PUBLISH` y `JOURNEYS_READ`: se repite `--scope`.
+  - La utilidad entrega el valor una sola vez. La clave vence a los 30 días.
+  - Con ella, añade a `.env.local` `REQUESTS_BACKEND=orchestrator`, `ORCHESTRATOR_BASE_URL=http://127.0.0.1:3300/api/v1` y `ORCHESTRATOR_API_KEY`.
+- **No documentado en el portal:**
+  - dar de alta el canal Web, por ejemplo `demo-web`, activo y aprobado en la base de un orquestador local, que la utilidad exige;
+  - configurar el emisor de acreditaciones en una API central local y emitir `PATIENT_ASSERTION_CHANNEL_KEY`, que exige `PATIENT_IDENTITY_MODE=assertion`.
+
+  Los dos se piden al equipo de backend.
+
+## Demostración
+
+La parte del portal del recorrido omnicanal. Lo que ocurre en otras aplicaciones se hace según su propia documentación. Las notas para quien presenta están en [docs/demo.md](docs/demo.md).
+
+**Antes de empezar.**
+
+- El portal está arrancado con la opción 3a, y la línea de arranque dice `identidad del paciente: assertion`.
+- Tienes la cuenta de paciente.
+
+**Pasos en el portal.**
+
+1. **Iniciar sesión.** Abre `/acceso`, escribe la cuenta en «Correo» y «Contraseña» y pulsa «Entrar».
+   - Se ve: «Mi espacio», con «Tus trámites activos» y «También los que empezaste en la app móvil o en Call Center.».
+2. **Elegir el estudio.** En el encabezado, abre «Estudios», elige uno y pulsa «Agendar este estudio».
+   - Se ve: «Agendar un estudio», con «Vas a agendar `<estudio>`, `<precio>`.».
+3. **Crear el trámite.** Pulsa «Empezar el trámite», o «Empezar un trámite nuevo» si ya tienes otros abiertos.
+   - Se ve: «Elige una clínica», con «Llevas elegido: `<estudio>`» y el avance en tres pasos: Estudio, Clínica y Revisión.
+4. **Elegir la clínica.** Pulsa «Elegir esta clínica» en una de la lista.
+   - Se ve: «Revisa tu trámite», con estudio, clínica y precio, y la sección «Continuar en otro canal»: «Puedes seguir con este trámite en la app móvil o en Call Center. Al identificarte allí verás tus trámites activos, sin necesidad de código.».
+   - No pulses «Enviar a confirmación»: el trámite sigue en otro canal.
+5. **Continuar.** En el encabezado, abre «Continuar».
+   - Se ve: el trámite como «En curso», con «Folio: `<UUID>`», «Última actividad: `<fecha y hora>`» y «Continuar este trámite».
+
+**En otra aplicación.** El Call Center recupera el trámite y lo continúa según su propia documentación.
+
+6. **Ver el avance.** De vuelta en el portal, abre el trámite desde «Continuar».
+   - Se ve: el estado en el que lo dejó el otro canal, por ejemplo «Pendiente de confirmación», con el folio y el resumen.
+   - Aunque hayan pasado más de cinco minutos, el trámite se abre: el permiso se renueva solo y no aparece «Necesita un permiso nuevo».
+7. **Historial.** Pulsa «Ver el historial del trámite».
+   - Se ve: «Trámite creado» y las dos «Selección actualizada», «En la web», y después lo que hizo el otro canal, «En Call Center».
+   - Un canal que el portal no reconoce aparece como «En el canal `<código>`».
+
+**Contingencia: código de continuidad.** Si el otro canal no encuentra el trámite. Funciona con la misma configuración, sin reiniciar.
+
+1. En el trámite, en «Continuar en otro canal», abre «Otra forma de continuar» y pulsa «Generar código de continuidad».
+   - Se ve: «Tu código de continuidad», doce caracteres en tres grupos de cuatro, con «Vence a las HH:MM, hora del centro de México, en unos N minutos.», «Es de un solo uso.» y «Copiar código».
+   - Dura como mucho cinco minutos. Solo está en esa pantalla: no va en la dirección ni se guarda.
+2. El otro canal usa el código según su propia documentación.
+3. Sigue con el paso 6.
+
+**Si algo falla en el portal.**
+
+| Qué se ve | Qué pasó | Qué hacer |
+| --- | --- | --- |
+| «No pudimos iniciar sesión con esos datos. Revisa el correo y la contraseña.» | La cuenta o la contraseña no son correctas. | Revisarlas sin insistir: tras tres fallos, el portal impone esperas («Demasiados intentos. Espera…»). |
+| «No pudimos verificar tu identidad» en «Continuar», «Mi espacio» o «Agendar un estudio», sin botón para empezar | El emisor de acreditaciones de la API central no responde o rechaza la credencial del canal. | No se arregla en vivo: sin acreditación, el portal no crea ni lee trámites. Plan B: reiniciar el portal con `PATIENT_IDENTITY_MODE=none` y usar la contingencia con código. Esos trámites no quedan ligados al paciente. |
+| «Servicio no disponible», con «Reintentar» | La API o el orquestador no respondieron. | Pulsar «Reintentar» una vez. Si sigue, pasar al material grabado. |
+| «El servicio no respondió…» al crear o al elegir | Respuesta perdida o tiempo agotado. | Volver a pulsar. La creación no se duplica: se reenvía con la misma clave de idempotencia. |
+| «No pudimos crear el trámite. Inténtalo de nuevo.» | El orquestador rechazó la creación: clave de canal, URL o proxy. | Pasar al material grabado. El diagnóstico está en [docs/estado.md](docs/estado.md). |
+| La lista de «Continuar» sale vacía aunque haya trámites | El orquestador responde igual a una identidad sin trámites que a una acreditación rechazada. | Intentar empezar un trámite: si la acreditación falla, aparece «No pudimos verificar tu identidad». |
+| El otro canal rechaza el código | Venció, ya se usó o se escribió mal. | En el trámite, pulsar «Generar otro código». |
+| «Has empezado demasiados trámites…» o «Has generado demasiados códigos…» | Topes del portal: 20 trámites y 30 códigos por paciente y hora. | Retomar un trámite abierto desde «Continuar». |
+
+Si el otro canal no encuentra el trámite, usa la contingencia. Su diagnóstico está en su propia documentación.
 
 ## Variables de entorno
 
@@ -263,8 +348,8 @@ Tras cada despliegue hay que vaciar `/var/cache/nginx/portal`: las páginas guar
 
 1. Compilar desde una revisión identificada y con el lockfile.
 2. Una sola instancia del portal. Registro, permisos, límites y claves pendientes viven en el proceso. Lo que haría falta para varias está en [docs/decisions.md](docs/decisions.md), «Rendimiento y caché».
-3. Variables en la configuración privada del servicio. `REQUESTS_BACKEND=orchestrator` para la demostración.
-4. `PORTAL_DATA_DIR` fuera de la carpeta del código, del usuario del servicio, con permisos `0700`, e incluida en los respaldos.
+3. Variables en la configuración privada del servicio: las de la opción 3a de [Instalación](#instalación-desde-un-clon-limpio), con `REQUESTS_BACKEND=orchestrator` y `PATIENT_IDENTITY_MODE=assertion`.
+4. Solo con `PATIENT_IDENTITY_MODE=none`: `PORTAL_DATA_DIR` fuera de la carpeta del código, del usuario del servicio, con permisos `0700`, e incluida en los respaldos.
 5. Proxy con TLS y las cabeceras de arriba. El puerto del portal no debe ser accesible desde fuera.
 6. `REGISTRATION_ENABLED` sin definir o en `false`, salvo que se quiera abrir el registro.
 7. `FORWARD_CLIENT_IP` sin definir, hasta acordarla con el equipo de la API.
@@ -290,7 +375,7 @@ Viven en memoria y se vacían al reiniciar.
 - **Una sola instancia.** Permisos, acreditaciones, límites, claves pendientes y caché de sesión viven en memoria, y el registro del canal Web en un archivo local. Al reiniciar se pierden los permisos, y dos instancias no comparten nada. Qué haría falta está en [docs/decisions.md](docs/decisions.md), «Rendimiento y caché».
 - **Permiso de cinco minutos sin renovación** en el modo `none`. Pasado ese tiempo, el portal muestra «Necesita un permiso nuevo» y solo recupera el trámite con un código emitido por otro canal. El portal no puede canjear un código que él mismo generó.
 - **Sin fecha ni cita en el orquestador.** Su contrato no admite fecha ni cierre con cita: en modo orquestador el trámite termina en «Pendiente de confirmación» y nunca llega a completado.
-- **Continuidad identificada.** Necesita que la API central y el orquestador desplegados incluyan `17c9b27` de `main`. Con un orquestador anterior, `access-grants` no existe y el portal no puede abrir los trámites. El Call Center recupera los trámites a través del orquestador, sin intervención del portal. La autorización del paciente para un asesor, `patient-assertion-consents`, queda para después del MVP.
+- **Continuidad identificada.** Necesita que la API central y el orquestador desplegados incluyan `17c9b27` de `main`. Con un orquestador anterior, `access-grants` no existe y el portal no puede abrir los trámites. El portal no emite la autorización del paciente para un asesor, `patient-assertion-consents`: queda para después del MVP.
 - **Lista vacía ante una acreditación rechazada.** El orquestador responde igual a una identidad sin trámites que a una acreditación inválida. El portal muestra la lista vacía, y el error aparece al intentar crear.
 - **Límite de acceso compartido.** La API general limita el acceso por IP, y todas las peticiones le llegan desde el servidor del portal. Unos pocos fallos pueden bloquear el acceso a todos mientras `FORWARD_CLIENT_IP` siga apagada.
 - **Catálogo en caché.** Un cambio en estudios o clínicas tarda hasta `CATALOG_CACHE_SECONDS` en verse, más lo que guarde el proxy.
@@ -298,7 +383,7 @@ Viven en memoria y se vacían al reiniciar.
 
 ## Más documentación
 
-- [Guion de la demostración](docs/demo.md)
+- [Notas para presentar la demostración](docs/demo.md)
 - [Estado del portal, para retomar el trabajo](docs/estado.md)
 - [Decisiones y sus motivos](docs/decisions.md)
 - [Contrato de continuidad identificada](docs/contratos/continuidad-identificada.md)

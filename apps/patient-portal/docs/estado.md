@@ -1,13 +1,13 @@
 # Estado del portal del paciente
 
-**Fecha.** 2026-11-25. **Rama.** `dev/patient-portal`, publicada en `origin` y sin fusionar en `main`. Este documento sirve para retomar el trabajo en otra sesión. Las decisiones y sus motivos están en [decisions.md](decisions.md).
+**Fecha.** 2026-11-25. **Rama.** `dev/patient-portal`, publicada en `origin`. `main` ya incluye el portal hasta `a8ddcc4`. Este documento sirve para retomar el trabajo en otra sesión. Las decisiones y sus motivos están en [decisions.md](decisions.md).
 
 ## Resumen
 
 1. El portal es el sitio web del paciente, con Next.js: acceso, catálogo de estudios y clínicas, y trámite de agendamiento.
 2. Registra los trámites en la API general o en el orquestador, según `REQUESTS_BACKEND`, y en el orquestador emite y canjea códigos de continuidad.
-3. Producción corre la versión fusionada con el PR #8. La fase 5, de rendimiento, está en la rama sin publicar. Las fases 7, 6a, 6b y la integración del emisor están en `origin/dev/patient-portal`, sin fusionar en `main`.
-4. La continuidad identificada ya usa el emisor de acreditaciones de la API central y `access-grants` del orquestador, publicados en `main` en `17c9b27`. La prueba real del portal pasó el 2026-11-24. El Call Center recupera los trámites del paciente a través del orquestador, sin intervención del portal y sin código. La autorización del paciente para Call Center, `patient-assertion-consents`, queda pospuesta después del MVP.
+3. `main` incluye el portal hasta la fase 8, `a8ddcc4`, fusionado en `7df5c1b`. En la rama quedan solo commits de documentación posteriores. Qué revisión corre el servidor publicado está por confirmar.
+4. La continuidad identificada ya usa el emisor de acreditaciones de la API central y `access-grants` del orquestador, publicados en `main` en `17c9b27`. La prueba real del portal pasó el 2026-11-24. El Call Center recupera el trámite según su propia documentación. Que el portal emita la autorización del paciente para Call Center, `patient-assertion-consents`, queda para después del MVP.
 5. **Bloquea la demo:** el portal publicado responde «No pudimos crear el trámite. Inténtalo de nuevo.» al crear un trámite.
 6. El diagnóstico apunta a la clave del canal o a la URL del orquestador en el servidor. Faltan las comprobaciones del responsable del servidor.
 
@@ -30,8 +30,6 @@ WhatsApp quedó fuera del MVP el 2026-11-24. Desde la fase 7 la interfaz del por
 2. Administración.
 3. App móvil, si da tiempo.
 
-WhatsApp queda fuera del MVP.
-
 **Servicios.** Cada uno con su propia base de datos.
 
 | Servicio | Qué atiende | Contrato |
@@ -44,10 +42,10 @@ El portal llama a los dos desde su servidor. La clave del canal Web y los permis
 **Recorrido de la demo.**
 
 1. Web inicia el trámite y elige el estudio y la clínica.
-2. El Call Center recupera el trámite a través del orquestador, sin código, y lo deja pendiente de confirmación.
+2. El Call Center recupera el trámite y lo continúa, según su propia documentación.
 3. Administración muestra el recorrido completo.
 
-El código de continuidad queda como contingencia. El guion está en [demo.md](demo.md).
+El código de continuidad queda como contingencia. Los pasos del portal están en el [README](../README.md), «Demostración», y las notas para presentar en [demo.md](demo.md).
 
 ## Lo terminado
 
@@ -67,7 +65,9 @@ El código de continuidad queda como contingencia. El guion está en [demo.md](d
 | 6b | Documentación de entrega: README completo del portal, [guion de la demostración](demo.md), [sección para el README de la raíz](readme-raiz-portal.md) y `CATALOG_CACHE_SECONDS` en `.env.example` | `ff4b912` |
 | 8 | Emisor de acreditaciones de la API central conectado, `access-grants` según el contrato publicado y prueba real contra los servicios publicados | `a8ddcc4`, publicado |
 | 9 | Guion de demo sin código y medición del catálogo por petición | `6e45140` |
-| 10 | Documentación: el Call Center recupera el trámite sin el portal, la autorización del paciente queda pospuesta después del MVP, orden de integración y lo que falta para publicar | Este commit |
+| 10 | Documentación: autorización del paciente para Call Center pospuesta después del MVP, orden de integración y lo que falta para publicar | `82d0235` |
+| — | Merge de `main` hasta `bff1f58` | `224aa20` |
+| 11 | Documentación de entrega: README con instalación desde un clon limpio, credenciales por rol con marcadores y pasos de la demostración; READMEs de subcarpetas al día | Este commit |
 
 **Diagnóstico posterior.** El error de creación en producción, sin cambios de código. El resultado está en «Estado del despliegue».
 
@@ -77,9 +77,9 @@ El código de continuidad queda como contingencia. El guion está en [demo.md](d
 
 ## Estado del despliegue
 
-**Versión en `main`.** El portal tal como quedó en `7407038`, fusionado con el PR #8. Ningún commit posterior de `main` toca `apps/patient-portal`. Que el servidor corra exactamente esa revisión, y con qué variables, está por confirmar con su responsable.
+**Versión en `main`.** El portal hasta la fase 8, `a8ddcc4`, fusionado en `7df5c1b`. Qué revisión corre el servidor publicado, y con qué variables, está por confirmar con su responsable.
 
-**En la rama.** `origin/dev/patient-portal` incluye las fases 5, 7, 6a, 6b, 8 y 9, y los merges de `main` hasta `17c9b27`. Nada de eso está todavía en `main`.
+**En la rama.** `origin/dev/patient-portal` añade a `main` solo documentación: las fases 9, 10 y 11. Integra `main` hasta `bff1f58`.
 
 **Error «No pudimos crear el trámite. Inténtalo de nuevo.»**
 
@@ -105,7 +105,7 @@ En pantalla se distingue el modo:
 
 ## Lo que falta para publicar
 
-1. **Integración en `main`.** `dev/patient-portal` incluye las fases 5, 7, 6a, 6b, 8 y 9 y los merges de `main` hasta `17c9b27`. Falta fusionarla en `main` con un PR, cuando se autorice abrirlo.
+1. **Integración en `main`.** `main` ya incluye el portal hasta `a8ddcc4`. Falta fusionar la documentación posterior de `dev/patient-portal` con un PR, cuando se autorice abrirlo.
 2. **Variables de producción**, en la configuración privada del servicio. Aquí solo van los nombres. Los valores los pone el responsable del servidor.
 
 | Variable | Valor en producción |
@@ -129,7 +129,7 @@ En este orden:
 
 1. **Resolver el error de creación en producción**, con las comprobaciones de arriba.
 2. **Integración en `main` y variables de producción**, según «Lo que falta para publicar».
-3. **Ensayo conjunto con el Call Center** del recorrido de [demo.md](demo.md).
+3. **Ensayo conjunto con el Call Center** de la [demostración](../README.md#demostración).
 4. **Prueba del portal publicado desde el navegador de un teléfono.**
 5. **Prueba conjunta con la app móvil**, si se integra a tiempo.
 6. **Fase 6:**
@@ -233,7 +233,7 @@ pnpm --filter @salud-digna/patient-portal test:legacy         # o un grupo: lega
 **Documentos.**
 
 - [Decisiones del portal](decisions.md)
-- [Guion de la demostración](demo.md)
+- [Notas para presentar la demostración](demo.md). Los pasos están en el [README](../README.md), «Demostración».
 - [Sección del portal para el README de la raíz](readme-raiz-portal.md)
 - [Contrato de continuidad identificada](contratos/continuidad-identificada.md)
 - [README del portal](../README.md)

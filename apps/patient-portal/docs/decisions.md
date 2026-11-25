@@ -261,7 +261,7 @@ Cada `POST /events` lleva el `eventId` como `externalEventId`, `schemaVersion: 1
 
 **Pertenencia.** Toda lectura o escritura pasa por `resolveAccess`. Primero pide el perfil a la API general, porque el orquestador no conoce al paciente ni su sesión. Después comprueba en el registro que el trámite es de esa cuenta: si no lo es, responde «no encontrado» sin llamar al orquestador. Por último busca el permiso: sin uno vigente responde `access-expired`, también sin llamar.
 
-**Pantallas en modo orquestador.**
+**Pantallas en modo orquestador.** Con `PATIENT_IDENTITY_MODE=none`. Lo que cambia con `assertion` está en «Continuidad identificada».
 
 | Pantalla | Qué muestra |
 | --- | --- |
@@ -269,7 +269,7 @@ Cada `POST /events` lleva el `eventId` como `externalEventId`, `schemaVersion: 1
 | `/tramite/[id]` | Estudio, clínica y revisión. Sin horario, nota, «Guardar y continuar después», confirmación directa ni ayuda de asesor. |
 | Continuar en otro canal | Desde que hay estudio: botón «Generar código de continuidad», el código, su vencimiento y «Copiar código». |
 | Revisión | Resumen y botón «Enviar a confirmación». |
-| Pendiente de confirmación | Título «Pendiente de confirmación», resumen, folio del trámite con botón de copiar y «Puedes continuar por WhatsApp o Call Center.». |
+| Pendiente de confirmación | Título «Pendiente de confirmación», resumen, folio del trámite con botón de copiar y «Puedes continuar en la app móvil o en Call Center.». Con `PATIENT_IDENTITY_MODE=assertion` añade «al identificarte verás este trámite, sin código.». |
 | Cancelar | Enlace «Cancelar trámite». El formulario que cancela solo existe en la página tras pedirlo, con `?cancelar=1`. |
 | `/continuar` | Lista del registro. Con permiso vigente, el estado del trámite. Sin él, «Necesita un permiso nuevo», con folio y fecha de registro y sin datos del trámite. Debajo, el campo «Tengo un código de continuidad». |
 | `/tramite/[id]/historial` | Línea de tiempo con el tipo de evento en español, el canal que lo produjo y la fecha. En modo heredado responde `404`. |
@@ -423,7 +423,7 @@ Revisado el 2026-11-24 en el código de `apps/orchestrator` que hay en `main`, e
 
 **Fecha.** 2026-11-24, revisada el 2026-11-25. **Estado: pospuesta después del MVP.** No está implementada.
 
-**En el MVP.** El Call Center recupera los trámites del paciente a través del orquestador, sin intervención del portal y sin código. El portal no emite ninguna autorización para el asesor.
+**En el MVP.** El portal no emite ninguna autorización para el asesor. El Call Center recupera el trámite según su propia documentación.
 
 Lo que sigue se conserva como referencia para una fase posterior.
 
@@ -431,15 +431,12 @@ Lo que sigue se conserva como referencia para una fase posterior.
 
 - **Petición.** `POST /api/v1/auth/patient-assertion-consents` con la sesión `PATIENT`, la credencial del canal Web en `X-Patient-Assertion-Channel-Key`, sin `Origin`, y el cuerpo `{"advisorId":"<UUID de cuenta del asesor>","channel":"<código del canal de Call Center>"}`.
   - Fuentes: líneas 58 y 79-84 del contrato, `patient-assertions.controller.ts:26-36` y `:47-57`.
-- **Qué autoriza.** A ese asesor concreto, y solo en ese canal con rol `ADVISOR`, a obtener acreditaciones del paciente para listar sus trámites activos y pedir permisos.
+- **Qué autoriza.** A ese asesor concreto, en ese canal.
   - Fuentes: `patient-assertions.service.ts:120-133` y `:99-107`.
 - **Vigencia.** Como mucho cinco minutos, acotada por la sesión del paciente. Es reutilizable mientras dura y no se puede revocar antes en el MVP, así que no cabe «Retirar autorización».
   - Fuentes: `patient-assertions.service.ts:15`, `:54-57` y `:130`, y líneas 91-94 del contrato.
 - **Respuesta.** `200` con `{"consent":"<JWS>"}`. Es una credencial: el contrato pide guardarla en el servidor y no devolverla al navegador.
   - Fuentes: línea 58 y líneas 52-53 del contrato.
-- **Cómo la usa el Call Center.** Presenta el consentimiento a `POST /api/v1/auth/patient-assertions` con su JWT de asesor y su credencial de canal. Recibe una acreditación con la que lista los trámites y pide permisos.
-  - Fuentes: líneas 59 y 85-89 del contrato, `patient-assertions.service.ts:99-117`.
-  - `apps/call-center/src` no tiene todavía ningún código que lo haga.
 
 **Preguntas para una fase posterior.** No bloquean el MVP. El contrato lo deja abierto: «Los backends deben acordar cómo identificar al asesor y entregar el consentimiento de forma privada» y «La transferencia entre backends queda pendiente de implementación» (líneas 81-84 y 95-97).
 
@@ -729,7 +726,7 @@ La solución de fondo es un parámetro de ciudad en la API.
 
 El paciente confirma su cita en el portal con `POST /api/v1/requests/{id}/confirm` y la versión vigente de la solicitud. Un reintento compatible recupera la misma cita. Consulta la guía pública, sección «Catálogos, solicitudes y citas».
 
-Si el paciente necesita ayuda, genera un código de asistencia con `POST /api/v1/requests/{id}/assistance-code`, sin cuerpo, y lo entrega al asesor. El código tiene 22 caracteres, vence a los cinco minutos y se consume una vez. Con él, el asesor obtiene un permiso de 30 minutos para consultar la solicitud y confirmarla. Para editar las selecciones, el paciente usa su propia sesión. Consulta la [guía de Call Center](../../../docs/frontend-callcenter.md), sección «Recuperar una atención», y el [contrato de Call Center](../../../docs/api-call-center.md), sección «Emitir y canjear».
+Solo en modo heredado. Si el paciente necesita ayuda, genera un código de asistencia con `POST /api/v1/requests/{id}/assistance-code`, sin cuerpo, y lo entrega al asesor. El código tiene 22 caracteres, vence a los cinco minutos y se consume una vez. Lo que hace el asesor con él es del Call Center. Para editar las selecciones, el paciente usa su propia sesión.
 
 ### Vinculación de WhatsApp
 
@@ -745,7 +742,7 @@ En modo orquestador, `/tramite/[id]/historial` muestra la línea de tiempo de `G
 
 ### Actualización sin tiempo real
 
-La API carece de tiempo real. El portal consulta el estado por REST a intervalos y compara `version` para detectar cambios hechos desde otro canal. La guía pública indica recargar `GET /api/v1/requests/{id}` al volver a la web, en su sección «Demostración Web → WhatsApp → Call Center».
+Los servicios no avisan de los cambios. El portal lee el trámite en cada carga de página, sin actualización automática: lo que haga otro canal se ve al abrir o recargar el trámite. Cada evento lleva la versión que vio el paciente, y ante un conflicto el portal vuelve a leer antes de reintentar.
 
 ### Dirección de desarrollo
 

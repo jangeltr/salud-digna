@@ -1,3 +1,3 @@
 # mocks
 
-Respuestas simuladas de operaciones del contrato, para desarrollar el portal sin depender del entorno desplegado. Cada respuesta cumple `docs/openapi.json` en rutas, formas, enums y códigos de error. Usa solo datos sintéticos.
+Vacía. Los servicios simulados que usan las pruebas, la API general y el orquestador, están en [`tests/stubs/`](../tests/stubs/). Ver la sección «Pruebas» del [README](../README.md).
