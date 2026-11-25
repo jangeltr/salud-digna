@@ -60,7 +60,7 @@ pnpm --filter @salud-digna/patient-portal dev
 
 Completa `.env.local` antes de arrancar. El portal queda en `http://127.0.0.1:5173`. En desarrollo el registro está encendido y no se envía `Strict-Transport-Security`.
 
-`pnpm --filter @salud-digna/patient-portal check` comprueba los tipos.
+`pnpm --filter @salud-digna/patient-portal check` comprueba los tipos. Las pruebas están en «Pruebas».
 
 ## Arrancar en producción
 
@@ -130,6 +130,55 @@ Viven en memoria y se vacían al reiniciar.
 | Trámites empezados | 20 por paciente y hora. |
 | Códigos de continuidad generados | 30 por paciente y hora. |
 | Canjes fallidos de un código | 5 por paciente cada 10 minutos. |
+
+## Pruebas
+
+Las pruebas viven en [`tests/`](tests/) y solo usan Node y lo que ya instaló el proyecto. Compilan el portal en modo producción, lo arrancan con `next start` y lo recorren contra una API general y un orquestador simulados. Ninguna prueba llama a servicios desplegados.
+
+Desde la raíz del monorepo:
+
+```sh
+pnpm --filter @salud-digna/patient-portal test                 # todo, unos 12 minutos
+pnpm --filter @salud-digna/patient-portal test:legacy          # modo heredado
+pnpm --filter @salud-digna/patient-portal test:orchestrator    # modo orquestador, sin acreditación
+pnpm --filter @salud-digna/patient-portal test:identity        # continuidad identificada y arranques inválidos
+pnpm --filter @salud-digna/patient-portal test:publication     # registro, IP del cliente, límites y cabeceras
+pnpm --filter @salud-digna/patient-portal test:load            # carga, en los dos modos
+```
+
+Cada script acepta `--sin-compilar`, para reutilizar la última compilación de pruebas, y `--sin-navegador`. Por ejemplo, `pnpm --filter @salud-digna/patient-portal test:legacy --sin-compilar`. Con `VERBOSE=1` se ve cada comprobación.
+
+**Qué garantiza el lanzador**, `tests/run.mjs`:
+
+- **Puertos.** Usa el 5183 para el portal, el 4010 para la API general simulada, el 4011 para el orquestador simulado y el 9333 para el navegador.
+  - Se cambian con `TEST_PORTAL_PORT`, `TEST_API_PORT`, `TEST_ORCHESTRATOR_PORT` y `TEST_BROWSER_PORT`.
+  - Nunca usa el 5173, que es del servidor de desarrollo.
+  - Si un puerto está ocupado, se detiene sin tocar el proceso que lo ocupa.
+- **Procesos.** Solo cierra los procesos que arrancó.
+- **Variables.** Fija todas las que lee el portal, así nunca se usan los valores de `.env.local`. Se niega a arrancar si la API general o el orquestador no apuntan a `127.0.0.1`.
+- **Credenciales.** Cuentas, contraseña, tokens, claves de canal y clave del emisor de acreditaciones son sintéticos. Se generan en cada ejecución a partir de un valor aleatorio que no se escribe en disco ni en la salida. Los correos son del dominio reservado `example.com`.
+- **Archivos.** Las suites no escriben en `.data` ni en `.env.local`. El registro del canal Web, los registros del servidor, las capturas y los perfiles del navegador van a una carpeta temporal que se borra al terminar. La compilación escribe en `.next`, como `next build`.
+- **Navegador.** Las pruebas de navegador usan Chrome o Chromium sin interfaz, buscado en las rutas habituales o en `CHROME_PATH`. Si no lo encuentra, las omite con un aviso, sin fallar.
+
+**Qué cubre cada suite**:
+
+| Grupo | Suite | Qué comprueba |
+| --- | --- | --- |
+| heredado | `suites/flow.mjs` | Trámite guiado contra la API general: pasos, horarios, nota, vuelta atrás, selección sin cambios, conflicto de versión, pausa, código de asistencia, confirmación, creación incierta, errores, trámites ajenos y sesión vencida |
+| heredado y orquestador | `suites/shell.mjs` | Sin rastro de la PWA, encabezado único con y sin sesión, aviso de continuidad |
+| heredado y orquestador | `suites/cache.mjs` | Catálogo en caché, cookie indicadora, caché de sesión de 60 segundos e índice del catálogo |
+| heredado y orquestador | `browser/shell.mjs` | Encabezado y carcasa en un navegador real, en teléfono y escritorio |
+| orquestador | `suites/capture.mjs` | Paso previo: guarda los formularios que el modo orquestador oculta |
+| orquestador | `suites/orchestrator.mjs` | Contrato del orquestador: creación idempotente, eventos, dos casos de 409, historial, tiempos de espera, 401 y 403, permisos vencidos, códigos de continuidad, trámites ajenos y secretos |
+| orquestador | `suites/orchestrator.mjs reinicio` | Tras reiniciar el portal: el registro del canal Web se conserva, los permisos se pierden y no hay secretos en disco ni en el registro del servidor |
+| orquestador | `browser/orchestrator.mjs` | Revisión, continuidad, cancelación, historial y canje en un navegador real |
+| identidad | `suites/identity.mjs simulador` y `pendiente` | Creación y listado con acreditación, `access-grants`, dos pacientes aislados, permiso renovado, trámite de otro canal, fallo de acreditación sin creación anónima, emisor pendiente y nada secreto en HTML, cookies, URL ni registro |
+| arranque | en `run.mjs` | Seis configuraciones inválidas de identidad que deben impedir el arranque, sin secretos en el registro |
+| publicacion | `suites/publication.mjs abierto` y `cerrado` | Registro controlado, IP del cliente, cabeceras de seguridad, página de error, sesión vencida, límites de acceso y topes de trámites y códigos |
+| publicacion | `browser/publication.mjs` | La política de contenido no rompe nada en un navegador real |
+| carga | `suites/load.mjs` | Peticiones por segundo, latencias y llamadas a los servicios por petición en cinco escenarios. Solo exige que todas las respuestas sean 200 |
+
+**Fallos conocidos en modo orquestador.** `shell.mjs` da 39 de 41 en ese modo. Fallan «otro canal conocido: se nombra WhatsApp» y «canal sin nombre en el portal: se muestra «otro canal»». El aviso «Dejaste este trámite en…» sale del canal de la última actividad que informa la API general, y en ese modo el trámite vive en el orquestador. El lanzador los marca como «fallos conocidos» y no hace fallar la ejecución; cualquier otro fallo, sí. `flow.mjs` no se ejecuta en modo orquestador: recorre las operaciones `/requests` de la API general, y `orchestrator.mjs` cubre ese modo.
 
 ## Recorrido de demostración: Web, código de continuidad y app móvil
 

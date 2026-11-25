@@ -100,7 +100,7 @@ En este orden:
 4. **Prueba conjunta del código de continuidad con la app móvil.**
 5. **Prueba del portal publicado desde el navegador de un teléfono.**
 6. **Fase 6:**
-   - suites y servicios simulados dentro del repositorio;
+   - suites y servicios simulados dentro del repositorio: hecho en la fase 6a, en [`tests/`](../tests/);
    - README completo del portal y `CATALOG_CACHE_SECONDS` en `.env.example`;
    - texto de la sección del portal para el README de la raíz.
 
@@ -144,7 +144,6 @@ En este orden:
 | Permiso de cinco minutos | Pasado ese tiempo, el portal no puede leer ni cambiar el trámite hasta recibir un código de continuidad emitido en otro canal. |
 | Trámites que no llegan a `COMPLETED` | El contrato del orquestador no admite fecha ni cierre con cita. En el portal, el trámite termina en «Pendiente de confirmación». |
 | Continuidad identificada sin emisor | Con `PATIENT_IDENTITY_MODE=assertion` y el emisor `pending`, ningún paciente puede crear ni ver trámites. No debe activarse en producción hasta tener el emisor y `access-grants` desplegados. |
-| Suites de prueba fuera del repositorio | Están en una carpeta temporal de la sesión de trabajo, fuera del repositorio, y pueden perderse. Nadie más puede ejecutarlas hasta la fase 6. |
 
 ## Cómo retomar
 
@@ -163,18 +162,11 @@ API_BASE_URL=http://127.0.0.1:4010/api/v1 REQUESTS_BACKEND=legacy \
   pnpm --filter @salud-digna/patient-portal build
 ```
 
-**Probar en los dos modos.** Con la compilación de producción en un puerto distinto de 5173 y servicios simulados. Los simuladores y las suites aún están fuera del repositorio, hasta la fase 6.
+**Probar en los dos modos.** Las suites y los servicios simulados están en [`tests/`](../tests/). El lanzador compila, arranca el portal en el puerto 5183 contra los simuladores y genera credenciales sintéticas en cada ejecución. Qué cubre cada suite y los dos fallos conocidos en modo orquestador están en el [README](../README.md), sección «Pruebas».
 
 ```sh
-# Modo legacy
-API_BASE_URL=http://127.0.0.1:4010/api/v1 REQUESTS_BACKEND=legacy \
-  pnpm --filter @salud-digna/patient-portal exec next start --hostname 127.0.0.1 --port 5183
-
-# Modo orquestador, con una clave sintética del orquestador simulado
-API_BASE_URL=http://127.0.0.1:4010/api/v1 REQUESTS_BACKEND=orchestrator \
-ORCHESTRATOR_BASE_URL=http://127.0.0.1:4011/api/v1 ORCHESTRATOR_API_KEY=<clave sintética> \
-PORTAL_DATA_DIR=<carpeta temporal> \
-  pnpm --filter @salud-digna/patient-portal exec next start --hostname 127.0.0.1 --port 5183
+pnpm --filter @salud-digna/patient-portal test                # todo
+pnpm --filter @salud-digna/patient-portal test:legacy         # o un grupo: legacy, orchestrator, identity, publication, load
 ```
 
 **Variables.** Todas las lee solo el servidor.

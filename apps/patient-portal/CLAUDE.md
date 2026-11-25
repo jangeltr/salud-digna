@@ -43,6 +43,7 @@ Desde el 2026-11-24 el portal es solo web. El proyecto cambió de arquitectura: 
 - Los límites propios están en `lib/session/limits.ts`. La IP del cliente sale solo de la cabecera `X-Real-IP` que escribe el proxy, nunca de otra cabecera del navegador.
 - `REGISTRATION_ENABLED` y `FORWARD_CLIENT_IP` se leen en el servidor y admiten solo `true` o `false`. La segunda sigue apagada hasta acordarla con el equipo de la API.
 - Las pruebas locales usan un puerto distinto de 5173 y servicios simulados. Contra servicios desplegados, solo con autorización y contando cada llamada a registro y acceso.
+- Las suites y los simuladores viven en `tests/` y se ejecutan con `pnpm test` y sus grupos. Solo usan Node y lo instalado, credenciales sintéticas generadas en cada ejecución y carpetas temporales. Una suite nueva sigue esas reglas y se documenta en la sección «Pruebas» del README.
 - Si el portal necesita algo que el contrato no ofrece, repórtalo en lugar de simularlo con campos inventados.
 
 ## Convenciones
