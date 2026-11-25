@@ -1,27 +1,18 @@
 import "server-only";
 import { cache } from "react";
+import { CATALOG_CACHE_SECONDS } from "@/lib/cache-settings";
 import { failure, success } from "@/lib/domain/errors";
-import type { CatalogQuery, Clinic, Page, Patient, Study } from "@/lib/domain/model";
+import type { CatalogQuery, Page, Patient } from "@/lib/domain/model";
 import type { GeneralData } from "@/lib/domain/ports";
-import { writeSessionCookie } from "@/lib/session/cookie";
-import { authorizedRequest } from "./authorized";
+import { clearSessionCookie, readSessionToken, writeSessionCookie } from "@/lib/session/cookie";
+import { clinicIndex, findInIndex, studyIndex, toClinic, toStudy } from "./catalog";
 import { apiRequest } from "./client";
 import { forwardsClientIp, getApiBaseUrl } from "./config";
 import { toFailure, toResult } from "./failures";
 import type { components } from "./schema";
+import { cachedProfile, forgetSession, rememberExpiry, rememberProfile } from "./session";
 
 type Schemas = components["schemas"];
-
-// El catálogo es público y cambia poco: sus respuestas se reutilizan unos segundos.
-const CATALOG_REVALIDATE_SECONDS = 30;
-
-function toStudy(dto: Schemas["StudyDto"]): Study {
-  return { id: dto.id, name: dto.name, description: dto.description ?? undefined, price: dto.price };
-}
-
-function toClinic(dto: Schemas["ClinicDto"]): Clinic {
-  return { id: dto.id, name: dto.name, address: dto.address, city: dto.city, state: dto.state };
-}
 
 function toPatient(dto: Schemas["AccountDto"]): Patient {
   return {
@@ -59,45 +50,47 @@ export const generalApiData: GeneralData = {
       method: "GET",
       path: "/studies",
       query: catalogParams(query),
-      revalidate: CATALOG_REVALIDATE_SECONDS,
+      revalidate: CATALOG_CACHE_SECONDS,
     });
     return toResult(result, toPage(toStudy));
   },
 
-  // `cache` evita repetir la llamada entre los metadatos y la página en un mismo renderizado.
-  getStudy: cache(async (id: string) => {
-    const result = await apiRequest<Schemas["StudyDto"]>({
-      method: "GET",
-      path: "/studies/{id}",
-      params: { id },
-      revalidate: CATALOG_REVALIDATE_SECONDS,
-    });
-    return toResult(result, toStudy);
-  }),
+  // Del índice del catálogo. `cache` evita repetir la búsqueda entre los metadatos y la página.
+  getStudy: cache(async (id: string) => findInIndex(await studyIndex(), id, "/studies/{id}", toStudy)),
 
   async listClinics(query) {
     const result = await apiRequest<Schemas["ClinicPageDto"]>({
       method: "GET",
       path: "/clinics",
       query: catalogParams(query),
-      revalidate: CATALOG_REVALIDATE_SECONDS,
+      revalidate: CATALOG_CACHE_SECONDS,
     });
     return toResult(result, toPage(toClinic));
   },
 
-  getClinic: cache(async (id: string) => {
-    const result = await apiRequest<Schemas["ClinicDto"]>({
-      method: "GET",
-      path: "/clinics/{id}",
-      params: { id },
-      revalidate: CATALOG_REVALIDATE_SECONDS,
-    });
-    return toResult(result, toClinic);
-  }),
+  getClinic: cache(async (id: string) => findInIndex(await clinicIndex(), id, "/clinics/{id}", toClinic)),
+
+  async allClinics() {
+    const index = await clinicIndex();
+    return index.ok ? success({ items: index.data.items, truncated: index.data.truncated }) : index;
+  },
 
   async getProfile() {
-    const result = await authorizedRequest<Schemas["AccountDto"]>({ method: "GET", path: "/auth/me" });
-    return toResult(result, toPatient);
+    // Sin token no se llama a la API: equivale a una sesión inválida.
+    const token = await readSessionToken();
+    if (!token) return failure("session");
+
+    const known = await cachedProfile(token);
+    if (known) return success(known);
+
+    const result = await apiRequest<Schemas["AccountDto"]>({ method: "GET", path: "/auth/me", token });
+    if (!result.ok) {
+      if (result.status === 401) await forgetSession(token);
+      return toFailure(result);
+    }
+    const patient = toPatient(result.data);
+    await rememberProfile(token, patient);
+    return success(patient);
   },
 
   async signIn({ email, password }) {
@@ -112,6 +105,8 @@ export const generalApiData: GeneralData = {
     const { accessToken, expiresIn } = result.data;
     if (!accessToken || !Number.isFinite(expiresIn) || expiresIn <= 0) return failure("unavailable");
     await writeSessionCookie(accessToken, Math.floor(expiresIn));
+    // Con el vencimiento conocido, el perfil de esta sesión se puede guardar unos segundos.
+    await rememberExpiry(accessToken, Date.now() + Math.floor(expiresIn) * 1000);
     return success(undefined);
   },
 
@@ -123,5 +118,12 @@ export const generalApiData: GeneralData = {
       body: { firstName, lastName, email, password, ...(phone ? { phone } : {}) },
     });
     return toResult(result, () => undefined);
+  },
+
+  // La API no ofrece cerrar sesión: el token sigue siendo válido allí hasta que vence.
+  async signOut() {
+    const token = await readSessionToken();
+    if (token) await forgetSession(token);
+    await clearSessionCookie();
   },
 };

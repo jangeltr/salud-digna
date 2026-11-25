@@ -17,7 +17,9 @@ import { NoticeBanner, Progress, RequestForm } from "@/features/requests/parts";
 import { ClinicPicker, SlotPicker, StudyPicker } from "@/features/requests/pickers";
 import { ConfirmedStep, ReviewStep } from "@/features/requests/review";
 import { continuityNotice, flowSteps, isOpen, readEditable, readNotice, type Editable } from "@/features/requests/steps";
+import { IdentityUnavailable } from "@/features/requests/summary-list";
 import { requestCapabilities, requestQuery } from "@/lib/composition";
+import { reportShownError } from "@/lib/report";
 import { expireSession, requireAccount } from "@/lib/session/session";
 
 export const metadata: Metadata = { title: "Trámite" };
@@ -43,18 +45,21 @@ export default async function RequestPage({ params, searchParams }: PageProps<"/
   if (!isUuid(id)) notFound();
 
   const path = `/tramite/${id}`;
-  if (!(await requireAccount())) return <ServiceUnavailable retryHref={path} />;
+  // La sesión y el trámite se leen a la vez. El perfil se pide una sola vez por petición:
+  // la sesión y el adaptador del trámite comparten la misma lectura.
+  const [account, result] = await Promise.all([requireAccount(), requestQuery.getRequest(id)]);
+  if (!account) return <ServiceUnavailable retryHref={path} />;
 
-  const result = await requestQuery.getRequest(id);
   if (!result.ok) {
     if (result.error.kind === "session") await expireSession();
+    reportShownError("/tramite/[id]", result.error.kind);
     // «No encontrado» cubre por igual el trámite inexistente y el de otro paciente.
     if (result.error.kind === "not-found" || result.error.kind === "invalid") notFound();
-    if (result.error.kind === "access-expired") {
+    if (result.error.kind === "access-expired" || result.error.kind === "identity-unavailable") {
       return (
         <>
           <h1 className="text-2xl font-bold tracking-tight">Trámite de agendamiento</h1>
-          <AccessExpired requestId={id} />
+          {result.error.kind === "access-expired" ? <AccessExpired requestId={id} /> : <IdentityUnavailable retryHref={path} />}
         </>
       );
     }
@@ -75,7 +80,11 @@ export default async function RequestPage({ params, searchParams }: PageProps<"/
     page: readPage(query.pagina),
     day: readText(query.dia),
   };
-  const selections = await loadSelections(request.selections);
+  // El estudio y la clínica salen del índice del catálogo; la cita solo se busca si el trámite terminó.
+  const [selections, appointment] = await Promise.all([
+    loadSelections(request.selections),
+    view === "completed" ? findAppointment(id) : undefined,
+  ]);
   const continuity = continuityNotice(request);
   const chosen = [selections.study?.name, selections.clinic?.name].filter(Boolean).join(" · ");
   const warnings = capabilities.slot ? EDIT_WARNINGS : EDIT_WARNINGS_WITHOUT_SLOT;
@@ -125,7 +134,7 @@ export default async function RequestPage({ params, searchParams }: PageProps<"/
         <ConfirmedStep
           request={request}
           selections={selections}
-          appointment={await findAppointment(id)}
+          appointment={appointment}
           showSchedule={capabilities.slot}
         />
       ) : (
@@ -151,7 +160,7 @@ export default async function RequestPage({ params, searchParams }: PageProps<"/
       {open && capabilities.pause ? (
         <div className="mt-10 border-t border-line pt-6">
           <RequestForm action={pauseAndLeave} request={request} label="Guardar y continuar después" secondary />
-          <p className="mt-2 text-sm text-muted">Tu avance queda guardado. Podrás retomarlo aquí, por WhatsApp o con un asesor.</p>
+          <p className="mt-2 text-sm text-muted">Tu avance queda guardado. Podrás retomarlo aquí, en la app móvil o con un asesor.</p>
         </div>
       ) : null}
 

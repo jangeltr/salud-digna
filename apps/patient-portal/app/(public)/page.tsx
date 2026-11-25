@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { LinkPending } from "@/components/link-pending";
 import { SearchForm } from "@/features/catalog/search-form";
+import { STUDIES_SEARCH_PATH } from "@/features/catalog/studies-view";
 import { APP_NAME } from "@/lib/brand";
 
 const shortcuts = [
@@ -14,7 +15,7 @@ export default function HomePage() {
       <h1 className="text-2xl font-bold tracking-tight">{APP_NAME}</h1>
       <p className="mt-2 text-muted">Busca un estudio para conocer su precio y agendarlo.</p>
       <SearchForm
-        action="/estudios"
+        action={STUDIES_SEARCH_PATH}
         label="Buscar estudios"
         fields={[{ name: "q", label: "Nombre del estudio", placeholder: "Por ejemplo, glucosa" }]}
       />

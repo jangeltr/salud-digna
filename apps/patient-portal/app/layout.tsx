@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import { PrototypeBanner } from "@/components/prototype-banner";
-import { SiteHeader } from "@/components/site-header";
 import { APP_DESCRIPTION, APP_NAME, THEME_COLOR } from "@/lib/brand";
 import "./globals.css";
 
@@ -27,14 +26,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           Saltar al contenido
         </a>
         <PrototypeBanner />
-        <SiteHeader />
-        <main
-          id="contenido"
-          tabIndex={-1}
-          className="safe-x mx-auto w-full max-w-3xl flex-1 scroll-mt-12 py-8 outline-none"
-        >
-          {children}
-        </main>
+        {/* Encabezado y contenido los pone cada grupo de rutas, en `PageFrame`: este diseño no lee cookies. */}
+        {children}
       </body>
     </html>
   );

@@ -2,13 +2,12 @@
 
 import "server-only";
 import { notFound, redirect } from "next/navigation";
-import { generalData } from "@/lib/composition";
-import { blockedFor, clearFailures, recordFailure } from "@/lib/session/attempts";
+import { attemptStore, generalData } from "@/lib/composition";
 import { readClientIp } from "@/lib/session/client-ip";
-import { clearSessionCookie } from "@/lib/session/cookie";
 import { LOGIN_BY_EMAIL, LOGIN_BY_IP } from "@/lib/session/limits";
 import { SIGN_IN_PATH, safeDestination } from "@/lib/session/routes";
 import { isRegistrationEnabled } from "@/lib/settings";
+import { reportShownError } from "@/lib/report";
 import { authErrorMessage, tooManyAttempts } from "./messages";
 import { validateSignIn, validateSignUp, type FieldErrors } from "./validation";
 
@@ -35,9 +34,12 @@ export async function signIn(_previous: AuthFormState, formData: FormData): Prom
   const emailKey = `login-email:${validated.input.email.toLowerCase()}`;
   const clientIp = await readClientIp();
   const ipKey = clientIp ? `login-ip:${clientIp}` : undefined;
-  const blocked = Math.max(blockedFor(emailKey), ipKey ? blockedFor(ipKey) : 0);
+  const blocked = Math.max(await attemptStore.blockedFor(emailKey), ipKey ? await attemptStore.blockedFor(ipKey) : 0);
   // Con una espera pendiente no se llama al servicio, ni siquiera con la contraseña correcta.
-  if (blocked > 0) return { message: tooManyAttempts(blocked), values };
+  if (blocked > 0) {
+    reportShownError("acción: iniciar sesión", "límite propio del portal");
+    return { message: tooManyAttempts(blocked), values };
+  }
 
   // Si las credenciales son correctas, el servicio de datos generales deja abierta la sesión.
   const result = await generalData.signIn(validated.input);
@@ -45,15 +47,22 @@ export async function signIn(_previous: AuthFormState, formData: FormData): Prom
     const { kind } = result.error;
     // Cuenta cualquier rechazo del servicio. Que el servicio no responda o aplique su propio límite no cuenta.
     if (kind !== "unavailable" && kind !== "rate-limited") {
-      const wait = Math.max(recordFailure(emailKey, LOGIN_BY_EMAIL), ipKey ? recordFailure(ipKey, LOGIN_BY_IP) : 0);
-      if (wait > 0) return { message: tooManyAttempts(wait), values };
+      const wait = Math.max(
+        await attemptStore.recordFailure(emailKey, LOGIN_BY_EMAIL),
+        ipKey ? await attemptStore.recordFailure(ipKey, LOGIN_BY_IP) : 0,
+      );
+      if (wait > 0) {
+        reportShownError("acción: iniciar sesión", "límite propio del portal");
+        return { message: tooManyAttempts(wait), values };
+      }
     }
+    reportShownError("acción: iniciar sesión", result.error.kind);
     return { message: authErrorMessage(result.error), values };
   }
 
   // Un acceso correcto borra los fallos de ese correo. Los de la IP se conservan:
   // una cuenta válida no debe servir para seguir probando otras desde la misma IP.
-  clearFailures(emailKey);
+  await attemptStore.clearFailures(emailKey);
   redirect(safeDestination(formData.get("destino")));
 }
 
@@ -71,7 +80,10 @@ export async function signUp(_previous: AuthFormState, formData: FormData): Prom
   if ("fieldErrors" in validated) return { fieldErrors: validated.fieldErrors, values };
 
   const created = await generalData.signUp(validated.input);
-  if (!created.ok) return { message: authErrorMessage(created.error), values };
+  if (!created.ok) {
+    reportShownError("acción: registro", created.error.kind);
+    return { message: authErrorMessage(created.error), values };
+  }
 
   // El registro no abre la sesión: hace falta un acceso con los mismos datos.
   const { email, password } = validated.input;
@@ -81,8 +93,8 @@ export async function signUp(_previous: AuthFormState, formData: FormData): Prom
   redirect(safeDestination(formData.get("destino")));
 }
 
-/** Borra la cookie. El servicio no tiene cierre de sesión: el token sigue válido allí hasta que vence. */
+/** Cierra la sesión del portal. El servicio no tiene cierre de sesión: el token sigue válido allí hasta que vence. */
 export async function signOut(): Promise<void> {
-  await clearSessionCookie();
+  await generalData.signOut();
   redirect(SIGN_IN_PATH);
 }

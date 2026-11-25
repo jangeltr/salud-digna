@@ -96,8 +96,23 @@ export type LockedRequest = {
   registeredAt: string;
 };
 
-/** Trámites abiertos del paciente. `locked` solo aparece con servicios que exigen un permiso por trámite. */
-export type PendingPage = Page<BookingRequest> & { locked?: LockedRequest[] };
+/**
+ * Resumen de un trámite activo del paciente, tal como lo lista el servicio: folio, estado y fechas.
+ * El detalle se lee al abrir el trámite.
+ */
+export type RequestSummary = {
+  id: string;
+  status: RequestStatus;
+  createdAt: string;
+  lastActivityAt: string;
+};
+
+/**
+ * Trámites abiertos del paciente. `locked` solo aparece con servicios que exigen un permiso por trámite.
+ * `summaries` solo aparece cuando el servicio lista los trámites del paciente por su identidad:
+ * entonces `items` va vacío y el detalle se lee al abrir cada trámite.
+ */
+export type PendingPage = Page<BookingRequest> & { locked?: LockedRequest[]; summaries?: RequestSummary[] };
 
 /** Entrada del historial de un trámite. */
 export type HistoryEntry = {

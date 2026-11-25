@@ -13,5 +13,6 @@ export const legacyCapabilities: RequestCapabilities = {
   cancellation: false,
   history: false,
   continuityCodes: false,
+  identifiedContinuity: false,
   patientListing: true,
 };

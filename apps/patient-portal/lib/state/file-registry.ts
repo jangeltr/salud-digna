@@ -2,23 +2,15 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { getDataDir } from "./config";
+import type { RegistryEntry, RequestRegistry } from "./ports";
 
 /**
- * Registro del canal Web: qué trámites inició cada paciente en este portal.
- * El orquestador no ofrece consultar los trámites de un paciente, así que este archivo es
- * la única fuente de esa relación. Guarda identificadores y fechas. Nunca permisos ni claves.
+ * Registro del canal Web en un archivo JSON: qué trámites tiene cada cuenta.
+ * Guarda identificadores y fechas. Nunca permisos ni claves.
  *
  * Solo sirve con un único proceso del portal: la copia en memoria manda y el archivo la conserva
- * entre reinicios.
+ * entre reinicios. Con varias instancias, cada una tendría su propia copia.
  */
-export type RegistryEntry = {
-  id: string;
-  /** Cuándo registró el portal el trámite, en ISO 8601. */
-  createdAt: string;
-  /** Cuándo supo el portal que el trámite quedó cerrado. Un trámite cerrado no vuelve a abrirse. */
-  closedAt?: string;
-};
 
 type RegistryData = { version: 1; patients: Record<string, RegistryEntry[]> };
 
@@ -38,8 +30,12 @@ function state(): State {
   return holder[STATE];
 }
 
+let dataDir: () => string = () => {
+  throw new Error("Registro sin carpeta de datos.");
+};
+
 function filePath(): string {
-  return path.join(getDataDir(), FILE_NAME);
+  return path.join(dataDir(), FILE_NAME);
 }
 
 function isDate(value: unknown): value is string {
@@ -139,17 +135,17 @@ function update(change: (entries: RegistryEntry[]) => RegistryEntry[] | undefine
 }
 
 /** Trámites del paciente, del más reciente al más antiguo. */
-export function listRegistered(accountId: string): Promise<RegistryEntry[]> {
+function listRegistered(accountId: string): Promise<RegistryEntry[]> {
   return enqueue(async () => [...((await load()).patients[accountId] ?? [])].reverse());
 }
 
 /** Indica si el trámite pertenece al paciente. Es la comprobación previa a cualquier llamada al orquestador. */
-export function isRegistered(accountId: string, requestId: string): Promise<boolean> {
+function isRegistered(accountId: string, requestId: string): Promise<boolean> {
   const id = requestId.toLowerCase();
   return enqueue(async () => ((await load()).patients[accountId] ?? []).some((entry) => entry.id === id));
 }
 
-export function register(accountId: string, requestId: string, createdAt: string): Promise<void> {
+function register(accountId: string, requestId: string, createdAt: string): Promise<void> {
   const id = requestId.toLowerCase();
   return update(
     (entries) => (entries.some((entry) => entry.id === id) ? undefined : [...entries, { id, createdAt }]),
@@ -158,7 +154,7 @@ export function register(accountId: string, requestId: string, createdAt: string
 }
 
 /** Anota que el trámite quedó cerrado, para que deje de aparecer entre los pendientes. */
-export function markClosed(accountId: string, requestId: string, closedAt: string): Promise<void> {
+function markClosed(accountId: string, requestId: string, closedAt: string): Promise<void> {
   const id = requestId.toLowerCase();
   return update((entries) => {
     const entry = entries.find((item) => item.id === id);
@@ -168,12 +164,19 @@ export function markClosed(accountId: string, requestId: string, closedAt: strin
 }
 
 /** Se ejecuta al arrancar: crea la carpeta y comprueba que el registro se puede leer. */
-export async function prepareRegistry(): Promise<void> {
-  await mkdir(getDataDir(), { recursive: true, mode: 0o700 });
+async function prepareRegistry(): Promise<void> {
+  await mkdir(dataDir(), { recursive: true, mode: 0o700 });
   await enqueue(load);
 }
 
-// El registro de errores nombra la operación y nunca incluye identificadores ni rutas con datos del paciente.
-export function reportRegistryFailure(operation: "leer" | "escribir"): void {
-  console.error(`[registro] no se pudo ${operation} el registro del canal Web`);
+/** Registro en `web-channel-registry.json`, dentro de la carpeta que devuelve `directory`. */
+export function createFileRegistry(directory: () => string): RequestRegistry {
+  dataDir = directory;
+  return {
+    list: listRegistered,
+    has: isRegistered,
+    add: register,
+    markClosed,
+    prepare: prepareRegistry,
+  };
 }

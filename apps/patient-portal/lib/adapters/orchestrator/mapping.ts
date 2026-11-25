@@ -6,8 +6,9 @@ import type {
   HistoryPage,
   RequestStatus,
   RequestStep,
+  RequestSummary,
 } from "@/lib/domain/model";
-import { Secret } from "./secret";
+import { Secret } from "@/lib/secret";
 
 /**
  * Traducción de las respuestas del orquestador al modelo del portal.
@@ -80,6 +81,38 @@ export function readCreatedJourney(data: unknown): CreatedJourney | undefined {
 
   const access = readGrant(data);
   return access ? { id, access } : undefined;
+}
+
+/**
+ * Respuesta de `POST /journeys/:journeyId/access-grants` (`patient-identity.md`, «Recuperación automática»):
+ * `201` con `journeyId`, `grant` y `grantExpiresAt`. El permiso solo vale si es del trámite pedido.
+ */
+export function readAccessGrant(data: unknown, journeyId: string): GrantedAccess | undefined {
+  if (!isRecord(data) || readUuid(data.journeyId) !== journeyId) return undefined;
+  return readGrant(data);
+}
+
+const OPEN_STATUSES = new Set<RequestStatus>(["draft", "in-progress", "pending-confirmation"]);
+
+/**
+ * Respuesta de `GET /journeys?active=true`: `{ items: [{ id, type, status, createdAt, updatedAt }] }`.
+ * Se quedan solo los trámites de cita abiertos, aunque el servicio ya filtre: una versión anterior
+ * del orquestador ignora `active` y devuelve también los cerrados.
+ */
+export function readJourneySummaries(data: unknown): RequestSummary[] | undefined {
+  if (!isRecord(data) || !Array.isArray(data.items)) return undefined;
+  const summaries: RequestSummary[] = [];
+  for (const item of data.items) {
+    if (!isRecord(item)) return undefined;
+    const id = readUuid(item.id);
+    const createdAt = readDate(item.createdAt);
+    const updatedAt = readDate(item.updatedAt);
+    const status = lookup(STATUS, item.status);
+    if (!id || !createdAt || !updatedAt) return undefined;
+    if (item.type !== "APPOINTMENT" || !status || !OPEN_STATUSES.has(status)) continue;
+    summaries.push({ id, status, createdAt, lastActivityAt: updatedAt });
+  }
+  return summaries;
 }
 
 /** Respuesta de `POST /continuity-codes/redeem`. */

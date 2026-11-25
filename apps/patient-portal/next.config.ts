@@ -2,6 +2,18 @@ import type { NextConfig } from "next";
 
 const isProduction = process.env.NODE_ENV === "production";
 
+/**
+ * `CATALOG_CACHE_SECONDS`: segundos que dura en caché el catálogo, de 1 a 86 400. Sin valor, 300.
+ * Se lee al compilar y Next escribe el valor en el código: cambiarla exige volver a compilar.
+ */
+function readCatalogCacheSeconds(value = process.env.CATALOG_CACHE_SECONDS): string {
+  if (value === undefined || value === "") return "300";
+  if (!/^\d{1,5}$/.test(value) || Number(value) < 1 || Number(value) > 86_400) {
+    throw new Error("CATALOG_CACHE_SECONDS debe ser un número entero de segundos entre 1 y 86400.");
+  }
+  return String(Number(value));
+}
+
 // Solo se permite lo que el portal usa: copiar al portapapeles desde su propio origen.
 const permissionsPolicy = [
   "accelerometer=()",
@@ -41,6 +53,7 @@ const securityHeaders = [
 const config: NextConfig = {
   agentRules: false,
   poweredByHeader: false,
+  env: { CATALOG_CACHE_SECONDS: readCatalogCacheSeconds() },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

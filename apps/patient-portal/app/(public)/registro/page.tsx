@@ -1,12 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { connection } from "next/server";
 import { SignUpForm } from "@/features/auth/sign-up-form";
 import { isRegistrationEnabled } from "@/lib/settings";
 
 export const metadata: Metadata = { title: "Registro" };
 
-export default function SignUpPage() {
+export default async function SignUpPage() {
+  // El ajuste se lee al arrancar, no al compilar: la página se genera en cada petición.
+  await connection();
   // Con `REGISTRATION_ENABLED` apagada esta página no existe.
   if (!isRegistrationEnabled()) notFound();
 

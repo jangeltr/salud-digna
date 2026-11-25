@@ -1,7 +1,7 @@
 import "server-only";
 import path from "node:path";
 import { readServiceUrl } from "../service-url";
-import { Secret } from "./secret";
+import { Secret } from "@/lib/secret";
 
 /** Lee y valida ORCHESTRATOR_BASE_URL. Exige https, salvo en localhost y 127.0.0.1. */
 export function readOrchestratorBaseUrl(value = process.env.ORCHESTRATOR_BASE_URL): string {
@@ -48,4 +48,12 @@ export function getChannelKey(): Secret {
 export function getDataDir(): string {
   dataDir ??= readDataDir();
   return dataDir;
+}
+
+/**
+ * Identificador público de la clave del canal, la parte anterior al punto. Sirve para saber en el registro
+ * qué clave usa el servidor. El secreto, tras el punto, nunca se muestra.
+ */
+export function channelKeyId(): string {
+  return getChannelKey().reveal().split(".", 1)[0];
 }

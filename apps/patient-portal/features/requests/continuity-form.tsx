@@ -29,7 +29,7 @@ export function ContinuityForm({ requestId }: { requestId: string }) {
             <p className="text-sm font-semibold">Tu código de continuidad</p>
             <p className="mt-1 font-mono text-2xl font-bold tracking-wide break-all select-all">{state.code}</p>
             <ul className="mt-2 mb-3 list-disc pl-5 text-sm text-muted">
-              <li>Escríbelo en WhatsApp o díctalo en Call Center.</li>
+              <li>Escríbelo en la app móvil o díctalo en Call Center.</li>
               <li>Es de un solo uso.</li>
               <li>{`Vence a las ${state.expiresAt}, hora del centro de México, ${state.remaining}.`}</li>
             </ul>

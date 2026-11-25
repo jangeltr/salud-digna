@@ -7,6 +7,12 @@
     "build": "next build",
     "start": "next start --hostname 127.0.0.1 --port 5173",
     "check": "next typegen && tsc --noEmit",
+    "test": "node tests/run.mjs todo",
+    "test:legacy": "node tests/run.mjs heredado",
+    "test:orchestrator": "node tests/run.mjs orquestador",
+    "test:identity": "node tests/run.mjs identidad arranque",
+    "test:publication": "node tests/run.mjs publicacion",
+    "test:load": "node tests/run.mjs carga",
     "api:types": "openapi-typescript ../../docs/openapi.json --output lib/adapters/general-api/schema.d.ts"
   },
   "dependencies": {

@@ -29,12 +29,19 @@ export interface GeneralData {
   getStudy(id: string): Promise<Result<Study>>;
   listClinics(query: CatalogQuery): Promise<Result<Page<Clinic>>>;
   getClinic(id: string): Promise<Result<Clinic>>;
+  /**
+   * Todas las clínicas, hasta un tope. `truncated` indica que el tope dejó fuera alguna.
+   * Sirve para filtrar por ciudad, que el catálogo no ofrece.
+   */
+  allClinics(): Promise<Result<{ items: Clinic[]; truncated: boolean }>>;
   /** Perfil del paciente de la sesión actual. Sirve también para comprobar que la sesión sigue vigente. */
   getProfile(): Promise<Result<Patient>>;
   /** Comprueba las credenciales y abre la sesión del portal. */
   signIn(credentials: Credentials): Promise<Result<void>>;
   /** Crea la cuenta. No abre la sesión. */
   signUp(registration: Registration): Promise<Result<void>>;
+  /** Cierra la sesión del portal. */
+  signOut(): Promise<void>;
 }
 
 /** Datos comunes de un evento sobre un trámite que ya existe. */
@@ -85,6 +92,12 @@ export type RequestCapabilities = {
   history: boolean;
   /** Emitir un código para continuar en otro canal y canjear el que emitió otro. */
   continuityCodes: boolean;
+  /**
+   * Continuidad identificada: el servicio reconoce al paciente por una acreditación institucional,
+   * lista sus trámites de cualquier canal y renueva solo el permiso de cada uno.
+   * El código de continuidad queda como alternativa.
+   */
+  identifiedContinuity: boolean;
   /**
    * El servicio lista los trámites por paciente, también los de otros canales. Sin esto, la lista
    * sale del registro del portal y un inicio de trámite con resultado incierto no se puede comprobar.

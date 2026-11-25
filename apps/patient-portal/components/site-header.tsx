@@ -1,8 +1,11 @@
+"use client";
+
 import Link from "next/link";
+import { useSyncExternalStore } from "react";
 import { HeaderMenu } from "@/components/header-menu";
 import { NavLink } from "@/components/nav-link";
 import { APP_NAME } from "@/lib/brand";
-import { hasSessionCookie } from "@/lib/session/session";
+import { hasSignedInCookie } from "@/lib/session/indicator";
 
 type Item = {
   href: string;
@@ -32,10 +35,22 @@ const SIGNED_IN: Item[] = [
 const linkClass =
   "flex min-h-11 min-w-11 items-center px-3 font-medium text-muted -outline-offset-3 underline-offset-8 hover:text-brand [&[aria-current]]:font-semibold [&[aria-current]]:text-brand [&[aria-current]]:underline";
 
-export async function SiteHeader() {
-  // Solo mira si la cookie existe. La validez se comprueba al entrar a una ruta protegida.
-  const signedIn = await hasSessionCookie();
-  const items = signedIn ? SIGNED_IN : SIGNED_OUT;
+// La cookie indicadora cambia solo al iniciar o cerrar sesión, y las dos cosas recargan la página.
+const subscribe = () => () => undefined;
+const readIndicator = () => hasSignedInCookie(document.cookie);
+
+type SiteHeaderProps = {
+  /**
+   * Lo decide el servidor en las páginas que ya se generan en cada petición.
+   * Sin valor, lo decide el navegador con la cookie indicadora: así las páginas de catálogo son
+   * iguales para todos y se pueden servir desde caché. Sin JavaScript, esas páginas muestran «Acceso».
+   */
+  signedIn?: boolean;
+};
+
+export function SiteHeader({ signedIn }: SiteHeaderProps) {
+  const fromCookie = useSyncExternalStore(subscribe, readIndicator, () => false);
+  const items = (signedIn ?? fromCookie) ? SIGNED_IN : SIGNED_OUT;
 
   return (
     <header className="border-b border-line bg-canvas">

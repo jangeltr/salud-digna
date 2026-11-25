@@ -50,6 +50,16 @@ export function toRedeemFailure(result: OrchestratorFailure): Failure {
   return result.status === 404 ? failure("not-found") : toFailure(result);
 }
 
+/**
+ * Llamadas que llevan la acreditación del paciente (`POST /journeys` identificado y `GET /journeys`):
+ * el `404` significa que el orquestador no la aceptó. Es `identity-unavailable`; `401` y `403`, que hablan
+ * de la clave del canal, siguen como en el resto.
+ */
+export function toIdentifiedFailure(result: OrchestratorFailure, creation: boolean): Failure {
+  if (result.status === 404) return failure("identity-unavailable");
+  return creation ? toCreationFailure(result) : toFailure(result);
+}
+
 /** Sin respuesta útil o con `5xx` no se sabe si la operación llegó a aplicarse. */
 export function isUncertain(result: OrchestratorFailure): boolean {
   return result.status === null || result.status >= 500;

@@ -4,7 +4,7 @@ Rutas del portal con el App Router de Next.js. Los grupos entre paréntesis orga
 
 | Carpeta | Contenido |
 | --- | --- |
-| `(public)/` | Páginas que se ven sin sesión: `/`, `/estudios`, `/estudios/[id]`, `/clinicas`, `/acceso` y `/registro`. La última solo existe con `REGISTRATION_ENABLED` encendida. |
+| `(public)/` | Páginas que se ven sin sesión, con el encabezado decidido en el navegador. `/`, `/estudios`, `/clinicas` y `/estudios/[id]` se sirven desde caché; la búsqueda está en `/estudios/buscar` y `/clinicas/buscar`. Además: `/`, `/estudios`, `/estudios/[id]`, `/clinicas`, `/acceso` y `/registro`. La última solo existe con `REGISTRATION_ENABLED` encendida. |
 | `(booking)/` | Flujo de la solicitud de agendamiento: `/tramite/nuevo`, `/tramite/[id]` y `/tramite/[id]/historial`, que solo existe cuando el servicio activo ofrece historial. |
 | `(account)/` | Área personal del paciente: `/mi-espacio`, `/continuar`, `/citas`, `/citas/[id]`, `/ayuda` y `/perfil`. |
 | `api/` | Manejadores de servidor del portal. Reciben las peticiones del navegador y llaman a la API de Salud Digna desde el servidor. Hoy contiene `session/expired`, que borra la cookie de una sesión vencida. |

@@ -3,11 +3,12 @@
 import "server-only";
 import { redirect } from "next/navigation";
 import { isUuid } from "@/features/catalog/params";
-import { generalData, requestCapabilities, requestNotifier, requestQuery } from "@/lib/composition";
+import { attemptStore, generalData, requestCapabilities, requestNotifier, requestQuery } from "@/lib/composition";
 import type { Result } from "@/lib/domain/errors";
 import type { Receipt } from "@/lib/domain/ports";
-import { refundAttempt, takeAttempt, type AttemptLimit } from "@/lib/session/attempts";
 import { CONTINUITY_CODES_PER_HOUR, CONTINUITY_REDEEM, REQUESTS_PER_HOUR, waitText } from "@/lib/session/limits";
+import type { AttemptLimit } from "@/lib/state/ports";
+import { reportShownError } from "@/lib/report";
 import { clearSessionCookie } from "@/lib/session/cookie";
 import { signInUrl } from "@/lib/session/routes";
 import { hasSessionCookie } from "@/lib/session/session";
@@ -71,6 +72,7 @@ async function endSession(destination: string): Promise<never> {
 async function settle(result: Result<Receipt>, id: string, onSuccess: string): Promise<never> {
   if (result.ok) redirect(onSuccess);
 
+  if (result.error.kind !== "session") reportShownError("acción sobre /tramite/[id]", result.error.kind);
   switch (result.error.kind) {
     case "session":
       return endSession(requestPath(id));
@@ -84,6 +86,8 @@ async function settle(result: Result<Receipt>, id: string, onSuccess: string): P
       redirect(requestPath(id, "cambio"));
     case "invalid":
       redirect(requestPath(id, "invalido"));
+    case "identity-unavailable":
+      redirect(requestPath(id, "identidad"));
     default:
       redirect(requestPath(id, "servicio"));
   }
@@ -100,7 +104,7 @@ async function hourlyWait(name: string, limit: AttemptLimit, destination: string
     if (profile.error.kind === "session") await endSession(destination);
     return 0;
   }
-  return takeAttempt(`${name}:${profile.data.accountId}`, limit);
+  return attemptStore.take(`${name}:${profile.data.accountId}`, limit);
 }
 
 export type StartState = {
@@ -131,6 +135,11 @@ export async function startRequest(_previous: StartState, formData: FormData): P
     started = { id: created.data.requestId, version: created.data.version, awaitsStudy: true };
   } else {
     if (created.error.kind === "session") await endSession(returnTo);
+    reportShownError("acción: empezar trámite", created.error.kind);
+    if (created.error.kind === "identity-unavailable") {
+      // Sin acreditación no se crea nada: nunca se recurre a un trámite anónimo.
+      return { message: "No pudimos verificar tu identidad, así que no se creó ningún trámite. Inténtalo de nuevo en unos minutos." };
+    }
     if (created.error.kind !== "unavailable") {
       return { message: "No pudimos crear el trámite. Inténtalo de nuevo." };
     }
@@ -169,6 +178,7 @@ export async function startRequest(_previous: StartState, formData: FormData): P
     });
     if (!saved.ok) {
       if (saved.error.kind === "session") await endSession(requestPath(started.id));
+      reportShownError("acción: elegir estudio al empezar", saved.error.kind);
       redirect(requestPath(started.id, "estudio"));
     }
   }
@@ -184,10 +194,27 @@ export async function continueRequest(formData: FormData): Promise<void> {
   await settle(result, target.requestId, requestPath(target.requestId));
 }
 
+/**
+ * Elegir el estudio o la clínica que ya tiene el contexto vigente no publica nada: se vuelve a la pantalla sin
+ * escribir, para no llenar el historial que ven los demás canales y Administración. La pantalla ya oculta el botón
+ * de la opción elegida; esto cubre el formulario de otra pestaña o uno manipulado. Se compara con el contexto
+ * vigente, no con la versión que vio el paciente: no escribir nada es seguro aunque el trámite haya avanzado.
+ * Si la lectura falla, se publica como siempre y el servicio decide.
+ */
+async function isUnchanged(target: { requestId: string }, selected: { studyId?: string; clinicId?: string }) {
+  const current = await requestQuery.getRequest(target.requestId);
+  if (!current.ok) return false;
+  const { selections } = current.data;
+  return selected.studyId !== undefined
+    ? selections.studyId?.toLowerCase() === selected.studyId
+    : selections.clinicId?.toLowerCase() === selected.clinicId;
+}
+
 export async function chooseStudy(formData: FormData): Promise<void> {
   const target = await readTarget(formData);
   const studyId = field(formData, "studyId");
   if (!isUuid(studyId)) redirect(requestPath(target.requestId, "invalido"));
+  if (await isUnchanged(target, { studyId: studyId.toLowerCase() })) redirect(requestPath(target.requestId));
 
   const result = await requestNotifier.notify({ type: "study-chosen", ...target, studyId });
   await settle(result, target.requestId, requestPath(target.requestId));
@@ -197,6 +224,7 @@ export async function chooseClinic(formData: FormData): Promise<void> {
   const target = await readTarget(formData);
   const clinicId = field(formData, "clinicId");
   if (!isUuid(clinicId)) redirect(requestPath(target.requestId, "invalido"));
+  if (await isUnchanged(target, { clinicId: clinicId.toLowerCase() })) redirect(requestPath(target.requestId));
 
   const result = await requestNotifier.notify({ type: "clinic-chosen", ...target, clinicId });
   await settle(result, target.requestId, requestPath(target.requestId));
@@ -280,6 +308,7 @@ export async function requestAssistance(_previous: AssistanceState, formData: Fo
   }
   if (result.error.kind === "session") await endSession(requestPath(id));
   if (result.error.kind === "not-found" || result.error.kind === "access-expired") redirect(requestPath(id));
+  reportShownError("acción: pedir ayuda", result.error.kind);
   if (result.error.kind === "conflict") redirect(requestPath(id, "cambio"));
   return { message: ASSISTANCE_FAILED };
 }
@@ -323,7 +352,9 @@ export async function requestContinuityCode(_previous: ContinuityState, formData
   }
   if (result.error.kind === "session") await endSession(requestPath(id));
   // La página responde «no encontrado» o explica que el trámite necesita un permiso nuevo.
+  reportShownError("acción: generar código de continuidad", result.error.kind);
   if (result.error.kind === "not-found" || result.error.kind === "access-expired") redirect(requestPath(id));
+  if (result.error.kind === "identity-unavailable") redirect(requestPath(id, "identidad"));
   return { message: CONTINUITY_FAILED };
 }
 
@@ -350,17 +381,18 @@ export async function redeemContinuityCode(_previous: RedeemState, formData: For
     return { message: REDEEM_UNCERTAIN };
   }
   const attempts = `continuity-redeem:${profile.data.accountId}`;
-  if (takeAttempt(attempts, CONTINUITY_REDEEM) > 0) return { message: REDEEM_BLOCKED };
+  if ((await attemptStore.take(attempts, CONTINUITY_REDEEM)) > 0) return { message: REDEEM_BLOCKED };
 
   const code = field(formData, "codigo");
   if (code.length > CODE_MAX) return { message: REDEEM_INVALID };
 
   const result = await requestNotifier.notify({ type: "continuity-redeemed", eventId: newEventId(), code });
   if (result.ok) {
-    refundAttempt(attempts);
+    await attemptStore.refund(attempts);
     redirect(requestPath(result.data.requestId));
   }
 
+  if (result.error.kind !== "session") reportShownError("acción: canjear código de continuidad", result.error.kind);
   switch (result.error.kind) {
     case "session":
       return endSession(PENDING_PATH);
@@ -369,10 +401,10 @@ export async function redeemContinuityCode(_previous: RedeemState, formData: For
       return { message: REDEEM_INVALID };
     case "rate-limited":
       // El límite que saltó es el del canal entero, no el de este paciente.
-      refundAttempt(attempts);
+      await attemptStore.refund(attempts);
       return { message: REDEEM_BUSY };
     default:
-      refundAttempt(attempts);
+      await attemptStore.refund(attempts);
       return { message: REDEEM_UNCERTAIN };
   }
 }
