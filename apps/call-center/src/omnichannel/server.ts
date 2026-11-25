@@ -1,4 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
+import {
+  automaticContinuityActions, centralOrigin, institutionalConfiguration, readActiveJourneys,
+  readAdvisorConsent, readInstitutionalAssertion, readInstitutionalGrant, type InstitutionalAccess,
+} from "./automatic-continuity";
 import { allowsPending, continuityCode, eventPayload, hasPublishScope, readRedemption, isId, readContext, readHistory, readReceipt, readSummary, record, type Outcome } from "./contract";
 
 class HttpFailure extends Error {
@@ -6,12 +10,13 @@ class HttpFailure extends Error {
 }
 
 type Attempt = { operationId: string; body: string; result?: Outcome; uncertain?: boolean };
-type Access = { id: string; grant: string; expiresAt: number; redeemed?: boolean; attempt?: Attempt; timer: ReturnType<typeof setTimeout> };
+type Access = { id: string; grant: string; expiresAt: number; redeemed?: boolean; institutional?: boolean; attempt?: Attempt; timer: ReturnType<typeof setTimeout> };
 const grants = new Map<string, Access>();
+const attentions = new Map<string, InstitutionalAccess & { timer: ReturnType<typeof setTimeout> }>();
 const running = new Map<string, AbortController>();
 const maxSessions = 256;
 const grantFormat = /^[A-Za-z0-9_-]{43}$/;
-const operations = ["open", "read", "history", "close", "publish", "retry", "redeem", "resume"];
+const operations = ["open", "read", "history", "close", "publish", "retry", "redeem", "resume", ...automaticContinuityActions];
 const upstreamBase = "https://orchestrator.salud-digna.app/api/v1/";
 const accessWindow = 300000;
 
@@ -22,6 +27,9 @@ function remove(key: string) {
 }
 
 function revoke(key: string) {
+  const attention = attentions.get(key);
+  if (attention) clearTimeout(attention.timer);
+  attentions.delete(key);
   running.get(key)?.abort();
   remove(key);
 }
@@ -120,6 +128,14 @@ export function createOmnichannelHandler(role: "ADVISOR" | "ADMIN", keyName: str
         const apiKey = process.env[keyName];
         if (!apiKey) return reply({ error: "configuration" }, 503);
         controller!.signal.throwIfAborted();
+        if (automaticContinuityActions.includes(String(action))) {
+          if (role !== "ADVISOR" || !isId(operator.id)) return reply({ error: "operator" }, 403);
+          if (general.origin !== centralOrigin) return reply({ error: "configuration" }, 503);
+          return await institutional(sessionKey, operator.id, body, authorization, apiKey, deadline, controller!.signal);
+        }
+        if ((action === "open" || action === "redeem") && attentions.has(sessionKey)) {
+          return reply({ error: "access-active" }, 409);
+        }
         if (action === "redeem") return await redeem(sessionKey, body, apiKey, deadline, controller!.signal);
         if (action === "resume") {
           const entry = grants.get(sessionKey);
@@ -139,11 +155,86 @@ export function createOmnichannelHandler(role: "ADVISOR" | "ADMIN", keyName: str
   };
 }
 
-function saveAccess(key: string, id: string, grant: string, expiresAt: number, redeemed = false) {
+function saveAccess(key: string, id: string, grant: string, expiresAt: number, redeemed = false, institutional = false) {
   remove(key);
   const timer = setTimeout(() => revoke(key), expiresAt - Date.now());
   timer.unref();
-  grants.set(key, { id, grant, expiresAt, redeemed, timer });
+  grants.set(key, { id, grant, expiresAt, redeemed, institutional, timer });
+}
+
+async function institutional(
+  key: string, advisorId: string, body: Record<string, unknown>, authorization: string,
+  apiKey: string, deadline: number, signal: AbortSignal,
+) {
+  const action = body.action;
+  const granting = action === "authorize-journey";
+  if (Object.keys(body).length !== (granting ? 2 : 1) || (granting && !isId(body.journeyId))) {
+    return reply({ error: "input" }, 400);
+  }
+  if (action === "verify-patient") {
+    const current = attentions.get(key);
+    if (current && current.expiresAt > Date.now()) return reply({ expiresAt: current.expiresAt });
+    if (grants.has(key)) return reply({ error: "access-active" }, 409);
+    if (attentions.size + running.size > maxSessions) return reply({ error: "capacity" }, 503);
+    const configuration = institutionalConfiguration();
+    if (!configuration) return reply({ error: "institutional-configuration" }, 503);
+    const consent = await readAdvisorConsent(configuration.directory, advisorId);
+    if (!consent) return reply({ error: "consent-required" }, 404);
+    const issued = await json(new URL("/api/v1/auth/patient-assertions", centralOrigin), {
+      method: "POST",
+      headers: { Authorization: authorization, "Content-Type": "application/json",
+        "X-Patient-Assertion-Channel-Key": configuration.channelKey },
+      body: JSON.stringify({ consent }),
+    }, 200, signal);
+    const attention = readInstitutionalAssertion(issued, advisorId, deadline);
+    signal.throwIfAborted();
+    if (current) clearTimeout(current.timer);
+    const timer = setTimeout(() => revoke(key), attention.expiresAt - Date.now());
+    timer.unref();
+    attentions.set(key, { ...attention, timer });
+    return reply({ expiresAt: attention.expiresAt });
+  }
+
+  const attention = attentions.get(key);
+  if (!attention || attention.expiresAt <= Date.now()) {
+    if (attention) revoke(key);
+    return reply({ error: "institutional-expired" }, 404);
+  }
+  const headers = { Authorization: "Bearer " + apiKey, "X-Patient-Assertion": attention.assertion };
+  if (action === "active-journeys") {
+    try {
+      const items = readActiveJourneys(await json(new URL("journeys?active=true", upstreamBase), { headers }, 200, signal));
+      signal.throwIfAborted();
+      if (Date.now() >= attention.expiresAt) return reply({ error: "institutional-expired" }, 404);
+      attention.allowed = new Set(items.map((item) => item.id));
+      return reply({ items });
+    } catch (error) {
+      attention.allowed.clear();
+      if (accessDenied(error)) revoke(key);
+      throw error;
+    }
+  }
+
+  const id = String(body.journeyId).toLowerCase();
+  if (!attention.allowed.has(id)) return reply({ error: "journey-not-authorized" }, 403);
+  const current = grants.get(key);
+  if (current?.attempt && !current.attempt.result) return reply({ error: "pending" }, 409);
+  if (current && current.id === id && current.expiresAt > Date.now()) {
+    return reply({ journeyId: id, expiresAt: current.expiresAt });
+  }
+  if (!current && grants.size + running.size > maxSessions) return reply({ error: "capacity" }, 503);
+  try {
+    const result = readInstitutionalGrant(
+      await json(new URL("journeys/" + id + "/access-grants", upstreamBase), { method: "POST", headers }, 201, signal),
+      id, attention.expiresAt,
+    );
+    signal.throwIfAborted();
+    saveAccess(key, id, result.grant, result.expiresAt, false, true);
+    return reply({ journeyId: id, expiresAt: result.expiresAt }, 201);
+  } catch (error) {
+    if (accessDenied(error)) revoke(key);
+    throw error;
+  }
 }
 
 async function redeem(key: string, body: Record<string, unknown>, apiKey: string, deadline: number, signal: AbortSignal) {
@@ -224,15 +315,18 @@ async function operate(key: string, id: string, body: Record<string, unknown>, a
       }
       if (summary.status === "rejected") throw summary.reason;
       if (context.status === "rejected") throw context.reason;
-      const canMarkPending = !opening && entry?.redeemed === true && allowsPending(summary.value, context.value) &&
-        await canPublish(apiKey, signal);
+      const needsScope = !opening && (entry?.institutional ||
+        (entry?.redeemed && allowsPending(summary.value, context.value)));
+      const publishScope = needsScope ? await canPublish(apiKey, signal) : false;
+      const canWrite = entry?.institutional ? publishScope : true;
+      const canMarkPending = publishScope && allowsPending(summary.value, context.value);
       if (signal.aborted || Date.now() >= expiresAt) return reply({ error: "grant" }, 404);
       if (opening) {
         if (!grants.has(key) && grants.size >= maxSessions) return reply({ error: "capacity" }, 503);
         saveAccess(key, id, grant, expiresAt);
       }
       return reply({ status: summary.value, context: context.value,
-        history: history.status === "fulfilled" ? history.value : null, expiresAt, canMarkPending });
+        history: history.status === "fulfilled" ? history.value : null, expiresAt, canMarkPending, canWrite });
     }
 
     if (!isId(body.operationId)) return reply({ error: "input" }, 400);
@@ -243,7 +337,7 @@ async function operate(key: string, id: string, body: Record<string, unknown>, a
       if (entry!.attempt?.operationId === body.operationId) return reply({ error: "pending" }, 409);
       if (event.type === "JOURNEY_STATUS_CHANGED" && body.to === "PENDING_CONFIRMATION") {
         try {
-          if (!entry!.redeemed || !await canPublish(apiKey, signal)) return reply({ outcome: "rejected", status: 403 });
+          if ((!entry!.redeemed && !entry!.institutional) || !await canPublish(apiKey, signal)) return reply({ outcome: "rejected", status: 403 });
           const [status, context] = await Promise.all([
             upstream(journey).then((value) => readSummary(value, id)),
             upstream(journey + "/context").then((value) => readContext(value, id)),
@@ -271,7 +365,8 @@ async function operate(key: string, id: string, body: Record<string, unknown>, a
     } catch (error) {
       const status = error instanceof HttpFailure ? error.status : undefined;
       if (accessDenied(error)) {
-        remove(key);
+        if (entry?.institutional) revoke(key);
+        else remove(key);
         return reply({ outcome: attempt.uncertain ? "uncertain" : "rejected", status });
       }
       if (status === 400 || status === 409) {
@@ -283,7 +378,10 @@ async function operate(key: string, id: string, body: Record<string, unknown>, a
       return reply({ outcome: "uncertain", status });
     }
   } catch (error) {
-    if (accessDenied(error)) remove(key);
+    if (accessDenied(error)) {
+      if (entry?.institutional) revoke(key);
+      else remove(key);
+    }
     throw error;
   }
 }
