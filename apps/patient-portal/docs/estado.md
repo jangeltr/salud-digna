@@ -1,12 +1,12 @@
 # Estado del portal del paciente
 
-**Fecha.** 2026-11-24. **Rama.** `dev/patient-portal`, con la fase 7 en un commit local sin subir. Este documento sirve para retomar el trabajo en otra sesión. Las decisiones y sus motivos están en [decisions.md](decisions.md).
+**Fecha.** 2026-11-24. **Rama.** `dev/patient-portal`, con las fases 7, 6a y 6b en commits locales sin subir. Este documento sirve para retomar el trabajo en otra sesión. Las decisiones y sus motivos están en [decisions.md](decisions.md).
 
 ## Resumen
 
 1. El portal es el sitio web del paciente, con Next.js: acceso, catálogo de estudios y clínicas, y trámite de agendamiento.
 2. Registra los trámites en la API general o en el orquestador, según `REQUESTS_BACKEND`, y en el orquestador emite y canjea códigos de continuidad.
-3. Producción corre la versión fusionada con el PR #8. La fase 5, de rendimiento, está en la rama sin publicar. La fase 7, continuidad identificada, solo está en local.
+3. Producción corre la versión fusionada con el PR #8. La fase 5, de rendimiento, está en la rama sin publicar. Las fases 7, continuidad identificada, 6a, pruebas en el repositorio, y 6b, documentación de entrega, solo están en local.
 4. La continuidad identificada está preparada pero no se puede activar fuera de las pruebas: falta el emisor de acreditaciones de la API central y `access-grants` en el orquestador del repositorio.
 5. **Bloquea la demo:** el portal publicado responde «No pudimos crear el trámite. Inténtalo de nuevo.» al crear un trámite.
 6. El diagnóstico apunta a la clave del canal o a la URL del orquestador en el servidor. Faltan las comprobaciones del responsable del servidor.
@@ -55,6 +55,8 @@ El portal llama a los dos desde su servidor. La clave del canal Web y los permis
 | 4 | PR #8 contra `main`, fusionado el 2026-11-24 | `1b32a24` (merge en `main`) |
 | 5 | Rendimiento: catálogo servido desde caché, caché de sesión, índice del catálogo y estado detrás de interfaces | `17cf8ed` |
 | 7 | Continuidad identificada tras `PATIENT_IDENTITY_MODE`, emisor de acreditaciones pendiente, registro mínimo de errores, textos sin WhatsApp y selección sin cambios sin evento. Integra `main` (`f9ffcf3`) | Commit local, sin subir |
+| 6a | Suites y servicios simulados dentro del repositorio, en `tests/`, con lanzador propio, credenciales sintéticas por ejecución y scripts `pnpm test` | `8ec9c78` |
+| 6b | Documentación de entrega: README completo del portal, [guion de la demostración](demo.md), [sección para el README de la raíz](readme-raiz-portal.md) y `CATALOG_CACHE_SECONDS` en `.env.example` | Commit local, sin subir |
 
 **Diagnóstico posterior.** El error de creación en producción, sin cambios de código. El resultado está en «Estado del despliegue».
 
@@ -66,7 +68,7 @@ El portal llama a los dos desde su servidor. La clave del canal Web y los permis
 
 **Versión en `main`.** El portal tal como quedó en `7407038`, fusionado con el PR #8. Ningún commit posterior de `main` toca `apps/patient-portal`. Que el servidor corra exactamente esa revisión, y con qué variables, está por confirmar con su responsable.
 
-**En la rama, sin publicar.** `17cf8ed`, la fase 5, ya subida. En local, sin subir: el merge de `main` (`f9ffcf3`) y la fase 7.
+**En la rama, sin publicar.** `17cf8ed`, la fase 5, ya subida. En local, sin subir: el merge de `main` (`f9ffcf3`) y las fases 7, 6a y 6b.
 
 **Error «No pudimos crear el trámite. Inténtalo de nuevo.»**
 
@@ -101,8 +103,8 @@ En este orden:
 5. **Prueba del portal publicado desde el navegador de un teléfono.**
 6. **Fase 6:**
    - suites y servicios simulados dentro del repositorio: hecho en la fase 6a, en [`tests/`](../tests/);
-   - README completo del portal y `CATALOG_CACHE_SECONDS` en `.env.example`;
-   - texto de la sección del portal para el README de la raíz.
+   - README completo del portal y `CATALOG_CACHE_SECONDS` en `.env.example`: hecho en la fase 6b;
+   - texto de la sección del portal para el README de la raíz: preparado en [readme-raiz-portal.md](readme-raiz-portal.md). Falta pegarlo en la raíz, que está fuera del portal y la decide su responsable.
 
 **Rendimiento: en pausa hasta terminar el MVP.** Dato de Salud Digna: unos 5 millones de consultas diarias en el portal web. Las mediciones y la estimación de capacidad están en [decisions.md](decisions.md), «Rendimiento y caché».
 
@@ -200,6 +202,8 @@ pnpm --filter @salud-digna/patient-portal test:legacy         # o un grupo: lega
 **Documentos.**
 
 - [Decisiones del portal](decisions.md)
+- [Guion de la demostración](demo.md)
+- [Sección del portal para el README de la raíz](readme-raiz-portal.md)
 - [Contrato de continuidad identificada](contratos/continuidad-identificada.md)
 - [README del portal](../README.md)
 - [Instrucciones para agentes del portal](../CLAUDE.md)
