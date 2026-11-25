@@ -7,7 +7,7 @@
 1. El portal es el sitio web del paciente, con Next.js: acceso, catálogo de estudios y clínicas, y trámite de agendamiento.
 2. Registra los trámites en la API general o en el orquestador, según `REQUESTS_BACKEND`, y en el orquestador emite y canjea códigos de continuidad.
 3. Producción corre la versión fusionada con el PR #8. La fase 5, de rendimiento, está en la rama sin publicar. Las fases 7, continuidad identificada, 6a, pruebas en el repositorio, y 6b, documentación de entrega, solo están en local.
-4. La continuidad identificada está preparada pero no se puede activar fuera de las pruebas: falta el emisor de acreditaciones de la API central y `access-grants` en el orquestador del repositorio.
+4. La continuidad identificada ya usa el emisor de acreditaciones de la API central y `access-grants` del orquestador, publicados en `main` en `17c9b27`. Falta la prueba del portal contra los servicios reales.
 5. **Bloquea la demo:** el portal publicado responde «No pudimos crear el trámite. Inténtalo de nuevo.» al crear un trámite.
 6. El diagnóstico apunta a la clave del canal o a la URL del orquestador en el servidor. Faltan las comprobaciones del responsable del servidor.
 
@@ -97,7 +97,7 @@ En pantalla se distingue el modo:
 En este orden:
 
 1. **Resolver el error de creación en producción**, con las comprobaciones de arriba.
-2. **Conectar el emisor de acreditaciones** cuando la API central entregue su contrato. Solo cambia `lib/adapters/general-api/assertions.ts`. Las preguntas están en [decisions.md](decisions.md), «Continuidad identificada».
+2. **Probar la continuidad identificada contra los servicios reales**, con `PATIENT_IDENTITY_MODE=assertion` y `PATIENT_ASSERTION_CHANNEL_KEY` en `.env.local`. El emisor ya está conectado: ver «Emisor conectado» en [decisions.md](decisions.md).
 3. **Abrir el PR contra `main`**, cuando se autorice subir. Incluiría las fases 5 y 7.
 4. **Prueba conjunta del código de continuidad con la app móvil.**
 5. **Prueba del portal publicado desde el navegador de un teléfono.**
@@ -133,9 +133,10 @@ En este orden:
 | App móvil | Números ficticios de Call Center para la demo | Por confirmar |
 | Call Center | Mostrar el evento de contacto, si se aprueba | Por confirmar |
 | Call Center | Prueba conjunta del código de continuidad | Por confirmar |
-| Backend | Contrato del emisor `POST /auth/patient-assertions`: autenticación, canal, cuerpo, respuesta, errores y vigencia | Por confirmar |
-| Backend | Publicar en el repositorio `POST /journeys/:id/access-grants` y el filtro `active` del listado, con el nombre del campo de vencimiento | Por confirmar |
-| Backend | Que el orquestador acepte la acreditación JWS Ed25519 del emisor; hoy valida un formato HMAC propio | Por confirmar |
+| Backend | Contrato del emisor `POST /auth/patient-assertions` | Resuelto en `main`, `17c9b27` |
+| Backend | Publicar en el repositorio `POST /journeys/:id/access-grants` y el filtro `active` del listado | Resuelto en `main`, `17c9b27` |
+| Backend | Cómo identificar al asesor y entregar el consentimiento del paciente entre backends | Por confirmar |
+| Backend | Que el orquestador acepte la acreditación JWS Ed25519 del emisor | Resuelto en `main`, `17c9b27` |
 
 ## Riesgos conocidos
 
@@ -145,7 +146,7 @@ En este orden:
 | Estado en memoria y una sola instancia | Permisos, límites, claves pendientes y caché de sesión viven en el proceso, y el registro del canal en un archivo local. Al reiniciar se pierden los permisos, y dos instancias no comparten nada. |
 | Permiso de cinco minutos | Pasado ese tiempo, el portal no puede leer ni cambiar el trámite hasta recibir un código de continuidad emitido en otro canal. |
 | Trámites que no llegan a `COMPLETED` | El contrato del orquestador no admite fecha ni cierre con cita. En el portal, el trámite termina en «Pendiente de confirmación». |
-| Continuidad identificada sin emisor | Con `PATIENT_IDENTITY_MODE=assertion` y el emisor `pending`, ningún paciente puede crear ni ver trámites. No debe activarse en producción hasta tener el emisor y `access-grants` desplegados. |
+| Continuidad identificada sin probar contra servicios reales | Solo se probó contra servicios simulados con el mismo contrato. Necesita que los servicios desplegados incluyan `17c9b27`. |
 
 ## Cómo retomar
 
@@ -184,8 +185,7 @@ pnpm --filter @salud-digna/patient-portal test:legacy         # o un grupo: lega
 | `FORWARD_CLIENT_IP` | Envía a la API general la IP del paciente. Apagada hasta acordarlo con backend. |
 | `CATALOG_CACHE_SECONDS` | Duración de la caché del catálogo. Se lee al compilar. |
 | `PATIENT_IDENTITY_MODE` | `none`, por defecto, o `assertion`. |
-| `PATIENT_ASSERTION_PROVIDER` | `pending`, por defecto, o `simulator`, solo con servicios locales. |
-| `PATIENT_ASSERTION_SIMULATOR_KEY` | Clave del emisor de simulación. Solo pruebas locales. Secreto. |
+| `PATIENT_ASSERTION_CHANNEL_KEY` | Credencial del canal Web ante el emisor de acreditaciones. Obligatoria con `assertion`. Secreto. |
 
 `.env.local` además tiene `PORTAL_TEST_EMAIL`, `PORTAL_TEST_PASSWORD`, `PORTAL_TEST_EMAIL_2` y `PORTAL_TEST_PASSWORD_2`. Son de la cuenta de prueba y solo las usan las pruebas autorizadas.
 

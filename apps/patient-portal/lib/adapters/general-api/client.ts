@@ -1,4 +1,5 @@
 import "server-only";
+import type { Secret } from "@/lib/secret";
 import { readClientIp } from "@/lib/session/client-ip";
 import { forwardsClientIp, getApiBaseUrl } from "./config";
 import type { paths } from "./schema";
@@ -31,6 +32,11 @@ export type ApiRequest = {
   params?: Record<string, string>;
   query?: Record<string, string | number | undefined>;
   token?: string;
+  /**
+   * Credencial del backend del canal Web ante el emisor de acreditaciones. Viaja en X-Patient-Assertion-Channel-Key
+   * y en ningún otro sitio: no se registra ni se devuelve.
+   */
+  channelKey?: Secret;
   body?: unknown;
   /** Segundos que puede reutilizarse una respuesta pública. Se ignora si la petición lleva token. */
   revalidate?: number;
@@ -62,15 +68,16 @@ function buildUrl({ path, params, query }: Pick<ApiRequest, "path" | "params" | 
 }
 
 export async function apiRequest<Data>(request: ApiRequest): Promise<ApiResult<Data>> {
-  const { method, path, token, body, revalidate } = request;
+  const { method, path, token, channelKey, body, revalidate } = request;
 
   // Las cabeceras se construyen aquí. Nada de lo que envía el navegador llega a la API.
   const headers = new Headers({ Accept: "application/json" });
   if (body !== undefined) headers.set("Content-Type", "application/json");
   if (token) headers.set("Authorization", `Bearer ${token}`);
+  if (channelKey) headers.set("X-Patient-Assertion-Channel-Key", channelKey.reveal());
 
   // Solo se reutilizan lecturas públicas. Con token la respuesta nunca se guarda.
-  const cacheable = method === "GET" && !token && revalidate !== undefined;
+  const cacheable = method === "GET" && !token && !channelKey && revalidate !== undefined;
 
   // La IP sale de la cabecera del proxy de confianza, nunca de otra cabecera del navegador.
   // No viaja en las lecturas que se guardan en caché: una respuesta compartida no depende del cliente.
@@ -115,4 +122,9 @@ export async function apiRequest<Data>(request: ApiRequest): Promise<ApiResult<D
     report(method, path, "cuerpo ilegible");
     return { ok: false, status: null };
   }
+}
+
+/** Respuesta 2xx con una forma que el contrato no describe. Solo método y ruta del contrato. */
+export function reportUnexpectedBody(method: string, path: ApiPath): void {
+  report(method, path, "respuesta con forma inesperada");
 }

@@ -24,9 +24,14 @@ export function testToken(name) {
   return `prueba-token-${name}-${secretOf(`token:${name}`).slice(0, 24)}`;
 }
 
-/** Clave compartida entre el emisor de simulación del portal y el orquestador simulado. */
+/** Clave con la que la API general simulada firma las acreditaciones y el orquestador simulado las verifica. */
 export function assertionKey() {
   return secretOf("emisor-de-acreditaciones");
+}
+
+/** Credencial del canal Web ante el emisor de acreditaciones: `PATIENT_ASSERTION_CHANNEL_KEY` del portal bajo prueba. */
+export function assertionChannelKey() {
+  return secretOf("emisor:canal-web");
 }
 
 /** Claves de canal del orquestador simulado: `<keyId>.<secreto>`. */

@@ -121,8 +121,7 @@ Todas las lee solo el servidor de Next. Ninguna lleva el prefijo `NEXT_PUBLIC_`,
 | `FORWARD_CLIENT_IP` | `true` o `false`. Envía a la API general la IP del paciente en `X-Portal-Client-IP`. Debe seguir apagada hasta que el equipo de la API confirme que confía en esa cabecera solo desde el servidor del portal. | `false` | No |
 | `CATALOG_CACHE_SECONDS` | Segundos que dura en caché el catálogo, de 1 a 86 400. **Se lee al compilar**: cambiarla exige volver a compilar. | `300` | No |
 | `PATIENT_IDENTITY_MODE` | `none` o `assertion`. Ver [Modos](#modos). | `none` | No |
-| `PATIENT_ASSERTION_PROVIDER` | Emisor de acreditaciones con `assertion`: `pending` o `simulator`. | `pending` | No |
-| `PATIENT_ASSERTION_SIMULATOR_KEY` | Clave del emisor de simulación, 32 bytes en base64url. Solo para pruebas locales. Secreto. | Ninguno | Sí, con `simulator` |
+| `PATIENT_ASSERTION_CHANNEL_KEY` | Credencial del canal Web ante el emisor de acreditaciones de la API central, 32 bytes en base64url. Distinta de `ORCHESTRATOR_API_KEY`. Secreto. | Ninguno | Sí, con `assertion` |
 
 Un valor ausente o inválido detiene el arranque: el servidor registra qué variable falla, sin mostrar su valor, y responde `500` a todo. Al arrancar bien, registra los modos activos y el identificador público de la clave del canal, nunca su secreto.
 
@@ -142,7 +141,7 @@ Un valor ausente o inválido detiene el arranque: el servidor registra qué vari
 | `none` | Sin acreditación. El portal recuerda qué trámites creó cada cuenta en su registro del canal Web, en `PORTAL_DATA_DIR`. Cada trámite tiene un permiso de cinco minutos. Para cambiar de canal se usa un código de continuidad. |
 | `assertion` | Cada trámite se crea y se lista con la acreditación institucional del paciente. `/continuar` y `/mi-espacio` muestran sus trámites de cualquier canal, y el permiso se renueva solo. El código queda como alternativa plegada. Si no hay acreditación, no se crea ni se lee nada. |
 
-**Cuál usar hoy:** `REQUESTS_BACKEND=orchestrator` y `PATIENT_IDENTITY_MODE=none`. El modo `assertion` depende de dos piezas que aún no existen: el emisor de acreditaciones de la API central, previsto como `POST /api/v1/auth/patient-assertions`, y `access-grants` en el orquestador del repositorio. Con el emisor `pending`, el modo `assertion` muestra «No pudimos verificar tu identidad» y no crea ningún trámite. El detalle está en [docs/decisions.md](docs/decisions.md), «Continuidad identificada».
+**Cuál usar hoy:** `REQUESTS_BACKEND=orchestrator` con `PATIENT_IDENTITY_MODE=assertion` y `PATIENT_ASSERTION_CHANNEL_KEY`, contra la API central y el orquestador que ya publican el emisor de acreditaciones y `access-grants` (`main` en `17c9b27`). Así el paciente recupera sus trámites en cualquier canal, sin código. Si el emisor no responde, el portal muestra «No pudimos verificar tu identidad» y no crea ningún trámite. `PATIENT_IDENTITY_MODE=none`, con códigos de continuidad, sigue disponible como alternativa. El detalle está en [docs/decisions.md](docs/decisions.md), «Continuidad identificada» y «Emisor conectado».
 
 ## Pruebas
 
@@ -169,7 +168,7 @@ Cada script acepta `--sin-compilar`, para reutilizar la última compilación de 
   - Si un puerto está ocupado, se detiene sin tocar el proceso que lo ocupa.
 - **Procesos.** Solo cierra los procesos que arrancó.
 - **Variables.** Fija todas las que lee el portal, así nunca se usan los valores de `.env.local`. Se niega a arrancar si la API general o el orquestador no apuntan a `127.0.0.1`.
-- **Credenciales.** Cuentas, contraseña, tokens, claves de canal y clave del emisor de acreditaciones son sintéticos. Se generan en cada ejecución a partir de un valor aleatorio que no se escribe en disco ni en la salida. Los correos son del dominio reservado `example.com`.
+- **Credenciales.** Cuentas, contraseña, tokens, claves de canal, credencial del emisor de acreditaciones y clave de firma son sintéticos. Se generan en cada ejecución a partir de un valor aleatorio que no se escribe en disco ni en la salida. Los correos son del dominio reservado `example.com`.
 - **Archivos.** Las suites no escriben en `.data` ni en `.env.local`. El registro del canal Web, los registros del servidor, las capturas y los perfiles del navegador van a una carpeta temporal que se borra al terminar. La compilación escribe en `.next`, como `next build`.
 - **Navegador.** Las pruebas de navegador usan Chrome o Chromium sin interfaz, buscado en las rutas habituales o en `CHROME_PATH`. Si no lo encuentra, las omite con un aviso, sin fallar.
 
@@ -185,8 +184,8 @@ Cada script acepta `--sin-compilar`, para reutilizar la última compilación de 
 | orquestador | `suites/orchestrator.mjs` | Contrato del orquestador: creación idempotente, eventos, dos casos de 409, historial, tiempos de espera, 401 y 403, permisos vencidos, códigos de continuidad, trámites ajenos y secretos |
 | orquestador | `suites/orchestrator.mjs reinicio` | Tras reiniciar el portal: el registro del canal Web se conserva, los permisos se pierden y no hay secretos en disco ni en el registro del servidor |
 | orquestador | `browser/orchestrator.mjs` | Revisión, continuidad, cancelación, historial y canje en un navegador real |
-| identidad | `suites/identity.mjs simulador` y `pendiente` | Creación y listado con acreditación, `access-grants`, dos pacientes aislados, permiso renovado, trámite de otro canal, fallo de acreditación sin creación anónima, emisor pendiente y nada secreto en HTML, cookies, URL ni registro |
-| arranque | en `run.mjs` | Seis configuraciones inválidas de identidad que deben impedir el arranque, sin secretos en el registro |
+| identidad | `suites/identity.mjs central` y `no-disponible` | Emisor de la API central con su contrato: petición exacta, caché por sesión y renovación según `exp`. Paciente nuevo sin vínculo, creación y listado con acreditación, `access-grants`, dos pacientes aislados, permiso renovado, trámite de otro canal, fallo de acreditación sin creación anónima, emisor que no responde y nada secreto en HTML, cookies, URL ni registro |
+| arranque | en `run.mjs` | Cuatro configuraciones inválidas de identidad que deben impedir el arranque, sin secretos en el registro |
 | publicacion | `suites/publication.mjs abierto` y `cerrado` | Registro controlado, IP del cliente, cabeceras de seguridad, página de error, sesión vencida, límites de acceso y topes de trámites y códigos |
 | publicacion | `browser/publication.mjs` | La política de contenido no rompe nada en un navegador real |
 | carga | `suites/load.mjs` | Peticiones por segundo, latencias y llamadas a los servicios por petición en cinco escenarios. Solo exige que todas las respuestas sean 200 |
@@ -203,7 +202,8 @@ Cada script acepta `--sin-compilar`, para reutilizar la última compilación de 
 | Clave del canal Web del orquestador | Variable del servidor, `ORCHESTRATOR_API_KEY` | Navegador, registros, errores, disco |
 | Token de sesión de la API general | Cookie `HttpOnly` y `SameSite=Lax`: `__Host-portal-session` y `Secure` en producción, `portal-session` en desarrollo | Código del navegador, URL, registros |
 | Permisos de trámite del orquestador | Memoria del proceso, por cuenta y trámite | Navegador, registro del canal Web, disco, registros |
-| Acreditaciones del paciente | Memoria del proceso, por sesión, como mucho cinco minutos | Navegador, registro del canal Web, disco, registros |
+| Credencial del canal Web ante el emisor de acreditaciones | Variable del servidor, `PATIENT_ASSERTION_CHANNEL_KEY` | Navegador, registros, errores, disco |
+| Acreditaciones del paciente | Memoria del proceso, por sesión, hasta su `exp` y como mucho cinco minutos | Navegador, registro del canal Web, disco, registros |
 | Claves de idempotencia | Memoria del proceso, mientras una creación tenga resultado incierto | Navegador, registros |
 | Código de continuidad | Solo en la respuesta de la acción que lo emite | URL, cookies, almacenamiento del navegador, registro del canal Web, registros |
 
@@ -290,7 +290,8 @@ Viven en memoria y se vacían al reiniciar.
 - **Una sola instancia.** Permisos, acreditaciones, límites, claves pendientes y caché de sesión viven en memoria, y el registro del canal Web en un archivo local. Al reiniciar se pierden los permisos, y dos instancias no comparten nada. Qué haría falta está en [docs/decisions.md](docs/decisions.md), «Rendimiento y caché».
 - **Permiso de cinco minutos sin renovación** en el modo `none`. Pasado ese tiempo, el portal muestra «Necesita un permiso nuevo» y solo recupera el trámite con un código emitido por otro canal. El portal no puede canjear un código que él mismo generó.
 - **Sin fecha ni cita en el orquestador.** Su contrato no admite fecha ni cierre con cita: en modo orquestador el trámite termina en «Pendiente de confirmación» y nunca llega a completado.
-- **Continuidad identificada sin activar.** Falta el emisor de acreditaciones de la API central y `access-grants` en el orquestador del repositorio. No debe activarse en producción hasta tenerlos.
+- **Continuidad identificada.** Necesita que la API central y el orquestador desplegados incluyan `17c9b27` de `main`. Con un orquestador anterior, `access-grants` no existe y el portal no puede abrir los trámites. El consentimiento para que un asesor recupere los trámites no está en el portal.
+- **Lista vacía ante una acreditación rechazada.** El orquestador responde igual a una identidad sin trámites que a una acreditación inválida. El portal muestra la lista vacía, y el error aparece al intentar crear.
 - **Límite de acceso compartido.** La API general limita el acceso por IP, y todas las peticiones le llegan desde el servidor del portal. Unos pocos fallos pueden bloquear el acceso a todos mientras `FORWARD_CLIENT_IP` siga apagada.
 - **Catálogo en caché.** Un cambio en estudios o clínicas tarda hasta `CATALOG_CACHE_SECONDS` en verse, más lo que guarde el proxy.
 - **Error de creación en producción sin resolver.** El portal publicado responde «No pudimos crear el trámite» al crear un trámite. El diagnóstico y las comprobaciones pendientes están en [docs/estado.md](docs/estado.md).

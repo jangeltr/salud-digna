@@ -23,7 +23,7 @@ import { fileURLToPath } from "node:url";
 
 process.env.TEST_RUN_SECRET ??= randomBytes(32).toString("base64url");
 const { API_URL, BASE, HOST, ORCHESTRATOR_URL, PORTS } = await import("./lib/config.mjs");
-const { assertionKey, channelKey } = await import("./lib/secrets.mjs");
+const { assertionChannelKey, channelKey } = await import("./lib/secrets.mjs");
 
 const TESTS = dirname(fileURLToPath(import.meta.url));
 const PORTAL = resolve(TESTS, "..");
@@ -174,21 +174,19 @@ function portalEnv(overrides = {}) {
     FORWARD_CLIENT_IP: "",
     CATALOG_CACHE_SECONDS: "",
     PATIENT_IDENTITY_MODE: "",
-    PATIENT_ASSERTION_PROVIDER: "",
-    PATIENT_ASSERTION_SIMULATOR_KEY: assertionKey(),
+    PATIENT_ASSERTION_CHANNEL_KEY: assertionChannelKey(),
     ...overrides,
   });
   for (const name of ["API_BASE_URL", "ORCHESTRATOR_BASE_URL"]) {
-    if (!LOOPBACK.test(env[name]) && !overrides.allowRemoteForStartupCheck) {
+    if (!LOOPBACK.test(env[name])) {
       throw new Error(`${name} no apunta a un servicio simulado local: las pruebas no llaman a servicios desplegados.`);
     }
   }
-  delete env.allowRemoteForStartupCheck;
   return env;
 }
 
 function describe(env) {
-  const identity = env.PATIENT_IDENTITY_MODE === "assertion" ? ` + identidad assertion (${env.PATIENT_ASSERTION_PROVIDER || "pending"})` : "";
+  const identity = env.PATIENT_IDENTITY_MODE === "assertion" ? " + identidad assertion (emisor: API general simulada)" : "";
   return `servidor: ${BASE} (next start, producción) | modo: ${env.REQUESTS_BACKEND}${identity} | API general: ${env.API_BASE_URL} (simulada) | orquestador: ${env.ORCHESTRATOR_BASE_URL} (simulado) | servicios desplegados: ninguno`;
 }
 
@@ -403,13 +401,14 @@ const groupRunners = {
   async identidad() {
     const stopStubs = await startStubs();
     try {
-      for (const [phase, provider] of [
-        ["simulador", "simulator"],
-        ["pendiente", "pending"],
+      // «no-disponible»: una credencial del canal válida en forma, pero que el emisor no reconoce.
+      for (const [phase, channelKeyOverride] of [
+        ["central", assertionChannelKey()],
+        ["no-disponible", "A".repeat(43)],
       ]) {
-        const overrides = { REQUESTS_BACKEND: "orchestrator", PATIENT_IDENTITY_MODE: "assertion", PATIENT_ASSERTION_PROVIDER: provider };
+        const overrides = { REQUESTS_BACKEND: "orchestrator", PATIENT_IDENTITY_MODE: "assertion", PATIENT_ASSERTION_CHANNEL_KEY: channelKeyOverride };
         await withPortal(overrides, { log: freshLog(`identidad-${phase}`) }, async (portal) => {
-          await suite(`identidad · emisor ${phase}`, "suites/identity.mjs", [phase], suiteEnv(portal));
+          await suite(`identidad · emisor ${phase === "central" ? "disponible" : "no disponible"}`, "suites/identity.mjs", [phase], suiteEnv(portal));
         });
       }
     } finally {
@@ -420,12 +419,10 @@ const groupRunners = {
   async arranque() {
     console.log("\n################ arranques que deben negarse");
     const cases = [
-      ["emisor de simulación con el orquestador en un dominio remoto", { PATIENT_IDENTITY_MODE: "assertion", PATIENT_ASSERTION_PROVIDER: "simulator", ORCHESTRATOR_BASE_URL: "https://orquestador.example/api/v1" }, "El proveedor de acreditaciones de simulación solo arranca con servicios en localhost o 127.0.0.1."],
-      ["emisor de simulación con la API general remota", { PATIENT_IDENTITY_MODE: "assertion", PATIENT_ASSERTION_PROVIDER: "simulator", API_BASE_URL: "https://api.example/api/v1" }, "El proveedor de acreditaciones de simulación solo arranca con servicios en localhost o 127.0.0.1."],
       ["modo assertion con REQUESTS_BACKEND=legacy", { PATIENT_IDENTITY_MODE: "assertion", REQUESTS_BACKEND: "legacy" }, "PATIENT_IDENTITY_MODE=assertion requiere REQUESTS_BACKEND=orchestrator."],
       ["PATIENT_IDENTITY_MODE inválido", { PATIENT_IDENTITY_MODE: "jwt" }, "PATIENT_IDENTITY_MODE debe ser none o assertion."],
-      ["emisor inválido", { PATIENT_IDENTITY_MODE: "assertion", PATIENT_ASSERTION_PROVIDER: "real" }, "PATIENT_ASSERTION_PROVIDER debe ser pending o simulator."],
-      ["clave de simulación ausente", { PATIENT_IDENTITY_MODE: "assertion", PATIENT_ASSERTION_PROVIDER: "simulator", PATIENT_ASSERTION_SIMULATOR_KEY: "" }, "PATIENT_ASSERTION_SIMULATOR_KEY debe tener 32 bytes en base64url, sin relleno."],
+      ["modo assertion sin la credencial del emisor", { PATIENT_IDENTITY_MODE: "assertion", PATIENT_ASSERTION_CHANNEL_KEY: "" }, "PATIENT_ASSERTION_CHANNEL_KEY debe tener 32 bytes en base64url, sin relleno."],
+      ["credencial del emisor mal formada", { PATIENT_IDENTITY_MODE: "assertion", PATIENT_ASSERTION_CHANNEL_KEY: "credencial-corta" }, "PATIENT_ASSERTION_CHANNEL_KEY debe tener 32 bytes en base64url, sin relleno."],
     ];
     let passed = 0;
     let total = 0;
@@ -434,15 +431,11 @@ const groupRunners = {
       if (ok) passed++;
       else console.log(`FALLA ${name}${detail ? `  ->  ${detail}` : ""}`);
     };
-    // Los dominios .example no existen: el servidor se niega a arrancar antes de llamar a ningún servicio.
     const stopStubs = await startStubs();
     try {
       for (const [name, overrides, message] of cases) {
         const log = freshLog("arranque");
-        const env = portalEnv({ REQUESTS_BACKEND: "orchestrator", ...overrides, allowRemoteForStartupCheck: true });
-        for (const url of [env.API_BASE_URL, env.ORCHESTRATOR_BASE_URL]) {
-          if (!LOOPBACK.test(url) && !/^https:\/\/[a-z.]+\.example\//.test(url)) throw new Error("solo se admiten dominios .example en los arranques inválidos");
-        }
+        const env = portalEnv({ REQUESTS_BACKEND: "orchestrator", ...overrides });
         clearFetchCache();
         const child = startProcess(process.execPath, [NEXT, "start", "--hostname", HOST, "--port", String(PORTS.portal)], { env, log });
         const status = await waitForHttp(`${BASE}/acceso`, 60);
@@ -451,7 +444,7 @@ const groupRunners = {
         const text = existsSync(log) ? readFileSync(log, "utf8").replace(/\x1b\[[0-9;]*m/g, "") : "";
         check(`${name}: responde 500`, status === 500, String(status));
         check(`${name}: registra el motivo`, text.includes(message));
-        check(`${name}: sin secretos en el registro`, !text.includes(assertionKey()) && !text.includes(channelKey("web").split(".")[1]));
+        check(`${name}: sin secretos en el registro`, !text.includes(assertionChannelKey()) && !text.includes("credencial-corta") && !text.includes(channelKey("web").split(".")[1]));
       }
     } finally {
       await stopStubs();

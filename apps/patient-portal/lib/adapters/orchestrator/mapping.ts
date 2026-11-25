@@ -84,13 +84,12 @@ export function readCreatedJourney(data: unknown): CreatedJourney | undefined {
 }
 
 /**
- * Respuesta de `POST /journeys/:journeyId/access-grants`. El contrato dice que devuelve `grant` y su
- * fecha de vencimiento sin nombrarla: se lee `grantExpiresAt`, como en la creación y el canje, y,
- * si falta, `expiresAt`.
+ * Respuesta de `POST /journeys/:journeyId/access-grants` (`patient-identity.md`, «Recuperación automática»):
+ * `201` con `journeyId`, `grant` y `grantExpiresAt`. El permiso solo vale si es del trámite pedido.
  */
-export function readAccessGrant(data: unknown): GrantedAccess | undefined {
-  if (!isRecord(data)) return undefined;
-  return readGrant(data) ?? readGrant({ grant: data.grant, grantExpiresAt: data.expiresAt });
+export function readAccessGrant(data: unknown, journeyId: string): GrantedAccess | undefined {
+  if (!isRecord(data) || readUuid(data.journeyId) !== journeyId) return undefined;
+  return readGrant(data);
 }
 
 const OPEN_STATUSES = new Set<RequestStatus>(["draft", "in-progress", "pending-confirmation"]);

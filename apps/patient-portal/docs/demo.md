@@ -55,17 +55,11 @@ Dos recorridos: el que se puede mostrar hoy, con un código de continuidad, y el
    - Se ve: «Trámite creado» y «Selección actualizada», «En la web», y «Enviado a confirmación», hecho por el Call Center.
    - El portal nombra ese canal «En Call Center» si su código contiene «call». Si no, lo muestra como «En el canal `<código>`». El código de canal del Call Center no está documentado en el repositorio.
 
-## Recorrido previsto: el mismo, sin código
+## Recorrido sin código: continuidad identificada
 
-> **Pendiente.** No se puede mostrar todavía. Necesita tres piezas que no existen:
->
-> - el emisor de acreditaciones de la API central, previsto como `POST /api/v1/auth/patient-assertions`;
-> - `POST /journeys/:id/access-grants` en el orquestador del repositorio;
-> - la identificación del paciente en el Call Center: [su documentación](../../../docs/call-center-orchestrator.md) solo describe el canje de códigos.
->
-> El portal ya está preparado, y sus pruebas lo cubren con un emisor de simulación: `pnpm --filter @salud-digna/patient-portal test:identity`.
+> **Pendiente de validar en el portal contra los servicios reales.** El emisor de acreditaciones y `access-grants` ya están en `main` (`17c9b27`), y la recuperación entre Web y Call Center se validó con las APIs reales, según el equipo de backend. El portal lo cubre en sus pruebas contra servicios simulados con el mismo contrato: `pnpm --filter @salud-digna/patient-portal test:identity`. El lado del Call Center usa el consentimiento del paciente, que el portal todavía no emite: ver «Emisor conectado» en [decisions.md](decisions.md).
 
-Configuración: `REQUESTS_BACKEND=orchestrator`, `PATIENT_IDENTITY_MODE=assertion` y el emisor real de la API central, cuando exista.
+Configuración: `REQUESTS_BACKEND=orchestrator`, `PATIENT_IDENTITY_MODE=assertion` y `PATIENT_ASSERTION_CHANNEL_KEY` con la credencial del canal Web ante el emisor.
 
 1. **Acceso.** Inicia sesión con la cuenta de paciente.
    - Se ve: «Mi espacio», con «Tus trámites activos», que muestra los de cualquier canal: folio, estado y última actividad.

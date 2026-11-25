@@ -2,9 +2,9 @@ import "server-only";
 import { cache } from "react";
 import { checkGeneralApiConfiguration, generalApiData } from "./adapters/general-api/general-data";
 import { useSessionCache } from "./adapters/general-api/session";
-import { pendingAssertionIssuer } from "./adapters/general-api/assertions";
-import { getApiBaseUrl, forwardsClientIp } from "./adapters/general-api/config";
-import { channelKeyId, getDataDir, getOrchestratorBaseUrl } from "./adapters/orchestrator/config";
+import { centralAssertionIssuer } from "./adapters/general-api/assertions";
+import { forwardsClientIp } from "./adapters/general-api/config";
+import { channelKeyId, getDataDir } from "./adapters/orchestrator/config";
 import { legacyCapabilities } from "./adapters/legacy-requests/capabilities";
 import { legacyRequestNotifier } from "./adapters/legacy-requests/notifier";
 import { legacyRequestQuery } from "./adapters/legacy-requests/query";
@@ -14,9 +14,7 @@ import { createOrchestratorNotifier } from "./adapters/orchestrator/notifier";
 import { createOrchestratorQuery } from "./adapters/orchestrator/query";
 import type { GeneralData, RequestCapabilities, RequestNotifier, RequestQuery } from "./domain/ports";
 import { createAssertionSource } from "./identity/cache";
-import { assertSimulatorIsLocal, readAssertionProvider, readIdentityMode, readSimulatorKey, type IdentityMode } from "./identity/config";
-import type { AssertionIssuer } from "./identity/ports";
-import { createSimulatorIssuer } from "./identity/simulator";
+import { readAssertionChannelKey, readIdentityMode, type IdentityMode } from "./identity/config";
 import { checkSettings, isRegistrationEnabled } from "./settings";
 import { createFileRegistry } from "./state/file-registry";
 import {
@@ -69,9 +67,9 @@ export const attemptStore: AttemptStore = createMemoryAttemptStore();
 const currentPatient = cache(() => generalApiData.getProfile());
 
 /*
- * Identidad del paciente ante el orquestador. `PATIENT_IDENTITY_MODE` elige `none`, por defecto, o
- * `assertion`; `PATIENT_ASSERTION_PROVIDER`, el emisor: `pending` hasta que la API central entregue el
- * contrato de su emisor, o `simulator` para las pruebas locales. Un valor inválido detiene el arranque.
+ * Identidad del paciente ante el orquestador. `PATIENT_IDENTITY_MODE` elige `none`, por defecto, o `assertion`,
+ * con el emisor de acreditaciones de la API central y la credencial `PATIENT_ASSERTION_CHANNEL_KEY`.
+ * Un valor inválido o la credencial ausente detienen el arranque.
  */
 const identityMode: IdentityMode = (() => {
   try {
@@ -81,16 +79,7 @@ const identityMode: IdentityMode = (() => {
   }
 })();
 
-function selectIssuer(): AssertionIssuer {
-  try {
-    return readAssertionProvider() === "simulator" ? createSimulatorIssuer(currentPatient, readSimulatorKey()) : pendingAssertionIssuer;
-  } catch {
-    // `checkConfiguration` detiene el arranque con el motivo.
-    return pendingAssertionIssuer;
-  }
-}
-
-const assertions = createAssertionSource(selectIssuer(), createMemoryAssertionCache());
+const assertions = createAssertionSource(centralAssertionIssuer, createMemoryAssertionCache());
 
 const orchestratorDependencies = {
   currentPatient,
@@ -133,20 +122,16 @@ export async function checkConfiguration(): Promise<void> {
   checkGeneralApiConfiguration();
   const requests = readRequestsBackend();
   const identity = readIdentityMode();
-  const provider = readAssertionProvider();
   if (identity === "assertion" && requests !== "orchestrator") {
     throw new Error("PATIENT_IDENTITY_MODE=assertion requiere REQUESTS_BACKEND=orchestrator.");
   }
   if (requests === "orchestrator") await checkOrchestratorConfiguration(registry, identity);
-  if (identity === "assertion" && provider === "simulator") {
-    readSimulatorKey();
-    assertSimulatorIsLocal([getApiBaseUrl(), getOrchestratorBaseUrl()]);
-  }
+  if (identity === "assertion") readAssertionChannelKey();
 
   // Modos activos, para el registro del servidor. Sin valores secretos: de la clave solo su identificador público.
   const parts = [
     `trámites: ${requests}`,
-    `identidad del paciente: ${identity}${identity === "assertion" ? ` (emisor: ${provider === "simulator" ? "simulación" : "pendiente"})` : ""}`,
+    `identidad del paciente: ${identity}${identity === "assertion" ? " (emisor: API central)" : ""}`,
     `registro de cuentas: ${isRegistrationEnabled() ? "encendido" : "apagado"}`,
     `IP del cliente a la API: ${forwardsClientIp() ? "encendida" : "apagada"}`,
   ];

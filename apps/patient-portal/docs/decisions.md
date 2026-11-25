@@ -337,7 +337,7 @@ Aun con el listado, el portal solo vería resúmenes: identificador, tipo, estad
 
 **Fecha.** 2026-11-24.
 
-**Contrato.** [Continuidad identificada](contratos/continuidad-identificada.md), entregado por el equipo del orquestador. Dice que los endpoints nuevos están implementados en local y sin desplegar. Las diferencias con el código que hay en el repositorio están más abajo, en «Contrato frente al código».
+**Contrato.** [Continuidad identificada](contratos/continuidad-identificada.md), entregado por el equipo del orquestador, y desde `17c9b27` el contrato publicado en `main`: [el emisor de la API central](../../../docs/api-patient-assertions.md) y la «Recuperación automática» de [identidad del paciente del orquestador](../../orchestrator/docs/patient-identity.md). Cómo quedó cada diferencia está más abajo, en «Contrato frente al código».
 
 **Decisión.** El paciente cambia de canal sin código. Cada canal acredita al paciente ante el orquestador, y el orquestador le devuelve sus trámites, vengan del canal que vengan. El código de continuidad se conserva como alternativa discreta.
 
@@ -348,18 +348,23 @@ Aun con el listado, el portal solo vería resúmenes: identificador, tipo, estad
 - En modo `assertion`, si no hay acreditación no se crea ni se lee nada y el paciente ve «No pudimos verificar tu identidad». Nunca se recurre a la creación anónima, que el orquestador todavía acepta sin la cabecera.
 - Un valor inválido detiene el arranque. Al arrancar, el servidor registra los modos activos y el identificador público de la clave del canal, nunca su secreto.
 
-**Emisor de acreditaciones.** Es la interfaz `AssertionIssuer` de `lib/identity/ports.ts`. Obtiene la acreditación del paciente de la sesión que ya validó el servidor y no recibe ningún dato del navegador. `PATIENT_ASSERTION_PROVIDER` elige la implementación.
+**Emisor de acreditaciones.** Es la interfaz `AssertionIssuer` de `lib/identity/ports.ts`. Obtiene la acreditación del paciente de la sesión que ya validó el servidor y no recibe ningún dato del navegador. La implementación es la de la API central, en `lib/adapters/general-api/assertions.ts`.
 
-- `pending`, por defecto, está en `lib/adapters/general-api/assertions.ts`. Falla siempre con `identity-unavailable` porque el contrato del emisor de la API central no está definido, y no inventa cabeceras, credenciales ni cuerpo.
-- `simulator`, en `lib/identity/simulator.ts`, solo sirve al orquestador simulado de las pruebas. Firma un formato propio de las pruebas y se niega a arrancar si la API general o el orquestador no están en `localhost` o `127.0.0.1`.
-- La caché, en `lib/identity/cache.ts`, guarda en memoria una acreditación por sesión, con el SHA-256 del token como clave. Nunca la guarda más de cinco minutos y la renueva 30 segundos antes de vencer. Al cerrar sesión se olvida.
+- `POST /api/v1/auth/patient-assertions` con la sesión del paciente, la credencial del canal Web en `X-Patient-Assertion-Channel-Key` y el cuerpo `{}`. La credencial está en `PATIENT_ASSERTION_CHANNEL_KEY`, 32 bytes en base64url, distinta de la clave del orquestador. Sin ella, el modo `assertion` no arranca.
+- El servidor construye la petición y no reenvía nada del navegador, tampoco `Origin`.
+- Cualquier fallo del emisor es `identity-unavailable`: su `401` no distingue entre la sesión y la credencial del canal, y la sesión ya se validó antes. El código queda en el registro.
+- La respuesta es `{assertion}`, un JWS legible. El portal no verifica la firma, que es tarea del orquestador. Solo lee su `exp` para no guardarlo más de lo que vale.
+- El 2026-11-24 se retiró el emisor de simulación (`PATIENT_ASSERTION_PROVIDER` y `PATIENT_ASSERTION_SIMULATOR_KEY`). Las pruebas usan el emisor real contra la API general simulada, que implementa el mismo contrato.
+- La caché, en `lib/identity/cache.ts`, guarda en memoria una acreditación por sesión, con el SHA-256 del token como clave. Nunca la guarda más de cinco minutos ni más allá de su `exp`, y la renueva 30 segundos antes de vencer. Al cerrar sesión se olvida.
 - La acreditación nunca llega al navegador, al registro de archivo ni a los logs.
 
 **Adaptador del orquestador en modo `assertion`.**
 
 - **Creación.** `POST /journeys` con `X-Patient-Assertion` e `Idempotency-Key`. Si el orquestador responde `404` a una acreditación guardada, se pide otra y se reenvía una sola vez con la misma clave de idempotencia.
 - **Listado.** `GET /journeys?active=true`. `/continuar`, `/mi-espacio` y `/tramite/nuevo` muestran folio, estado y fecha. El detalle se lee al abrir el trámite.
-- **Permiso.** Al abrir un trámite sin permiso vigente en memoria, el portal lo pide con `POST /journeys/:id/access-grants` y la acreditación de la sesión.
+  - El orquestador responde `404` a una identidad central que aún no tiene ningún trámite: su primera creación identificada establece el vínculo. Por eso el `404` del listado se muestra como lista vacía, para que un paciente nuevo pueda empezar.
+  - Ese `404` no se reintenta con otra acreditación, para no pedir una nueva en cada visita de un paciente sin trámites. Si la acreditación fuera inválida, la creación lo diría y no crearía nada.
+- **Permiso.** Al abrir un trámite sin permiso vigente en memoria, el portal lo pide con `POST /journeys/:id/access-grants` y la acreditación de la sesión. La respuesta, `201` con `journeyId`, `grant` y `grantExpiresAt`, solo se acepta si es del trámite pedido. El permiso vence, a más tardar, con la acreditación que lo autorizó.
   - La pertenencia la decide el orquestador, así que el portal nunca usa un identificador de trámite del navegador sin ese paso.
   - Si el orquestador rechaza un permiso guardado, se pide otro y se reintenta una sola vez.
   - Un `404` de `access-grants` significa «no encontrado», igual para un trámite ajeno que para uno inexistente, y no se reintenta: repetir doblaría las llamadas de quien pruebe identificadores.
@@ -383,7 +388,7 @@ Aun con el listado, el portal solo vería resúmenes: identificador, tipo, estad
 
 #### Contrato frente al código
 
-Revisado el 2026-11-24 en el código de `apps/orchestrator` que hay en `main`, en `ff989cc`, integrado en esta rama. Las rutas son relativas a `apps/orchestrator/`.
+Revisado el 2026-11-24 en el código de `apps/orchestrator` que hay en `main`, en `ff989cc`. Las rutas son relativas a `apps/orchestrator/`. La tabla describe aquella revisión. El commit `17c9b27` de `main`, integrado en esta rama, resolvió las diferencias: ver «Emisor conectado», a continuación.
 
 | Punto | Contrato | Código del repositorio | Cómo quedó el portal |
 | --- | --- | --- | --- |
@@ -397,17 +402,20 @@ Revisado el 2026-11-24 en el código de `apps/orchestrator` que hay en `main`, e
 | Tamaño | No lo dice. | Máximo 768 caracteres y una sola cabecera (`patient-identity.ts:47`). | El portal envía una sola cabecera. El tamaño depende del emisor. |
 | Emisor `POST /auth/patient-assertions` | Previsto en `apps/api`. | **No existe** en `apps/api/src` ni en `docs/openapi.json`. | Emisor `pending`: el modo `assertion` falla con un aviso claro hasta que llegue. |
 
-**Pendiente del emisor para conectarlo.** Sustituir `pendingAssertionIssuer` solo cambia `lib/adapters/general-api/assertions.ts`, y hace falta saber:
+#### Emisor conectado
 
-1. Cómo se autentica la petición: con el token del paciente, con una credencial propia del portal o con las dos. Si hay credencial propia, su nombre y su forma.
-2. Cómo se indica el canal `demo-web`: en el cuerpo, en una cabecera o deducido de la credencial.
-3. El cuerpo exacto de la petición, si lo hay.
-4. La respuesta: si trae vencimiento además de `assertion`, cómo se llama y en qué formato.
-5. Los códigos de error y cuáles admiten reintento. Si tiene límite propio, con `Retry-After`.
-6. Si la acreditación puede reutilizarse durante su vigencia o es de un solo uso.
-7. Qué `actorRef` lleva, porque el orquestador exige el mismo sujeto y actor al repetir una creación.
-8. Si el orquestador desplegado ya acepta el JWS, o hasta cuándo convivirá con el formato HMAC.
-9. Del orquestador: el nombre del campo de vencimiento de `access-grants`, su código de éxito, sus scopes y cuándo filtrará `active`.
+**Fecha.** 2026-11-24. **Contrato.** `main` en `17c9b27`: [`docs/api-patient-assertions.md`](../../../docs/api-patient-assertions.md), `docs/openapi.json` y [`apps/orchestrator/docs/patient-identity.md`](../../orchestrator/docs/patient-identity.md), «Recuperación automática».
+
+| Pregunta que quedó abierta | Respuesta del contrato | Portal |
+| --- | --- | --- |
+| Autenticación del emisor | El JWT de la cuenta y `X-Patient-Assertion-Channel-Key` con el secreto del backend del canal, distinto de la clave del orquestador. | `PATIENT_ASSERTION_CHANNEL_KEY`, solo en el servidor. |
+| Canal | Se deriva de la credencial. | Nada que enviar. |
+| Cuerpo y respuesta | `{}` para un paciente. `200` con `{"assertion":"<JWS>"}` y `Cache-Control: no-store`. | El vencimiento sale del `exp` del JWS. |
+| Errores | `400` cuerpo inválido, `401` credenciales, `403` rol o canal, `503` sin configuración. | Todos son `identity-unavailable`, con el código en el registro. |
+| Formato | JWS `EdDSA`, `typ: sd-patient+jwt`, con `channel`, `customerId`, `sub`, `jti`, `iat` y `exp`, cinco minutos como máximo. | Opaco salvo `exp`. |
+| `GET /journeys?active=true` | Ya filtra a `DRAFT`, `IN_PROGRESS` y `PENDING_CONFIRMATION`. Una identidad sin vínculo recibe `404`. | Lista vacía ante ese `404`. Conserva su propio filtro. |
+| `access-grants` | Existe: `JOURNEYS_READ`, sin cuerpo, `201` con `journeyId`, `grant` y `grantExpiresAt`. Añade `PUBLISH_EVENT` si la clave lo tiene. Vence con la acreditación. | Lee esos tres campos y comprueba `journeyId`. |
+| Consentimiento para el asesor | `POST /api/v1/auth/patient-assertion-consents`, dirigido al UUID del asesor y al canal de Call Center. | **Fuera de esta fase.** La transferencia entre backends no está implementada en los canales, y el contrato deja abierto cómo se identifica al asesor. |
 
 ### Publicación del portal
 

@@ -4,7 +4,8 @@
 import { createServer } from "node:http";
 import { randomBytes, randomUUID } from "node:crypto";
 import { HOST, PORTS } from "../lib/config.mjs";
-import { testPassword, testToken } from "../lib/secrets.mjs";
+import { mintAssertion } from "../lib/assertions.mjs";
+import { assertionChannelKey, testPassword, testToken } from "../lib/secrets.mjs";
 
 const port = PORTS.api;
 const PASSWORD = testPassword();
@@ -33,6 +34,7 @@ let calls = {};
 let queries = [];
 let failures = []; // { op, mode, times }
 let lastCode = null;
+let assertionTtlSeconds = 300; // vigencia de las acreditaciones que emite; la cambia /__test/assertion-ttl
 
 const count = (key) => { calls[key] = (calls[key] ?? 0) + 1; };
 function send(res, status, body, headers = {}) {
@@ -88,6 +90,7 @@ createServer(async (req, res) => {
   if (p === "/__test/requests") return send(res, 200, [...requests.values()].map((r) => ({ ...snapshot(r), owner: r.owner, events: r.events.map((e) => e.type) })));
   if (p === "/__test/fail") { failures.push({ op: url.searchParams.get("op"), mode: url.searchParams.get("mode"), times: Number(url.searchParams.get("times") ?? 1) }); return send(res, 200, {}); }
   if (p === "/__test/clear-failures") { failures = []; return send(res, 200, {}); }
+  if (p === "/__test/assertion-ttl") { assertionTtlSeconds = Number(url.searchParams.get("s")); return send(res, 200, {}); }
   if (p === "/__test/revoke") { revoked.add(url.searchParams.get("token")); return send(res, 200, {}); }
   if (p === "/__test/restore") { revoked.delete(url.searchParams.get("token")); return send(res, 200, {}); }
   if (p === "/__test/other-channel") {
@@ -135,6 +138,19 @@ createServer(async (req, res) => {
   if (req.method === "GET" && p === "/api/v1/auth/me") {
     return send(res, 200, { id: me.id, email: me.email, role: "PATIENT", isActive: true, patientId: me.patientId, patient: { id: me.patientId, firstName: me.firstName, lastName: "Prueba", email: me.email, phone: null } });
   }
+  // --- emisor de acreditaciones (docs/api-patient-assertions.md) -----------------------------------------
+  // Sesión de paciente, credencial del canal en X-Patient-Assertion-Channel-Key y cuerpo `{}`. El canal sale de la
+  // credencial y `customerId` es el UUID de la ficha de paciente, distinto del de la cuenta.
+  if (req.method === "POST" && p === "/api/v1/auth/patient-assertions") {
+    const forced = takeFailure("assertions");
+    if (forced) return err(res, Number(forced), "fallo forzado del emisor");
+    if (req.headers["x-patient-assertion-channel-key"] !== assertionChannelKey()) return err(res, 401, "credencial de canal");
+    const body = await readJson(req);
+    if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).length > 0) return err(res, 400, "cuerpo");
+    const assertion = mintAssertion({ channel: "demo-web", customerId: me.patientId, sub: me.id, ttlSeconds: assertionTtlSeconds });
+    return send(res, 200, { assertion }, { "Cache-Control": "no-store" });
+  }
+
   const mine = [...requests.values()].filter((r) => r.owner === token).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id));
 
   if (req.method === "POST" && p === "/api/v1/requests") {

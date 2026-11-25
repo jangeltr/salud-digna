@@ -1,26 +1,31 @@
-// Continuidad identificada: PATIENT_IDENTITY_MODE=assertion contra el orquestador simulado.
-//   node tests/suites/identity.mjs simulador   -> emisor de simulación
-//   node tests/suites/identity.mjs pendiente   -> emisor pendiente: ninguna acreditación, ningún trámite
+// Continuidad identificada: PATIENT_IDENTITY_MODE=assertion con el emisor de la API central, contra los simuladores.
+//   node tests/suites/identity.mjs central         -> emisor y orquestador disponibles
+//   node tests/suites/identity.mjs no-disponible   -> el emisor rechaza la credencial del canal: ningún trámite
 // Nunca imprime acreditaciones, permisos, claves ni tokens.
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { Browser, assertWiredToStub, clean, orq, orqApi, signIn } from "../lib/client.mjs";
+import { Browser, assertWiredToStub, clean, orq, orqApi, signIn, stub } from "../lib/client.mjs";
 import { DIRS, IDS, UUID } from "../lib/config.mjs";
 import { check, eq, finish, section, sleep } from "../lib/report.mjs";
-import { CHANNEL_KEY_IDS, channelKey, secretOf, testPassword } from "../lib/secrets.mjs";
+import { CHANNEL_KEY_IDS, assertionChannelKey, channelKey, secretOf, testPassword } from "../lib/secrets.mjs";
 
 const PHASE = process.argv[2];
-const { GLUCOSA, BIOMETRIA, ALAMEDA, ANA_ACCOUNT } = IDS;
-const ANA = ANA_ACCOUNT;
+const { GLUCOSA, BIOMETRIA, ALAMEDA } = IDS;
+// `CUSTOMER_ID` es el UUID de la ficha de paciente, distinto del de la cuenta.
+const ANA = "00000000-0000-4000-8000-000000000911";
+const CARLA = "00000000-0000-4000-8000-000000000913";
 const PASSWORD = testPassword();
 const KEY_OTHER = channelKey("otherChannel");
+const ISSUER = "POST /api/v1/auth/patient-assertions";
 
 // Cuerpos, cabeceras, cookies y destinos que el portal envió al navegador.
 const seen = [];
 Browser.onResponse = (response) => seen.push(response.body, response.headerText(), response.path);
 
 const trace = () => orq("/__test/trace?clear=1");
+const apiTrace = () => stub("/__test/trace?clear=1");
 const ops = (entries) => entries.map((e) => e.op);
+const issuerCalls = (entries) => entries.filter((e) => e.call === ISSUER);
 const journeys = () => orq("/__test/journeys");
 const journey = async (id) => (await journeys()).find((j) => j.id === id);
 async function login(browser, email) {
@@ -40,16 +45,18 @@ const readLog = () => readFileSync(DIRS.portalLog, "utf8");
 await assertWiredToStub();
 
 // =============================================================================================
-if (PHASE === "pendiente") {
-  section("emisor pendiente: ninguna acreditación, ningún trámite");
+if (PHASE === "no-disponible") {
+  section("el emisor rechaza la credencial del canal: ninguna acreditación, ningún trámite");
   const ana = new Browser();
   await login(ana, "ana@example.com");
   await trace();
+  await apiTrace();
   const before = (await journeys()).length;
   let r = await ana.get(`/tramite/nuevo?estudio=${GLUCOSA}`);
-  let entries = await trace();
+  const entries = await trace();
   check("/tramite/nuevo: aviso de identidad y ningún botón para empezar", r.text().includes("No pudimos verificar tu identidad") && r.forms("Empezar").length === 0, r.text().slice(0, 160));
   check("ninguna llamada al orquestador: nunca se crea un trámite anónimo", entries.length === 0 && (await journeys()).length === before, ops(entries));
+  check("el portal sí pidió la acreditación al emisor", issuerCalls(await apiTrace()).length >= 1);
   r = await ana.get("/continuar");
   check("/continuar: aviso de identidad, sin lista", r.status === 200 && r.text().includes("No pudimos verificar tu identidad") && (await trace()).length === 0, r.h1());
   r = await ana.get("/mi-espacio");
@@ -57,22 +64,52 @@ if (PHASE === "pendiente") {
   r = await ana.get("/tramite/00000000-0000-4000-8000-0000000000aa");
   check("abrir un trámite por URL: aviso de identidad y ninguna llamada", r.text().includes("No pudimos verificar tu identidad") && (await trace()).length === 0, r.status);
   const log = readLog();
-  check("al arrancar se registra el modo y el emisor pendiente", log.includes("identidad del paciente: assertion (emisor: pendiente)"));
+  check("al arrancar se registra el modo y el emisor", log.includes("identidad del paciente: assertion (emisor: API central)"));
+  check("el rechazo del emisor queda con su código", log.includes("[api] POST /auth/patient-assertions: respuesta 401"));
   check("y se avisa del error mostrado, con su tipo", log.includes("[portal] error mostrado en /tramite/nuevo: identity-unavailable") && log.includes("[portal] error mostrado en /continuar: identity-unavailable"));
+  check("el registro no contiene la credencial del canal", !log.includes(assertionChannelKey()));
   finish();
 }
 
 // =============================================================================================
 const ana = new Browser();
 const beto = new Browser();
+const carla = new Browser();
 await login(ana, "ana@example.com");
 await login(beto, "beto@example.com");
 
+section("paciente nuevo, sin vínculo todavía: lista vacía y puede crear su primer trámite");
+// Acreditaciones de 40 segundos para Carla: la caché las guarda hasta 30 segundos antes de vencer.
+await stub("/__test/assertion-ttl?s=40");
+await login(carla, "carla@example.com");
+await trace();
+await apiTrace();
+let r = await carla.get("/continuar");
+let entries = await trace();
+let issued = await apiTrace();
+check("/continuar: el 404 del orquestador para una identidad sin vínculo se muestra como lista vacía", r.status === 200 && r.text().includes("No tienes trámites abiertos") && !r.text().includes("No pudimos verificar tu identidad"), r.text().slice(0, 160));
+check("una sola consulta: el 404 del listado no se reintenta con otra acreditación", eq(ops(entries), ["GET /api/v1/journeys"]) && issuerCalls(issued).length === 1, `${ops(entries)} | emisor ${issuerCalls(issued).length}`);
+const request = issuerCalls(issued)[0] ?? { headerNames: [], body: null };
+check("la petición al emisor lleva la sesión, la credencial del canal y el cuerpo {}", request.headerNames.includes("authorization") && request.headerNames.includes("x-patient-assertion-channel-key") && eq(request.body, {}), request.headerNames);
+check("y nada del navegador: ni Origin, ni cookies, ni la IP", !["origin", "cookie", "referer", "x-real-ip"].some((name) => request.headerNames.includes(name)), request.headerNames);
+r = await carla.get(`/tramite/nuevo?estudio=${GLUCOSA}`);
+check("/tramite/nuevo ofrece empezar", r.forms("Empezar").length === 1 && !r.text().includes("No pudimos verificar tu identidad"));
+await carla.get("/mi-espacio");
+check("la acreditación se reutiliza en la misma sesión: ninguna emisión más", issuerCalls(await apiTrace()).length === 0);
+await sleep(11_000);
+await carla.get("/continuar");
+check("pasado el vencimiento que dice su exp, se pide otra", issuerCalls(await apiTrace()).length === 1);
+await stub("/__test/assertion-ttl?s=300");
+r = await start(carla, GLUCOSA);
+const CARLA_JOURNEY = ridOf(r.location);
+check("la primera creación identificada funciona y establece el vínculo", r.status === 303 && CARLA_JOURNEY !== null && (await journey(CARLA_JOURNEY)).subject === CARLA, `${r.status}`);
+check("desde entonces aparece en su lista", (await carla.get("/continuar")).text().includes(CARLA_JOURNEY));
+
 section("crear un trámite identificado");
 await trace();
-let r = await start(ana, GLUCOSA);
+r = await start(ana, GLUCOSA);
 const A = ridOf(r.location);
-let entries = await trace();
+entries = await trace();
 const creation = entries.filter((e) => e.op === "POST /api/v1/journeys");
 check("crea y lleva al trámite", r.status === 303 && A !== null, `${r.status} ${r.location}`);
 check("POST /journeys lleva acreditación e Idempotency-Key", creation.length === 1 && creation[0].hasAssertion && Boolean(creation[0].idempotencyKey), creation.length);
@@ -159,7 +196,7 @@ check("permiso revocado en el orquestador: 404, permiso nuevo y un solo reintent
 
 section("la acreditación falla: no se crea nada");
 // Formulario abierto antes del fallo: el paciente pulsa «Empezar» cuando el orquestador ya rechaza su acreditación.
-let page = await ana.get(`/tramite/nuevo?estudio=${GLUCOSA}`);
+const page = await ana.get(`/tramite/nuevo?estudio=${GLUCOSA}`);
 const startForm = page.forms("Empezar")[0];
 await orq("/__test/reject-assertions?on=1");
 const countBefore = (await journeys()).length;
@@ -171,9 +208,7 @@ check("mensaje claro de identidad", r.status === 200 && r.text().includes("No pu
 check("ningún trámite creado", (await journeys()).length === countBefore);
 check("todos los envíos llevan acreditación: nunca un POST /journeys anónimo", creations.length === 2 && creations.every((e) => e.hasAssertion), ops(entries));
 r = await ana.get("/continuar");
-check("/continuar: aviso de identidad", r.text().includes("No pudimos verificar tu identidad"));
-r = await ana.get(`/tramite/nuevo?estudio=${GLUCOSA}`);
-check("/tramite/nuevo: aviso, sin botón para empezar", r.text().includes("No pudimos verificar tu identidad") && r.forms("Empezar").length === 0);
+check("/continuar: el 404 del listado se muestra como lista vacía, sin datos", r.text().includes("No tienes trámites abiertos") && !r.body.includes(A));
 await orq("/__test/reject-assertions?on=0");
 
 section("continuidad identificada en el trámite");
@@ -184,19 +219,19 @@ check("dice que basta identificarse en la app móvil o en Call Center", continui
 check("el código queda plegado bajo «Otra forma de continuar»", continuity !== null && /<details\b(?![^>]*\bopen\b)[^>]*>\s*<summary[^>]*>Otra forma de continuar<\/summary>/.test(continuity[0]));
 check("sin WhatsApp en la página", !r.body.includes("WhatsApp"));
 
-section("acreditaciones y permisos fuera de HTML, cookies, URL y logs");
+section("acreditaciones, permisos y credencial del canal fuera de HTML, cookies, URL y logs");
 const secrets = await orq("/__test/secrets");
-const values = [...secrets.assertions, ...secrets.grants].filter(Boolean);
+const values = [...secrets.assertions, ...secrets.grants, assertionChannelKey()].filter(Boolean);
 check("hay acreditaciones y permisos que buscar", secrets.assertions.length >= 3 && secrets.grants.length >= 3, `${secrets.assertions.length} ${secrets.grants.length}`);
 const leaked = seen.reduce((sum, blob) => sum + values.filter((value) => blob.includes(value)).length, 0);
 check("ninguno en HTML, cabeceras, cookies ni URL", leaked === 0, `${seen.length / 3} respuestas`);
-check("ni la palabra X-Patient-Assertion", !seen.some((blob) => blob.toLowerCase().includes("x-patient-assertion")));
+check("ni las palabras X-Patient-Assertion", !seen.some((blob) => blob.toLowerCase().includes("x-patient-assertion")));
 const log = readLog();
 check("ninguno en el registro del servidor", values.filter((value) => log.includes(value)).length === 0);
 check("el registro no nombra cabeceras secretas", !log.toLowerCase().includes("x-patient-assertion") && !log.toLowerCase().includes("x-journey-grant"));
 
 section("registro mínimo");
-check("al arrancar: modos activos", log.includes("[portal] trámites: orchestrator | identidad del paciente: assertion (emisor: simulación)"), log.slice(0, 300));
+check("al arrancar: modos activos", log.includes("[portal] trámites: orchestrator | identidad del paciente: assertion (emisor: API central)"), log.slice(0, 300));
 check("y el identificador público de la clave, nunca el secreto", log.includes(`clave del canal: ${CHANNEL_KEY_IDS.web}`) && !log.includes(channelKey("web").split(".")[1]));
 check("el 404 del permiso negado queda con su código", log.includes("[orquestador] POST /journeys/:journeyId/access-grants: respuesta 404"));
 check("la acreditación rechazada al crear queda con su código", log.includes("[orquestador] POST /journeys: respuesta 404"));

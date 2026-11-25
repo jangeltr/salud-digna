@@ -29,12 +29,17 @@ export function createOrchestratorQuery(deps: OrchestratorDependencies): Request
       if (deps.identityMode === "assertion") {
         const patient = await deps.currentPatient();
         if (!patient.ok) return patient;
+        // Un `404` del listado no se reintenta con otra acreditación: el contrato también lo da a una identidad
+        // central que aún no tiene ningún trámite, y eso es lo normal para un paciente nuevo.
         const asked = await withAssertion(deps, (assertion) =>
           orchestratorRequest({ method: "GET", path: "/journeys", query: { active: "true" }, assertion }),
-          { renewOnRejection: true },
+          { renewOnRejection: false },
         );
         if (!asked.ok) return asked.error.kind === "session" ? asked : failure("identity-unavailable");
         const result = asked.data;
+        // Sin vínculo todavía: lista vacía. Su primera creación identificada lo establece; si la acreditación fuera
+        // inválida, la creación lo diría y no crearía nada.
+        if (!result.ok && result.status === 404) return success({ items: [], summaries: [], hasMore: false });
         if (!result.ok) return toIdentifiedFailure(result, false);
         const summaries = readJourneySummaries(result.data);
         if (!summaries) {

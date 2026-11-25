@@ -174,6 +174,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/patient-assertions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Emitir una acreditación institucional para un backend de canal */
+        post: operations["PatientAssertionsController_issue"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/patient-assertion-consents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Autorizar a un asesor y canal concretos para la recuperación institucional */
+        post: operations["PatientAssertionsController_consent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/requests": {
         parameters: {
             query?: never;
@@ -780,6 +814,30 @@ export interface components {
              */
             expiresIn: number;
             user: components["schemas"]["PublicUserDto"];
+        };
+        IssuePatientAssertionDto: {
+            /** @description Consentimiento central obligatorio para ADVISOR y omitido para PATIENT. */
+            consent?: string;
+        };
+        PatientAssertionDto: {
+            /**
+             * @description JWS institucional para el orquestador
+             * @example <assertion>
+             */
+            assertion: string;
+        };
+        PatientAssertionConsentDto: {
+            /** Format: uuid */
+            advisorId: string;
+            /** @example demo-callcenter */
+            channel: string;
+        };
+        ConsentDto: {
+            /**
+             * @description Consentimiento para el asesor y canal destinatarios
+             * @example <consent>
+             */
+            consent: string;
         };
         CreateRequestDto: {
             /**
@@ -1668,6 +1726,116 @@ export interface operations {
             };
             /** @description Token ausente, inválido o cuenta sin acceso. */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PatientAssertionsController_issue: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Credencial privada del backend de canal. */
+                "X-Patient-Assertion-Channel-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IssuePatientAssertionDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PatientAssertionDto"];
+                };
+            };
+            /** @description Cuerpo inválido o campos adicionales. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Credencial de canal o sesión ausente o inválida. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Canal, rol o autorización insuficiente. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description El emisor institucional no está disponible. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PatientAssertionsController_consent: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Credencial privada del backend de canal. */
+                "X-Patient-Assertion-Channel-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatientAssertionConsentDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsentDto"];
+                };
+            };
+            /** @description Cuerpo inválido o campos adicionales. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Credencial de canal o sesión ausente o inválida. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Canal, rol o autorización insuficiente. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description El emisor institucional no está disponible. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

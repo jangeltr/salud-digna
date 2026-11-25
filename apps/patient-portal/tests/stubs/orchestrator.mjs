@@ -5,7 +5,8 @@
 import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { HOST, PORTS } from "../lib/config.mjs";
-import { assertionKey, CHANNEL_KEY_IDS, secretOf } from "../lib/secrets.mjs";
+import { mintAssertion, verifyAssertion as readAssertion } from "../lib/assertions.mjs";
+import { CHANNEL_KEY_IDS, secretOf } from "../lib/secrets.mjs";
 
 const port = PORTS.orchestrator;
 const UUID = /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i;
@@ -88,29 +89,21 @@ function addEvent(journey, { producer, externalEventId, type, occurredAt, payloa
   dedup.set(`${producer}\n${externalEventId}`, event);
   return event;
 }
-// --- acreditaciones del paciente (docs/contratos/continuidad-identificada.md) ---------------------
-// Formato propio de las pruebas, el mismo que firma el emisor de simulación del portal:
-// base64url({ sub, channel, exp }) + "." + HMAC-SHA256 con la clave de lib/secrets.mjs.
-const ASSERTION_KEY = Buffer.from(assertionKey(), "base64url");
+// --- acreditaciones centrales (apps/orchestrator/docs/patient-identity.md, «Recuperación automática») -------------
+// JWS de lib/assertions.mjs. El sujeto es `customerId`. Una identidad sin ningún trámite identificado aún no tiene
+// vínculo: el listado y los permisos le responden 404 hasta su primera creación identificada.
 const seenAssertions = new Set();
+const linkedSubjects = new Set();
 let rejectAssertions = false;
-function mintAssertion(sub, channel, ttlSeconds = 300) {
-  const payload = Buffer.from(JSON.stringify({ sub, channel, exp: Math.floor(Date.now() / 1000) + ttlSeconds })).toString("base64url");
-  return `${payload}.${createHmac("sha256", ASSERTION_KEY).update(payload).digest("base64url")}`;
-}
-/** Paciente acreditado, o null. Exige firma válida, vigencia y que el canal de la acreditación sea el de la clave. */
+/** Acreditación válida, vigente y del canal de la clave: `{ subject, expiresAt }`, o null. */
 function verifyAssertion(req, channel) {
   const raw = req.headers["x-patient-assertion"];
-  if (typeof raw !== "string" || !ASSERTION_KEY) return null;
+  if (typeof raw !== "string") return null;
   seenAssertions.add(raw);
   if (rejectAssertions) return null;
-  const [payload, signature, extra] = raw.split(".");
-  if (!payload || !signature || extra !== undefined) return null;
-  if (createHmac("sha256", ASSERTION_KEY).update(payload).digest("base64url") !== signature) return null;
-  let claim;
-  try { claim = JSON.parse(Buffer.from(payload, "base64url").toString()); } catch { return null; }
-  if (!claim || typeof claim.sub !== "string" || claim.channel !== channel || !(claim.exp > Date.now() / 1000)) return null;
-  return claim.sub;
+  const claims = readAssertion(raw);
+  if (!claims || claims.channel !== channel) return null;
+  return { subject: claims.customerId, expiresAt: claims.exp * 1000 };
 }
 
 function createJourney(channel) {
@@ -224,7 +217,7 @@ createServer(async (req, res) => {
     if (p === "/__test/codes") return send(res, 200, [...codes.values()].map((entry) => ({ journeyId: entry.journeyId, channel: entry.source.channel, consumed: entry.consumed })));
     if (p === "/__test/reset-redeem-limit") { redeemWindows = new Map(); return send(res, 200, {}); }
     if (p === "/__test/reject-assertions") { rejectAssertions = param("on") === "1"; return send(res, 200, {}); }
-    if (p === "/__test/assertion-for") return send(res, 200, { assertion: mintAssertion(param("sub"), param("channel") ?? "demo-web") });
+    if (p === "/__test/assertion-for") return send(res, 200, { assertion: mintAssertion({ channel: param("channel") ?? "demo-web", customerId: param("sub") }) });
     if (p === "/__test/issue-code") {
       // Código emitido por otro canal sobre un trámite, sin pasar por credenciales: ese canal recibe un permiso propio.
       if (!journeys.has(param("journey"))) return send(res, 404, {});
@@ -275,8 +268,9 @@ createServer(async (req, res) => {
   // --- trámites activos del paciente acreditado ----------------------------------
   if (req.method === "GET" && p === "/api/v1/journeys") {
     if (!requireScope("JOURNEYS_READ")) return err(res, 403);
-    const subject = verifyAssertion(req, key.channel);
-    if (!subject) return err(res, 404);
+    const identity = verifyAssertion(req, key.channel);
+    if (!identity || !linkedSubjects.has(identity.subject)) return err(res, 404);
+    const subject = identity.subject;
     const mode = takeFailure("list");
     if (mode === "500") return err(res, 500);
     const active = url.searchParams.get("active") === "true";
@@ -291,15 +285,17 @@ createServer(async (req, res) => {
   // --- permiso para continuar un trámite del paciente acreditado -----------------
   const grantRequest = /^\/api\/v1\/journeys\/([^/]+)\/access-grants$/.exec(p);
   if (req.method === "POST" && grantRequest) {
-    if (!requireScope("JOURNEYS_READ") || !requireScope("EVENTS_PUBLISH")) return err(res, 403);
-    const subject = verifyAssertion(req, key.channel);
+    if (!requireScope("JOURNEYS_READ")) return err(res, 403);
+    const identity = verifyAssertion(req, key.channel);
     const journey = journeys.get(grantRequest[1].toLowerCase());
-    // Ajeno, inexistente o con acreditación inválida: el mismo 404.
-    if (!subject || !journey || journey.subject !== subject) return err(res, 404);
+    // Ajeno, inexistente, cerrado, sin vínculo o con acreditación inválida: el mismo 404.
+    if (!identity || !linkedSubjects.has(identity.subject) || !journey || journey.subject !== identity.subject || !isOpen(journey)) return err(res, 404);
     const mode = takeFailure("access-grants");
     if (mode === "500") return err(res, 500);
-    const grant = issueGrant(key.channel, journey.id, ["READ_JOURNEY", "PUBLISH_EVENT"], grantTtlMs);
-    return send(res, 201, { grant: grant.secret, grantExpiresAt: new Date(grant.expiresAt).toISOString() });
+    // PUBLISH_EVENT solo si la clave puede publicar. El permiso vence, a más tardar, con la acreditación.
+    const operations = ["READ_JOURNEY", ...(requireScope("EVENTS_PUBLISH") ? ["PUBLISH_EVENT"] : [])];
+    const grant = issueGrant(key.channel, journey.id, operations, Math.min(grantTtlMs, identity.expiresAt - Date.now()));
+    return send(res, 201, { journeyId: journey.id, grant: grant.secret, grantExpiresAt: new Date(grant.expiresAt).toISOString() });
   }
 
   // --- crear un trámite --------------------------------------------------------
@@ -313,8 +309,11 @@ createServer(async (req, res) => {
     if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).some((k) => k !== "type") || body.type !== "APPOINTMENT") return err(res, 400);
     // Con acreditación, el trámite queda asociado al paciente. Una acreditación inválida nunca crea un provisional.
     const identified = req.headers["x-patient-assertion"] !== undefined;
-    const subject = identified ? verifyAssertion(req, key.channel) : null;
-    if (identified && !subject) return err(res, 404);
+    const identity = identified ? verifyAssertion(req, key.channel) : null;
+    if (identified && !identity) return err(res, 404);
+    const subject = identity?.subject ?? null;
+    // El permiso de la creación vence, a más tardar, con la acreditación.
+    const creationTtl = identity ? Math.min(grantTtlMs, identity.expiresAt - Date.now()) : grantTtlMs;
     const mode = takeFailure("create");
     if (mode === "500") return err(res, 500);
     if (mode === "hang") return; // sin respuesta y sin crear nada
@@ -326,8 +325,11 @@ createServer(async (req, res) => {
       return send(res, 201, { id: known.journey.id, status: "DRAFT", grant: again.secret, grantExpiresAt: new Date(known.expiresAt).toISOString() });
     }
     const journey = createJourney(key.channel);
-    if (subject) journey.subject = subject;
-    const grant = issueGrant(key.channel, journey.id, ["READ_JOURNEY", "PUBLISH_EVENT"], grantTtlMs);
+    if (subject) {
+      journey.subject = subject;
+      linkedSubjects.add(subject);
+    }
+    const grant = issueGrant(key.channel, journey.id, ["READ_JOURNEY", "PUBLISH_EVENT"], creationTtl);
     creations.set(`${key.channel}\n${idem}`, { journey, expiresAt: grant.expiresAt });
     if (mode === "hang-after") return; // creado, pero la respuesta se pierde
     return send(res, 201, { id: journey.id, status: journey.status, grant: grant.secret, grantExpiresAt: new Date(grant.expiresAt).toISOString() });

@@ -88,7 +88,7 @@ async function requestGrant(deps: OrchestratorDependencies, accountId: string, r
   const result = asked.data;
   if (!result.ok) return result.status === 404 ? failure("not-found") : toFailure(result);
 
-  const granted = readAccessGrant(result.data);
+  const granted = readAccessGrant(result.data, requestId);
   if (!granted) {
     reportUnexpectedBody("POST", "/journeys/:journeyId/access-grants");
     return failure("unavailable");
