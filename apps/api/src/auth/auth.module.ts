@@ -32,6 +32,6 @@ class AuthConfigModule {}
   ],
   controllers: [AuthController, PatientAssertionsController],
   providers: [AuthService, AuthAttemptsGuard, JwtAuthGuard, RolesGuard, PatientAssertionChannelGuard, PatientAssertionsService],
-  exports: [JwtAuthGuard, RolesGuard, JwtModule, AuthService],
+  exports: [JwtAuthGuard, RolesGuard, JwtModule, AuthService, PatientAssertionsService],
 })
 export class AuthModule {}

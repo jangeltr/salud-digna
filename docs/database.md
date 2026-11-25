@@ -26,6 +26,91 @@ PostgreSQL 17 conserva una identidad interna por paciente y un estado por solici
 - La solicitud y la cita conservan el estado actual en sus propias filas. Los eventos permiten reconstruir la cronología de negocio y las interacciones registran contactos por canal. La auditoría registra operaciones de seguridad y puede referenciar varias clases de entidad sin una clave foránea polimórfica.
 - El contexto, los eventos y la auditoría solo deben conservar datos necesarios para su función. Excluye datos clínicos innecesarios, contraseñas, tokens, códigos OTP y otros secretos. Cuando se implemente autenticación, `User.passwordHash` contendrá exclusivamente hashes.
 
+## Consistencia temporal de la API y el orquestador
+
+Con Prisma y `@prisma/adapter-pg` 7.9.1 se observó en Debian 13 un
+desplazamiento de `+21600` segundos al enviar un `Date` de JavaScript
+como parámetro `timestamptz` con una sesión en `America/Mexico_City`.
+El reloj de Node.js coincidía con el Epoch de `NOW()` de PostgreSQL y el
+servidor estaba sincronizado por NTP. La prueba en el servidor conservó
+el Epoch original al fijar `options: '-c timezone=UTC'` en `PrismaPg`.
+Esta es la evidencia experimental reportada para la incidencia.
+
+Los servicios de persistencia de [la API](../apps/api/src/persistence/prisma.service.ts)
+y [el orquestador](../apps/orchestrator/src/persistence/prisma.service.ts)
+fijan UTC al abrir cada conexión del pool. La API preserva las opciones
+preexistentes de su URL y añade UTC al final si la URL contiene
+`options`, porque el driver da prioridad a ese valor. El orquestador
+conserva su validación que excluye parámetros en la URL. Ambos mantienen
+su esquema y el tiempo de espera de conexión de 3000 ms. Las utilidades de
+creación de personal, catálogos, credenciales de canal, permisos de demo
+y aprovisionamiento de pacientes reutilizan sus respectivos servicios
+de persistencia. Prisma CLI conserva su configuración independiente.
+
+Los backends conservan instantes en `timestamptz` y operan en UTC al
+leerlos, escribirlos y comparar vencimientos. PostgreSQL conserva el
+instante y la zona de la sesión determina su representación textual.
+Los frontends presentan las fechas en la zona horaria que corresponda
+al usuario o al contexto, sin cambiar el instante recibido.
+
+La [regresión de PostgreSQL real](../apps/orchestrator/test/prisma-utc.postgres.test.cjs)
+crea un clúster de prueba en un directorio temporal, con dos bases aisladas
+y DDL mínimo para los fixtures. Usa una sesión en `America/Mexico_City`
+como control. Comprueba la sesión UTC, la igualdad exacta de Epoch en
+parámetros y lecturas ORM, los valores predeterminados de PostgreSQL,
+la vigencia de 300 segundos, el rechazo de grants expirados y revocados,
+y el rechazo de una revocación anterior al alta. No ejecuta migraciones
+ni usa las bases de los servicios.
+
+Para ejecutarla, compila ambos backends con Node.js 24 y usa una cuenta
+local sin privilegios de root con binarios PostgreSQL 17 y escucha de
+loopback disponible. Desde la raíz:
+
+```sh
+pnpm --filter @salud-digna/api build
+pnpm --filter @salud-digna/orchestrator build
+TZ=America/Mexico_City node --test --test-isolation=none apps/orchestrator/test/prisma-utc.postgres.test.cjs
+```
+
+`UTC_TEST_POSTGRES_BIN` permite indicar otro directorio de binarios. En
+Codex pasaron la generación de Prisma, `tsc --noEmit` y la compilación de
+ambos servicios. La prueba quedó bloqueada por `EPERM` al inicializar el
+subproceso o al intentar abrir el socket TCP local con PostgreSQL 17.12.
+
+La ejecución desde la terminal local de la PC Debian 13 superó ese
+impedimento. El primer intento local falló porque los archivos en
+`dist` aún reflejaban el código anterior. Se recompilaron ambos servicios
+con los comandos de arriba y se verificó que sus archivos JavaScript
+compilados incluían `timezone=UTC`. La prueba con PostgreSQL 17 real
+reportó **1 aprobada y 0 fallidas**. El caso tardó 595,68 ms, con una
+duración total de 685,69 ms.
+
+Las aserciones confirmaron lo siguiente:
+
+- La sesión de control usó `America/Mexico_City` y desplazó el parámetro
+  de prueba en `+21600` segundos. Ambos servicios usaron UTC y conservaron
+  el Epoch exacto, incluidos los milisegundos, en la consulta parametrizada.
+  La API también conservó la opción `application_name` de su URL.
+- El ORM guardó y recuperó el instante de `Patient.updatedAt` y las fechas
+  de alta y expiración del grant. Los valores predeterminados de
+  `createdAt` del paciente y de un grant quedaron dentro del intervalo
+  medido con el reloj de PostgreSQL.
+- El Epoch de expiración persistido coincidió con el esperado y
+  PostgreSQL confirmó una duración exacta de 300 segundos. El guard
+  aceptó el grant vigente y devolvió `404` para uno expirado.
+- PostgreSQL rechazó una revocación anterior al alta. La revocación
+  válida conservó el Epoch exacto y el guard rechazó el grant revocado
+  con `404`.
+
+La corrección se aplica a conexiones nuevas y todavía no está desplegada
+en `sistemas1`. No requiere migraciones del esquema Prisma. Los datos históricos pueden
+contener instantes ya desplazados. Antes de corregirlos, identifica qué
+rutas escribieron cada campo, distingue los valores predeterminados
+generados por PostgreSQL de los enviados por la aplicación y contrasta
+muestras con una fuente de tiempo confiable. Las autorizaciones históricas
+requieren una evaluación independiente de sus fechas y vigencias. No se
+ha autorizado ninguna modificación masiva de fechas.
+
 ## Migración inicial
 
 La [migración inicial](../apps/api/prisma/migrations/20261121191248_init_omnichannel/migration.sql) se generó desde el esquema con `prisma migrate diff --from-empty --to-schema prisma/schema.prisma --script`. La generación compara dos modelos y prescinde de una base auxiliar. [Referencia de Prisma Migrate](https://www.prisma.io/docs/cli/v7/migrate/diff)
