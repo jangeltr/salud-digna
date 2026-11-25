@@ -542,6 +542,140 @@
         ]
       }
     },
+    "/api/v1/auth/patient-assertions": {
+      "post": {
+        "operationId": "PatientAssertionsController_issue",
+        "parameters": [
+          {
+            "name": "X-Patient-Assertion-Channel-Key",
+            "in": "header",
+            "description": "Credencial privada del backend de canal.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IssuePatientAssertionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "example": "no-store"
+                }
+              }
+            },
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PatientAssertionDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Cuerpo inválido o campos adicionales."
+          },
+          "401": {
+            "description": "Credencial de canal o sesión ausente o inválida."
+          },
+          "403": {
+            "description": "Canal, rol o autorización insuficiente."
+          },
+          "503": {
+            "description": "El emisor institucional no está disponible."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Emitir una acreditación institucional para un backend de canal",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/patient-assertion-consents": {
+      "post": {
+        "operationId": "PatientAssertionsController_consent",
+        "parameters": [
+          {
+            "name": "X-Patient-Assertion-Channel-Key",
+            "in": "header",
+            "description": "Credencial privada del backend de canal.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatientAssertionConsentDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "example": "no-store"
+                }
+              }
+            },
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsentDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Cuerpo inválido o campos adicionales."
+          },
+          "401": {
+            "description": "Credencial de canal o sesión ausente o inválida."
+          },
+          "403": {
+            "description": "Canal, rol o autorización insuficiente."
+          },
+          "503": {
+            "description": "El emisor institucional no está disponible."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Autorizar a un asesor y canal concretos para la recuperación institucional",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
     "/api/v1/requests": {
       "post": {
         "operationId": "RequestsController_create",
@@ -2676,6 +2810,61 @@
           "tokenType",
           "expiresIn",
           "user"
+        ]
+      },
+      "IssuePatientAssertionDto": {
+        "type": "object",
+        "properties": {
+          "consent": {
+            "type": "string",
+            "description": "Consentimiento central obligatorio para ADVISOR y omitido para PATIENT.",
+            "writeOnly": true,
+            "maxLength": 2048
+          }
+        }
+      },
+      "PatientAssertionDto": {
+        "type": "object",
+        "properties": {
+          "assertion": {
+            "type": "string",
+            "description": "JWS institucional para el orquestador",
+            "example": "<assertion>"
+          }
+        },
+        "required": [
+          "assertion"
+        ]
+      },
+      "PatientAssertionConsentDto": {
+        "type": "object",
+        "properties": {
+          "advisorId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "channel": {
+            "type": "string",
+            "maxLength": 64,
+            "example": "demo-callcenter"
+          }
+        },
+        "required": [
+          "advisorId",
+          "channel"
+        ]
+      },
+      "ConsentDto": {
+        "type": "object",
+        "properties": {
+          "consent": {
+            "type": "string",
+            "description": "Consentimiento para el asesor y canal destinatarios",
+            "example": "<consent>"
+          }
+        },
+        "required": [
+          "consent"
         ]
       },
       "CreateRequestDto": {

@@ -1,15 +1,85 @@
-# Identidad ficticia y recuperación entre canales
+# Identidad institucional y recuperación entre canales
 
 La API central es la autoridad de datos maestros. Los backends de canal son
 responsables de obtener y comprobar la identidad del paciente ante esa
 autoridad y de vincularla a su propia sesión autenticada. En la revisión
 actual, la API central carece de un contrato de `CUSTOMER_ID` y de una prueba
-firmada que el orquestador pueda verificar. Para Hackatec se usa un fixture
-institucional aprobado y una afirmación firmada por un operador local. Esa
-afirmación acredita el aprovisionamiento de demo y no es una firma de la API
-central. El orquestador carece de conexión a ella.
+firmada. El orquestador ya admite el contrato institucional descrito abajo.
+El aprovisionamiento local de fixtures sigue disponible para las rutas
+previas de demostración. La recuperación automática exige una afirmación
+de la autoridad central. El orquestador valida la firma localmente.
 
-## Aprovisionamiento local
+## Contrato mínimo de la API central
+
+La ruta emisora queda pendiente en la API central. Un contrato mínimo
+propuesto es `POST /api/v1/auth/patient-assertions`. Debe autenticar al
+backend solicitante, derivar su código de canal registrado y aceptar solo
+una sesión o evidencia verificable de identidad y de autorización para la
+atención. La autoridad determina el `CUSTOMER_ID` desde sus datos maestros.
+Un identificador aportado por sí solo carece de valor probatorio. En Call
+Center, la autorización debe cubrir tanto al asesor autenticado como al
+paciente de la atención. Un rol de asesor por sí solo es insuficiente.
+
+Ante éxito, la API devuelve `{"assertion":"<JWS>"}` al backend y usa
+`Cache-Control: no-store`. Firma un JWS compacto con Ed25519 y cabecera
+`{"alg":"EdDSA","typ":"sd-patient+jwt"}`. Ejemplo de claims:
+
+```json
+{
+  "iss": "https://api.salud-digna.app",
+  "aud": "https://orchestrator.salud-digna.app",
+  "channel": "demo-web",
+  "scope": "journeys:patient",
+  "customerId": "CUSTOMER-DEMO-001",
+  "sub": "sesion-verificada-001",
+  "jti": "evidencia-opaca-001",
+  "iat": 1795500000,
+  "exp": 1795500300
+}
+```
+
+`iat` y `exp` son segundos Unix. La afirmación dura como máximo cinco
+minutos. `channel` coincide con `Channel.code` en la API key del canal.
+`sub` identifica al actor o sesión autorizada y permanece estable al
+renovar la acreditación de esa sesión. `jti` es una referencia opaca única
+de evidencia. `customerId`, `sub` y `jti` admiten entre 1 y 128 caracteres
+ASCII, empiezan con un alfanumérico y admiten punto, guion, guion bajo o
+dos puntos en el resto. `customerId` distingue mayúsculas y minúsculas.
+
+Configura la clave **pública** Ed25519 en PEM SPKI en
+`ORCHESTRATOR_CENTRAL_ASSERTION_PUBLIC_KEY`. La clave privada solo existe
+en la API central. El HMAC de búsqueda usa
+`ORCHESTRATOR_PATIENT_IDENTITY_KEY` dentro del orquestador. Los canales
+reciben el JWS y lo envían en `X-Patient-Assertion`; no reciben ninguna
+clave de firma. El JWS está firmado y su contenido es legible. Conserva la
+afirmación y los permisos solo en el backend y exclúyelos de los logs.
+
+## Recuperación automática
+
+| Operación | Autorización y resultado |
+| --- | --- |
+| `POST /api/v1/journeys` | Conserva `Idempotency-Key` y el cuerpo `{"type":"APPOINTMENT"}`. Con afirmación central, verifica el vínculo o da de alta el sujeto por HMAC y lo reutiliza para sus trámites. |
+| `GET /api/v1/journeys?active=true` | API key con `JOURNEYS_READ` y afirmación central. Devuelve el mismo formato `{"items":[...]}`, filtrado a `DRAFT`, `IN_PROGRESS` y `PENDING_CONFIRMATION`. |
+| `POST /api/v1/journeys/:journeyId/access-grants` | API key con `JOURNEYS_READ`, afirmación central y petición sin cuerpo. Devuelve `201` con `journeyId`, `grant` y `grantExpiresAt` si el trámite está activo y pertenece al sujeto acreditado. |
+
+El permiso incluye `READ_JOURNEY` y, si la API key tiene
+`EVENTS_PUBLISH`, también `PUBLISH_EVENT`. Vence a más tardar con la
+afirmación que lo autorizó. Usa el permiso devuelto en `X-Journey-Grant`
+para consultar contexto e historial o publicar. Los contratos de eventos,
+incluidos `expectedVersion` y `externalEventId`, siguen vigentes.
+
+Las afirmaciones inválidas, vencidas o ajenas y los trámites inaccesibles
+devuelven `404`. Una identidad central aún sin vínculo también devuelve
+`404` al listar o solicitar un permiso; su primera creación identificada
+establece el vínculo. El espacio de nombres central
+`salud-digna:central-customer:v1` está separado del de fixtures. Los
+trámites provisionales y de fixtures anteriores quedan fuera de la
+recuperación institucional. Para la demo Web → Call Center, crea primero
+el trámite en Web con una afirmación central y solicita otra para la
+sesión de Call Center. Los [códigos de continuidad](continuity-codes.md)
+siguen disponibles.
+
+## Aprovisionamiento local de fixtures
 
 Configura `ORCHESTRATOR_PATIENT_IDENTITY_KEY` en el entorno privado del
 orquestador y del operador local. Debe contener 32 bytes aleatorios
@@ -75,5 +145,4 @@ demo, un operador también puede aprovisionar un permiso independiente con la
 usando el UUID de la lista, el canal receptor, su actor y las operaciones
 necesarias. Contexto, historial y publicación mantienen los scopes y
 `X-Journey-Grant` existentes. La afirmación no sustituye ese permiso.
-La emisión automática de afirmaciones de identidad y la prueba firmada por
-la autoridad central quedan pendientes del contrato entre sistemas.
+Para operar sin códigos, usa el contrato institucional de recuperación.

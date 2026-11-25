@@ -2,8 +2,10 @@ import { Injectable, NotFoundException, ServiceUnavailableException } from '@nes
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { ChannelRequest } from '../channel-auth/channel-auth.guard';
 import { PrismaService } from '../persistence/prisma.service';
+import { verifyInstitutionalAssertion } from './institutional-assertion';
 
 export const customerNamespace = 'salud-digna:institutional-customer';
+const centralNamespace = 'salud-digna:central-customer:v1';
 const assertionPurpose = 'salud-digna:demo-patient-assertion:v1\0';
 const uuid = /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/;
 export const opaqueRef = /^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$/;
@@ -18,7 +20,10 @@ interface PatientAssertion {
 export interface ResolvedPatient {
   patientSubjectId: string;
   actorRef: string;
+  expiresAt?: Date;
 }
+
+class ConcurrentCentralLink extends Error {}
 
 export function readIdentityKey(value = process.env.ORCHESTRATOR_PATIENT_IDENTITY_KEY): Buffer {
   if (!value || !/^[\w-]{43}$/.test(value)) throw new ServiceUnavailableException();
@@ -27,9 +32,9 @@ export function readIdentityKey(value = process.env.ORCHESTRATOR_PATIENT_IDENTIT
   return key;
 }
 
-export function digestCustomerId(key: Uint8Array, customerId: string): Uint8Array<ArrayBuffer> {
+export function digestCustomerId(key: Uint8Array, customerId: string, namespace = customerNamespace): Uint8Array<ArrayBuffer> {
   return Uint8Array.from(createHmac('sha256', key)
-    .update(JSON.stringify(['CUSTOMER_ID', customerNamespace, customerId])).digest());
+    .update(JSON.stringify(['CUSTOMER_ID', namespace, customerId])).digest());
 }
 
 function signature(key: Uint8Array, encoded: string): Buffer {
@@ -73,7 +78,9 @@ function readAssertion(request: ChannelRequest, channelId: string): PatientAsser
 export class PatientIdentityService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async resolve(request: ChannelRequest, channelId: string): Promise<ResolvedPatient> {
+  async resolve(request: ChannelRequest, channelId: string, provision = false): Promise<ResolvedPatient> {
+    const raw = request.headers['x-patient-assertion'];
+    if (typeof raw === 'string' && raw.split('.').length === 3) return this.resolveCentral(request, provision);
     const claim = readAssertion(request, channelId);
     const identifier = await this.prisma.client.patientIdentifier.findUnique({
       where: {
@@ -85,5 +92,63 @@ export class PatientIdentityService {
     });
     if (!identifier) throw new NotFoundException();
     return { patientSubjectId: identifier.patientSubjectId, actorRef: claim.actorRef };
+  }
+
+  async resolveCentral(request: ChannelRequest, provision = false) {
+    const channel = request.authenticatedChannel;
+    const raw = request.headers['x-patient-assertion'];
+    if (!channel || typeof raw !== 'string' || (request.headersDistinct?.['x-patient-assertion']?.length ?? 0) > 1) {
+      throw new NotFoundException();
+    }
+    const assertion = verifyInstitutionalAssertion(raw, channel.code);
+    const digest = digestCustomerId(readIdentityKey(), assertion.customerId, centralNamespace);
+    const key = { type: 'CUSTOMER_ID' as const, namespace: centralNamespace, verifiedLookupDigest: digest };
+    const where = { type_namespace_verifiedLookupDigest: key };
+    const select = { patientSubjectId: true, status: true, revokedAt: true, validUntil: true } as const;
+    const checkedSubject = (row: {
+      patientSubjectId: string; status: string; revokedAt: Date | null; validUntil: Date | null;
+    } | null) => {
+      const now = new Date();
+      if (!row || row.status !== 'VERIFIED' || row.revokedAt || (row.validUntil && row.validUntil <= now) ||
+          assertion.expiresAt <= now) throw new NotFoundException();
+      return {
+        patientSubjectId: row.patientSubjectId, actorRef: assertion.actorRef,
+        expiresAt: row.validUntil && row.validUntil < assertion.expiresAt ? row.validUntil : assertion.expiresAt,
+      };
+    };
+
+    const current = await this.prisma.client.patientIdentifier.findUnique({ where, select });
+    if (current || !provision) return checkedSubject(current);
+
+    try {
+      return await this.prisma.client.$transaction(async (tx) => {
+        if (await tx.patientIdentifier.findFirst({
+          where: { type: key.type, namespace: key.namespace, lookupDigest: digest }, select: { id: true },
+        })) throw new ConcurrentCentralLink();
+        const now = new Date();
+        if (assertion.expiresAt <= now) throw new NotFoundException();
+        const subject = await tx.patientSubject.create({ data: {}, select: { id: true } });
+        const inserted = await tx.patientIdentifier.createMany({
+          data: {
+            ...key, lookupDigest: digest, patientSubjectId: subject.id, sourceChannelId: channel.id,
+            status: 'VERIFIED', verificationMethod: 'CENTRAL_SIGNED', verificationRef: assertion.verificationRef,
+            createdAt: now, verifiedAt: now,
+          },
+          skipDuplicates: true,
+        });
+        if (!inserted.count) throw new ConcurrentCentralLink();
+        await tx.accessAudit.create({
+          data: {
+            patientSubjectId: subject.id, channelId: channel.id, actorRef: assertion.actorRef,
+            action: 'VERIFY_IDENTIFIER', outcome: 'ALLOWED', reasonCode: 'CENTRAL_SIGNED_CUSTOMER_ID',
+          },
+          select: { id: true },
+        });
+        return checkedSubject({ patientSubjectId: subject.id, status: 'VERIFIED', revokedAt: null, validUntil: null });
+      });
+    } catch (error) {
+      if (!(error instanceof ConcurrentCentralLink)) throw error;
+      return checkedSubject(await this.prisma.client.patientIdentifier.findUnique({ where, select }));
+    }
   }
 }

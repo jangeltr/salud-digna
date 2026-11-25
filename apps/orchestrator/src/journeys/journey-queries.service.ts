@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { createHash, randomBytes } from 'node:crypto';
 import type { Prisma } from '../generated/prisma/client';
-import { AccessAuditAction, AccessAuditOutcome } from '../generated/prisma/enums';
+import { AccessAuditAction, AccessAuditOutcome, JourneyGrantOperation, type JourneyStatus } from '../generated/prisma/enums';
 import { PrismaService } from '../persistence/prisma.service';
 import { createHistoryCursor, projectEventData, readHistoryCursor, readHistoryLimit } from './journey-history';
 import type { ResolvedPatient } from './patient-identity';
@@ -13,6 +14,7 @@ export interface JourneyReadAccess {
 
 const appointmentReferenceKeys = ['appointmentId', 'clinicId', 'studyId'] as const;
 const referenceUuid = /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i;
+const activeStatuses: JourneyStatus[] = ['DRAFT', 'IN_PROGRESS', 'PENDING_CONFIRMATION'];
 
 export function projectExternalRefs(journeyType: string, value: Prisma.JsonValue) {
   const references: Partial<Record<typeof appointmentReferenceKeys[number], string>> = {};
@@ -34,10 +36,11 @@ export function projectExternalRefs(journeyType: string, value: Prisma.JsonValue
 export class JourneyQueriesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  listPatientJourneys(channelId: string, patient: ResolvedPatient) {
+  listPatientJourneys(channelId: string, patient: ResolvedPatient, activeOnly = false) {
     return this.prisma.client.$transaction(async (tx) => {
+      if (patient.expiresAt && patient.expiresAt <= new Date()) throw new NotFoundException();
       const items = await tx.journey.findMany({
-        where: { patientSubjectId: patient.patientSubjectId },
+        where: { patientSubjectId: patient.patientSubjectId, ...(activeOnly && { status: { in: activeStatuses } }) },
         orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
         take: 100,
         select: { id: true, type: true, status: true, createdAt: true, updatedAt: true },
@@ -50,6 +53,38 @@ export class JourneyQueriesService {
         select: { id: true },
       });
       return { items };
+    });
+  }
+
+  issuePatientGrant(channelId: string, journeyId: string, patient: ResolvedPatient & { expiresAt: Date }, canPublish: boolean) {
+    return this.prisma.client.$transaction(async (tx) => {
+      const journey = await tx.journey.findUnique({
+        where: { id: journeyId, patientSubjectId: patient.patientSubjectId, status: { in: activeStatuses } },
+        select: { id: true },
+      });
+      const now = new Date();
+      if (!journey || patient.expiresAt <= now) throw new NotFoundException();
+
+      const secret = randomBytes(32);
+      await tx.journeyAccessGrant.create({
+        data: {
+          channelId, journeyId, actorRef: patient.actorRef, createdAt: now, expiresAt: patient.expiresAt,
+          digest: Uint8Array.from(createHash('sha256').update(secret).digest()),
+          operations: [
+            JourneyGrantOperation.READ_JOURNEY,
+            ...(canPublish ? [JourneyGrantOperation.PUBLISH_EVENT] : []),
+          ],
+        },
+        select: { id: true },
+      });
+      await tx.accessAudit.create({
+        data: {
+          channelId, journeyId, actorRef: patient.actorRef, patientSubjectId: patient.patientSubjectId,
+          action: 'READ_CONTEXT', outcome: 'ALLOWED', reasonCode: 'INSTITUTIONAL_CONTINUATION',
+        },
+        select: { id: true },
+      });
+      return { journeyId, grant: secret.toString('base64url'), grantExpiresAt: patient.expiresAt };
     });
   }
 

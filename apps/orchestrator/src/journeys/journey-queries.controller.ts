@@ -1,4 +1,4 @@
-import { Controller, Get, Header, NotFoundException, Query, Req, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Header, NotFoundException, Param, Post, Query, Req, UnauthorizedException } from '@nestjs/common';
 import { RequireChannelScopes } from '../channel-auth/channel-auth.guard';
 import { ChannelScope, JourneyGrantOperation } from '../generated/prisma/enums';
 import { RequireJourneyAccess, type JourneyAccessRequest } from '../journey-access/journey-access.guard';
@@ -19,11 +19,29 @@ export class JourneyQueriesController {
   @Get()
   @Header('Cache-Control', 'no-store')
   @RequireChannelScopes(ChannelScope.JOURNEYS_READ)
-  async listPatientJourneys(@Req() request: JourneyAccessRequest) {
+  async listPatientJourneys(@Req() request: JourneyAccessRequest, @Query('active') active?: unknown) {
     if (!request.authenticatedChannel) throw new UnauthorizedException();
+    if (active !== undefined && active !== 'true' && active !== 'false') throw new BadRequestException();
     const { id: channelId } = request.authenticatedChannel;
-    const patient = await this.identities.resolve(request, channelId);
-    return this.queries.listPatientJourneys(channelId, patient);
+    const patient = active === 'true'
+      ? await this.identities.resolveCentral(request)
+      : await this.identities.resolve(request, channelId);
+    return this.queries.listPatientJourneys(channelId, patient, active === 'true');
+  }
+
+  @Post(':journeyId/access-grants')
+  @Header('Cache-Control', 'no-store')
+  @RequireChannelScopes(ChannelScope.JOURNEYS_READ)
+  async issuePatientGrant(@Req() request: JourneyAccessRequest, @Param('journeyId') journeyId: string) {
+    const channel = request.authenticatedChannel;
+    if (!channel) throw new UnauthorizedException();
+    if (journeyId.length !== 36 || !/^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i.test(journeyId)) {
+      throw new NotFoundException();
+    }
+    const patient = await this.identities.resolveCentral(request);
+    return this.queries.issuePatientGrant(
+      channel.id, journeyId.toLowerCase(), patient, channel.scopes.includes(ChannelScope.EVENTS_PUBLISH),
+    );
   }
 
   @Get(':journeyId')

@@ -6,6 +6,8 @@ import { JWT_CONFIG, loadJwtConfig, type JwtConfig } from './auth.config';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
+import { PatientAssertionChannelGuard, PatientAssertionsController } from './patient-assertions.controller';
+import { PatientAssertionsService } from './patient-assertions.service';
 import { RolesGuard } from './roles.guard';
 
 @Module({
@@ -28,8 +30,8 @@ class AuthConfigModule {}
       }),
     }),
   ],
-  controllers: [AuthController],
-  providers: [AuthService, AuthAttemptsGuard, JwtAuthGuard, RolesGuard],
+  controllers: [AuthController, PatientAssertionsController],
+  providers: [AuthService, AuthAttemptsGuard, JwtAuthGuard, RolesGuard, PatientAssertionChannelGuard, PatientAssertionsService],
   exports: [JwtAuthGuard, RolesGuard, JwtModule, AuthService],
 })
 export class AuthModule {}

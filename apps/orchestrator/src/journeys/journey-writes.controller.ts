@@ -19,7 +19,7 @@ export class JourneyWritesController {
     const keyDigest = readCreationKey(request.headers['idempotency-key']);
     const channelId = request.authenticatedChannel.id;
     if (request.headers['x-patient-assertion'] !== undefined) {
-      return this.identities.resolve(request, channelId).then((patient) =>
+      return this.identities.resolve(request, channelId, creationRequestDigest(body) !== undefined).then((patient) =>
         this.writes.createAppointment(channelId, keyDigest, creationRequestDigest(body, patient), patient));
     }
     return this.writes.createAppointment(channelId, keyDigest, creationRequestDigest(body));

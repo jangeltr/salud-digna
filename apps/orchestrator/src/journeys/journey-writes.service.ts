@@ -57,10 +57,11 @@ export class JourneyWritesService {
         }
         const result = { id: initial.journeyId, status: existing.initialStatus };
         const now = new Date();
-        if (initial.revokedAt || initial.expiresAt <= now || !initial.operations.length) return result;
+        const expiresAt = patient?.expiresAt && patient.expiresAt < initial.expiresAt ? patient.expiresAt : initial.expiresAt;
+        if (initial.revokedAt || expiresAt <= now || !initial.operations.length) return result;
 
-        const { token } = await this.issueCreationGrant(tx, initial, now);
-        return { ...result, grant: token, grantExpiresAt: initial.expiresAt };
+        const { token } = await this.issueCreationGrant(tx, { ...initial, expiresAt }, now);
+        return { ...result, grant: token, grantExpiresAt: expiresAt };
       }
       if (!canCreate) throw new ServiceUnavailableException();
       if (!requestDigest) throw new BadRequestException();
@@ -75,7 +76,8 @@ export class JourneyWritesService {
       });
       const actorRef = patient?.actorRef ?? `journey-bootstrap:${randomUUID()}`;
       const now = new Date();
-      const expiresAt = new Date(now.getTime() + 5 * 60_000);
+      const expiresAt = new Date(Math.min(now.getTime() + 5 * 60_000, patient?.expiresAt?.getTime() ?? Infinity));
+      if (expiresAt <= now) throw new NotFoundException();
       const { id: initialGrantId, token } = await this.issueCreationGrant(tx, {
         channelId, journeyId: journey.id, actorRef, expiresAt,
         operations: [JourneyGrantOperation.READ_JOURNEY, JourneyGrantOperation.PUBLISH_EVENT],

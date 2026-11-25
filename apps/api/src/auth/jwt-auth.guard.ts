@@ -26,7 +26,8 @@ export class JwtAuthGuard implements CanActivate {
       throw new UnauthorizedException();
     }
 
-    if (typeof claims.sub !== 'string' || !isUUID(claims.sub) || !Number.isSafeInteger(claims.exp)) {
+    if (typeof claims.sub !== 'string' || !isUUID(claims.sub) || typeof claims.exp !== 'number' ||
+        !Number.isSafeInteger(claims.exp)) {
       throw new UnauthorizedException();
     }
 
@@ -36,6 +37,7 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     request.user = user;
+    request.sessionExpiresAt = claims.exp;
     return true;
   }
 }
