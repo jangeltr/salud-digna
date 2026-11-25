@@ -6,8 +6,8 @@ Sitio web del paciente de Salud Digna para el Hackatec. Es un prototipo con dato
 
 1. [Qué es el portal](#qué-es-el-portal)
 2. [Requisitos](#requisitos)
-3. [Instalación desde un clon limpio](#instalación-desde-un-clon-limpio)
-4. [Credenciales de prueba por rol](#credenciales-de-prueba-por-rol)
+3. [Instalación y arranque](#instalación-y-arranque)
+4. [Credenciales](#credenciales)
 5. [Demostración](#demostración)
 6. [Variables de entorno](#variables-de-entorno)
 7. [Modos](#modos)
@@ -37,14 +37,11 @@ Dentro del portal, las páginas y acciones solo conocen el modelo y las interfac
 - **Node.js 24**: el monorepo fija `"node": "24.x"` en `engines`.
 - **pnpm 11.28.11**: fijado en `packageManager` del `package.json` de la raíz.
 - Git y acceso al repositorio.
-- Para la demostración: las URL y credenciales de los servicios desplegados, que entrega el equipo de backend.
-- Solo para levantar los servicios en local: PostgreSQL 17, como indica el [README de la raíz](../../README.md).
+- La configuración del servidor donde corre el portal: las URL de la API general y del orquestador publicados y sus credenciales, que administra el equipo.
 
-Las pruebas solo necesitan Node y pnpm: traen sus propios servicios simulados. Ver [Pruebas](#pruebas).
+## Instalación y arranque
 
-## Instalación desde un clon limpio
-
-Todos los comandos se ejecutan desde la raíz del monorepo.
+El portal siempre trabaja contra la API general y el orquestador publicados en el servidor. No hay instalación local de esos servicios. Todos los comandos se ejecutan desde la raíz del monorepo.
 
 **1. Clonar e instalar.** Con Node.js 24 y pnpm 11.28.11, por ejemplo con `npm install -g pnpm@11.28.11`:
 
@@ -54,87 +51,45 @@ cd salud-digna
 pnpm install --frozen-lockfile
 ```
 
-**2. Crear la configuración local.** `.env.local` queda fuera de Git.
+**2. Configurar.** Las variables las lee solo el servidor de Next. Sus valores los administra el equipo en el servidor donde corre el portal: en su configuración privada o en `.env.local`, que Git ignora. El repositorio solo tiene los nombres, en `.env.example`.
 
 ```sh
 cp apps/patient-portal/.env.example apps/patient-portal/.env.local
 ```
 
-Rellénalo con una de estas dos opciones.
+| Variable | Valor |
+| --- | --- |
+| `API_BASE_URL` | URL de la API general publicada, con `/api/v1`. |
+| `REQUESTS_BACKEND` | `orchestrator` |
+| `ORCHESTRATOR_BASE_URL` | URL del orquestador publicado, con `/api/v1`. |
+| `ORCHESTRATOR_API_KEY` | Clave del canal Web en el orquestador. Secreto. |
+| `PATIENT_IDENTITY_MODE` | `assertion` |
+| `PATIENT_ASSERTION_CHANNEL_KEY` | Credencial del canal Web ante el emisor de acreditaciones. Secreto. |
+| `REGISTRATION_ENABLED` | `false` |
 
-**3a. Para la demostración: servicios desplegados.** Es la configuración de la [demostración](#demostración). Solo hacen falta los valores que entrega el equipo de backend por un canal privado:
+- `REGISTRATION_ENABLED=false` evita crear cuentas en los servicios publicados: en desarrollo el registro está encendido por defecto.
+- La API general y el orquestador publicados deben incluir `17c9b27` de `main`.
+- El resto de variables tiene un valor por defecto adecuado: ver [Variables de entorno](#variables-de-entorno).
 
-```sh
-API_BASE_URL=<URL de la API central, con /api/v1: entregado por el equipo de backend>
-REQUESTS_BACKEND=orchestrator
-ORCHESTRATOR_BASE_URL=<URL del orquestador, con /api/v1: entregado por el equipo de backend>
-ORCHESTRATOR_API_KEY=<entregado por el equipo de backend>
-PATIENT_IDENTITY_MODE=assertion
-PATIENT_ASSERTION_CHANNEL_KEY=<entregado por el equipo de backend>
-REGISTRATION_ENABLED=false
-```
-
-- `REGISTRATION_ENABLED=false` evita crear cuentas en los servicios desplegados: en desarrollo el registro está encendido por defecto.
-- La API central y el orquestador desplegados deben incluir `17c9b27` de `main`.
-
-**3b. Sin servicios desplegados: modo heredado en local.** Solo necesita la API general.
-
-1. Levántala según el [README de la raíz](../../README.md), secciones «Entorno e instalación inicial» y «Catálogos de demostración», y [docs/development.md](../../docs/development.md) para la base de datos.
-   - Con los valores del ejemplo, la API queda en `http://127.0.0.1:3000` con el prefijo `/api/v1`.
-   - Carga los catálogos de demostración para tener estudios y clínicas.
-2. En `.env.local`, `API_BASE_URL=http://127.0.0.1:3000/api/v1`.
-3. Crea una cuenta de paciente en `/registro`, como se explica en [Credenciales de prueba por rol](#credenciales-de-prueba-por-rol).
-
-Para el modo orquestador en local, ver «Servicios locales» en esa misma sección.
-
-**4. Arrancar el portal.**
+**3. Arrancar.**
 
 ```sh
 pnpm --filter @salud-digna/patient-portal dev
 ```
 
-El portal queda en `http://127.0.0.1:5173`. `pnpm --filter @salud-digna/patient-portal check` comprueba los tipos.
+El portal queda en `http://127.0.0.1:5173`. `pnpm --filter @salud-digna/patient-portal check` comprueba los tipos. Para el servidor de producción, ver [Arrancar en producción](#arrancar-en-producción).
 
-**5. Comprobar el arranque.** El registro del servidor muestra los modos activos, sin ningún secreto. Con la opción 3a:
+**4. Comprobar el arranque.** El registro del servidor muestra los modos activos, sin ningún secreto:
 
 ```text
 [portal] trámites: orchestrator | identidad del paciente: assertion (emisor: API central) | registro de cuentas: apagado | IP del cliente a la API: apagada | clave del canal: <identificador público>
 ```
 
-Si una variable falta o no es válida, el servidor dice cuál, sin mostrar su valor, y responde `500` a todo. Cambiar `.env.local` exige reiniciar el servidor.
+Si una variable falta o no es válida, el servidor dice cuál, sin mostrar su valor, y responde `500` a todo. Cambiar la configuración exige reiniciar el servidor.
 
-## Credenciales de prueba por rol
+## Credenciales
 
-El repositorio no contiene credenciales y no debe contenerlas. Se entregan por un canal privado y solo se guardan en `.env.local` o en la configuración privada del servidor. Nunca van en Git, en el navegador, en capturas ni en chats.
-
-| Rol | Uso en el portal | Usuario | Contraseña |
-| --- | --- | --- | --- |
-| Paciente (`PATIENT`) | Iniciar sesión en `/acceso` | `<entregado por el equipo de backend>` | `<entregado por el equipo de backend>` |
-
-El portal solo usa el rol de paciente. Las cuentas de asesor y de administración son de Call Center y Administración: ver su propia documentación.
-
-**Credenciales del servidor del portal.** No son de ninguna persona: las lee el servidor.
-
-| Credencial | Variable | Valor |
-| --- | --- | --- |
-| Clave del canal Web en el orquestador | `ORCHESTRATOR_API_KEY` | `<entregado por el equipo de backend>` |
-| Credencial del canal Web ante el emisor de acreditaciones | `PATIENT_ASSERTION_CHANNEL_KEY` | `<entregado por el equipo de backend>` |
-
-**Servicios locales, opción 3b.**
-
-- **Cuenta de paciente sintética.** El registro público de la API general crea cuentas con el rol `PATIENT`: `POST /api/v1/auth/register`, descrito en [docs/api-auth.md](../../docs/api-auth.md), sección «Registro».
-  - En local, el portal lo ofrece en `/registro`, encendido en desarrollo.
-  - Usa un correo de un dominio reservado para ejemplos, como `example.com` o `example.test`, y una contraseña que no uses en ningún otro sitio.
-  - La API no carga pacientes de demostración: solo catálogos.
-- **Clave de canal de un orquestador local.** La emite un operador con la utilidad `auth:create-channel-credential`, descrita en [el README del orquestador](../orchestrator/README.md), sección «Credenciales de canal».
-  - El portal necesita los scopes `EVENTS_PUBLISH` y `JOURNEYS_READ`: se repite `--scope`.
-  - La utilidad entrega el valor una sola vez. La clave vence a los 30 días.
-  - Con ella, añade a `.env.local` `REQUESTS_BACKEND=orchestrator`, `ORCHESTRATOR_BASE_URL=http://127.0.0.1:3300/api/v1` y `ORCHESTRATOR_API_KEY`.
-- **No documentado en el portal:**
-  - dar de alta el canal Web, por ejemplo `demo-web`, activo y aprobado en la base de un orquestador local, que la utilidad exige;
-  - configurar el emisor de acreditaciones en una API central local y emitir `PATIENT_ASSERTION_CHANNEL_KEY`, que exige `PATIENT_IDENTITY_MODE=assertion`.
-
-  Los dos se piden al equipo de backend.
+El portal usa cuentas de paciente de demo. Las administra el equipo en el servidor y no forman parte del portal ni del repositorio, igual que las credenciales que lee el servidor del portal. El portal solo usa el rol de paciente: las cuentas de otros roles son de sus propias aplicaciones.
 
 ## Demostración
 
@@ -142,8 +97,8 @@ La parte del portal del recorrido omnicanal. Lo que ocurre en otras aplicaciones
 
 **Antes de empezar.**
 
-- El portal está arrancado con la opción 3a, y la línea de arranque dice `identidad del paciente: assertion`.
-- Tienes la cuenta de paciente.
+- El portal está arrancado según [Instalación y arranque](#instalación-y-arranque), y la línea de arranque dice `identidad del paciente: assertion`.
+- Tienes una cuenta de paciente de demo.
 
 **Pasos en el portal.**
 
@@ -181,7 +136,7 @@ La parte del portal del recorrido omnicanal. Lo que ocurre en otras aplicaciones
 | Qué se ve | Qué pasó | Qué hacer |
 | --- | --- | --- |
 | «No pudimos iniciar sesión con esos datos. Revisa el correo y la contraseña.» | La cuenta o la contraseña no son correctas. | Revisarlas sin insistir: tras tres fallos, el portal impone esperas («Demasiados intentos. Espera…»). |
-| «No pudimos verificar tu identidad» en «Continuar», «Mi espacio» o «Agendar un estudio», sin botón para empezar | El emisor de acreditaciones de la API central no responde o rechaza la credencial del canal. | No se arregla en vivo: sin acreditación, el portal no crea ni lee trámites. Plan B: reiniciar el portal con `PATIENT_IDENTITY_MODE=none` y usar la contingencia con código. Esos trámites no quedan ligados al paciente. |
+| «No pudimos verificar tu identidad» en «Continuar», «Mi espacio» o «Agendar un estudio», sin botón para empezar | El emisor de acreditaciones de la API central no responde o rechaza la credencial del canal. | No se arregla en vivo: sin acreditación, el portal no crea ni lee trámites. Plan B: reiniciar el portal con `PATIENT_IDENTITY_MODE=none` en su configuración y usar la contingencia con código. Esos trámites no quedan ligados al paciente. |
 | «Servicio no disponible», con «Reintentar» | La API o el orquestador no respondieron. | Pulsar «Reintentar» una vez. Si sigue, pasar al material grabado. |
 | «El servicio no respondió…» al crear o al elegir | Respuesta perdida o tiempo agotado. | Volver a pulsar. La creación no se duplica: se reenvía con la misma clave de idempotencia. |
 | «No pudimos crear el trámite. Inténtalo de nuevo.» | El orquestador rechazó la creación: clave de canal, URL o proxy. | Pasar al material grabado. El diagnóstico está en [docs/estado.md](docs/estado.md). |
@@ -193,7 +148,7 @@ Si el otro canal no encuentra el trámite, usa la contingencia. Su diagnóstico 
 
 ## Variables de entorno
 
-Todas las lee solo el servidor de Next. Ninguna lleva el prefijo `NEXT_PUBLIC_`, así que ninguna llega al navegador. [`.env.example`](.env.example) lista los nombres, sin valores.
+Todas las lee solo el servidor de Next. Ninguna lleva el prefijo `NEXT_PUBLIC_`, así que ninguna llega al navegador. [`.env.example`](.env.example) lista los nombres, sin valores secretos. La configuración en uso es la de [Instalación y arranque](#instalación-y-arranque).
 
 | Variable | Propósito | Valor por defecto | Obligatoria |
 | --- | --- | --- | --- |
@@ -226,11 +181,13 @@ Un valor ausente o inválido detiene el arranque: el servidor registra qué vari
 | `none` | Sin acreditación. El portal recuerda qué trámites creó cada cuenta en su registro del canal Web, en `PORTAL_DATA_DIR`. Cada trámite tiene un permiso de cinco minutos. Para cambiar de canal se usa un código de continuidad. |
 | `assertion` | Cada trámite se crea y se lista con la acreditación institucional del paciente. `/continuar` y `/mi-espacio` muestran sus trámites de cualquier canal, y el permiso se renueva solo. El código queda como alternativa plegada. Si no hay acreditación, no se crea ni se lee nada. |
 
-**Cuál usar hoy:** `REQUESTS_BACKEND=orchestrator` con `PATIENT_IDENTITY_MODE=assertion` y `PATIENT_ASSERTION_CHANNEL_KEY`, contra la API central y el orquestador que ya publican el emisor de acreditaciones y `access-grants` (`main` en `17c9b27`). Así el paciente recupera sus trámites en cualquier canal, sin código. Si el emisor no responde, el portal muestra «No pudimos verificar tu identidad» y no crea ningún trámite. `PATIENT_IDENTITY_MODE=none`, con códigos de continuidad, sigue disponible como alternativa. El detalle está en [docs/decisions.md](docs/decisions.md), «Continuidad identificada» y «Emisor conectado».
+**La configuración en uso:** `REQUESTS_BACKEND=orchestrator` con `PATIENT_IDENTITY_MODE=assertion`, la de [Instalación y arranque](#instalación-y-arranque). Así el paciente recupera sus trámites en cualquier canal, sin código, y el código de continuidad queda como contingencia. Si el emisor no responde, el portal muestra «No pudimos verificar tu identidad» y no crea ningún trámite. `PATIENT_IDENTITY_MODE=none`, en el que el código es la única forma de cambiar de canal, queda como plan B. `legacy` se conserva en el código, pero no se usa. El detalle está en [docs/decisions.md](docs/decisions.md), «Continuidad identificada» y «Emisor conectado».
 
 ## Pruebas
 
-Las pruebas viven en [`tests/`](tests/) y solo usan Node y lo que ya instaló el proyecto. Compilan el portal en modo producción, lo arrancan con `next start` y lo recorren contra una API general y un orquestador simulados. Ninguna prueba llama a servicios desplegados.
+Las pruebas viven en [`tests/`](tests/) y solo usan Node y lo que ya instaló el proyecto. Compilan el portal en modo producción, lo arrancan con `next start` y lo recorren contra una API general y un orquestador simulados. Ninguna prueba llama a servicios publicados.
+
+**Los servicios simulados son solo para las pruebas automáticas.** Viven en `tests/stubs/`, los arranca el lanzador y no son una forma de usar el portal, que siempre trabaja contra los servicios publicados.
 
 Desde la raíz del monorepo:
 
@@ -348,7 +305,7 @@ Tras cada despliegue hay que vaciar `/var/cache/nginx/portal`: las páginas guar
 
 1. Compilar desde una revisión identificada y con el lockfile.
 2. Una sola instancia del portal. Registro, permisos, límites y claves pendientes viven en el proceso. Lo que haría falta para varias está en [docs/decisions.md](docs/decisions.md), «Rendimiento y caché».
-3. Variables en la configuración privada del servicio: las de la opción 3a de [Instalación](#instalación-desde-un-clon-limpio), con `REQUESTS_BACKEND=orchestrator` y `PATIENT_IDENTITY_MODE=assertion`.
+3. Variables en la configuración privada del servicio: las de [Instalación y arranque](#instalación-y-arranque), con `REQUESTS_BACKEND=orchestrator` y `PATIENT_IDENTITY_MODE=assertion`.
 4. Solo con `PATIENT_IDENTITY_MODE=none`: `PORTAL_DATA_DIR` fuera de la carpeta del código, del usuario del servicio, con permisos `0700`, e incluida en los respaldos.
 5. Proxy con TLS y las cabeceras de arriba. El puerto del portal no debe ser accesible desde fuera.
 6. `REGISTRATION_ENABLED` sin definir o en `false`, salvo que se quiera abrir el registro.

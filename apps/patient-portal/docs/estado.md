@@ -67,7 +67,8 @@ El código de continuidad queda como contingencia. Los pasos del portal están e
 | 9 | Guion de demo sin código y medición del catálogo por petición | `6e45140` |
 | 10 | Documentación: autorización del paciente para Call Center pospuesta después del MVP, orden de integración y lo que falta para publicar | `82d0235` |
 | — | Merge de `main` hasta `bff1f58` | `224aa20` |
-| 11 | Documentación de entrega: README con instalación desde un clon limpio, credenciales por rol con marcadores y pasos de la demostración; READMEs de subcarpetas al día | Este commit |
+| 11 | Documentación de entrega: README con instalación, credenciales y pasos de la demostración; READMEs de subcarpetas al día | `d188fda` |
+| 12 | Documentación: una sola forma de arrancar, contra los servicios publicados; credenciales administradas en el servidor; contradicciones entre documentos | Este commit |
 
 **Diagnóstico posterior.** El error de creación en producción, sin cambios de código. El resultado está en «Estado del despliegue».
 
@@ -79,7 +80,7 @@ El código de continuidad queda como contingencia. Los pasos del portal están e
 
 **Versión en `main`.** El portal hasta la fase 8, `a8ddcc4`, fusionado en `7df5c1b`. Qué revisión corre el servidor publicado, y con qué variables, está por confirmar con su responsable.
 
-**En la rama.** `origin/dev/patient-portal` añade a `main` solo documentación: las fases 9, 10 y 11. Integra `main` hasta `bff1f58`.
+**En la rama.** `origin/dev/patient-portal` añade a `main` solo documentación: las fases 9 a 12. Integra `main` hasta `bff1f58`.
 
 **Error «No pudimos crear el trámite. Inténtalo de nuevo.»**
 
@@ -106,7 +107,7 @@ En pantalla se distingue el modo:
 ## Lo que falta para publicar
 
 1. **Integración en `main`.** `main` ya incluye el portal hasta `a8ddcc4`. Falta fusionar la documentación posterior de `dev/patient-portal` con un PR, cuando se autorice abrirlo.
-2. **Variables de producción**, en la configuración privada del servicio. Aquí solo van los nombres. Los valores los pone el responsable del servidor.
+2. **Variables de producción**, en la configuración privada del servicio. Aquí solo van los nombres. Los valores los administra el equipo en el servidor.
 
 | Variable | Valor en producción |
 | --- | --- |
@@ -129,10 +130,8 @@ En este orden:
 
 1. **Resolver el error de creación en producción**, con las comprobaciones de arriba.
 2. **Integración en `main` y variables de producción**, según «Lo que falta para publicar».
-3. **Ensayo conjunto con el Call Center** de la [demostración](../README.md#demostración).
-4. **Prueba del portal publicado desde el navegador de un teléfono.**
-5. **Prueba conjunta con la app móvil**, si se integra a tiempo.
-6. **Fase 6:**
+3. **Prueba del portal publicado desde el navegador de un teléfono.**
+4. **Fase 6:**
    - suites y servicios simulados dentro del repositorio: hecho en la fase 6a, en [`tests/`](../tests/);
    - README completo del portal y `CATALOG_CACHE_SECONDS` en `.env.example`: hecho en la fase 6b;
    - texto de la sección del portal para el README de la raíz: preparado en [readme-raiz-portal.md](readme-raiz-portal.md). Falta pegarlo en la raíz, que está fuera del portal y la decide su responsable.
@@ -145,7 +144,7 @@ En este orden:
 | --- | --- | --- |
 | Backend | Revocar la clave del canal Web que quedó expuesta en un archivo suelto y emitir otra contra la base de producción | Por confirmar |
 | Backend | Las cuatro comprobaciones del error de creación | Por confirmar |
-| Backend | Cuentas de demo por rol, pacientes y asesores, porque el registro está apagado; entregarlas por canal privado | Por confirmar |
+| Equipo | Cuentas de paciente de demo, administradas en el servidor, porque el registro está apagado | Resuelto: no forman parte del portal ni del repositorio |
 | Backend | Dos cuentas sintéticas del dominio `example.com` creadas por error en una prueba: decidir si se borran | Por confirmar |
 | Backend | Confiar en `X-Portal-Client-IP` solo desde el servidor del portal, o subir el límite de accesos durante la demo | Por confirmar |
 | Backend | Duración o renovación del permiso de trámite de cinco minutos | Por confirmar |
@@ -158,12 +157,11 @@ En este orden:
 | Backend | Límite de canje de códigos por actor, no solo por canal | Por confirmar |
 | Backend | Registrar en el orquestador los rechazos de credencial y de ruta | Por confirmar |
 | Backend | Diagramas de arquitectura y de secuencia | Por confirmar |
-| Backend | Contenido del README de la raíz: instalación, credenciales sintéticas por rol y pasos de la demo. Nunca claves de canal ni secretos del servidor | Por confirmar |
+| Backend | Contenido del README de la raíz: instalación y pasos de la demo, sin credenciales | Por confirmar |
 | App móvil | Servidor intermedio que guarde la clave y los permisos, y canal propio en el orquestador | Por confirmar |
 | App móvil | Evento de contacto, «contacto iniciado» y «que me contacten», solo si backend lo aprueba | Por confirmar |
 | App móvil | Números ficticios de Call Center para la demo | Por confirmar |
 | Call Center | Mostrar el evento de contacto, si se aprueba | Por confirmar |
-| Call Center | Prueba conjunta del código de continuidad | Por confirmar |
 | Backend | Contrato del emisor `POST /auth/patient-assertions` | Resuelto en `main`, `17c9b27` |
 | Backend | Publicar en el repositorio `POST /journeys/:id/access-grants` y el filtro `active` del listado | Resuelto en `main`, `17c9b27` |
 | Backend | Autorización del paciente para Call Center, `patient-assertion-consents`: UUID del asesor, código del canal, entrega del consentimiento entre backends, momento y lo que ve el paciente. Preguntas para una fase posterior, en [decisions.md](decisions.md) | Después del MVP |
@@ -174,8 +172,8 @@ En este orden:
 | Riesgo | Efecto |
 | --- | --- |
 | Límite de accesos compartido | La API general limita el acceso a 10 intentos por IP cada 15 minutos, y todas las peticiones salen del servidor del portal. Unos pocos fallos pueden dejar a todos los pacientes sin poder entrar. |
-| Estado en memoria y una sola instancia | Permisos, límites, claves pendientes y caché de sesión viven en el proceso, y el registro del canal en un archivo local. Al reiniciar se pierden los permisos, y dos instancias no comparten nada. |
-| Permiso de cinco minutos | Pasado ese tiempo, el portal no puede leer ni cambiar el trámite hasta recibir un código de continuidad emitido en otro canal. |
+| Estado en memoria y una sola instancia | Permisos, acreditaciones, límites, claves pendientes y caché de sesión viven en el proceso, y con `PATIENT_IDENTITY_MODE=none` el registro del canal en un archivo local. Al reiniciar se pierden los permisos, y dos instancias no comparten nada. |
+| Permiso de cinco minutos con `PATIENT_IDENTITY_MODE=none` | Pasado ese tiempo, el portal no puede leer ni cambiar el trámite hasta recibir un código de continuidad emitido en otro canal. Con `assertion`, el permiso se renueva solo. |
 | Trámites que no llegan a `COMPLETED` | El contrato del orquestador no admite fecha ni cierre con cita. En el portal, el trámite termina en «Pendiente de confirmación». |
 | Lista vacía ante una acreditación rechazada | El orquestador responde igual a una identidad sin trámites que a una acreditación inválida. El portal muestra la lista vacía, y el error aparece al intentar crear. |
 
@@ -188,7 +186,7 @@ pnpm install --frozen-lockfile
 pnpm --filter @salud-digna/patient-portal dev
 ```
 
-**Comprobar y compilar.** `next build` genera el catálogo y llama a la API general. En pruebas, compila con las variables de servicio apuntando a los servicios simulados: las variables del proceso tienen prioridad sobre `.env.local`.
+**Comprobar y compilar.** `next build` genera el catálogo y llama a la API general. Solo en las pruebas automáticas, compila con las variables de servicio apuntando a los servicios simulados: las variables del proceso tienen prioridad sobre `.env.local`.
 
 ```sh
 pnpm --filter @salud-digna/patient-portal check
@@ -196,29 +194,14 @@ API_BASE_URL=http://127.0.0.1:4010/api/v1 REQUESTS_BACKEND=legacy \
   pnpm --filter @salud-digna/patient-portal build
 ```
 
-**Probar en los dos modos.** Las suites y los servicios simulados están en [`tests/`](../tests/). El lanzador compila, arranca el portal en el puerto 5183 contra los simuladores y genera credenciales sintéticas en cada ejecución. Qué cubre cada suite y los dos fallos conocidos en modo orquestador están en el [README](../README.md), sección «Pruebas».
+**Probar en los dos modos.** Las suites y los servicios simulados están en [`tests/`](../tests/). Los simuladores son solo para las pruebas automáticas. El lanzador compila, arranca el portal en el puerto 5183 contra los simuladores y genera credenciales sintéticas en cada ejecución. Qué cubre cada suite y los dos fallos conocidos en modo orquestador están en el [README](../README.md), sección «Pruebas».
 
 ```sh
 pnpm --filter @salud-digna/patient-portal test                # todo
 pnpm --filter @salud-digna/patient-portal test:legacy         # o un grupo: legacy, orchestrator, identity, publication, load
 ```
 
-**Variables.** Todas las lee solo el servidor.
-
-| Variable | Propósito |
-| --- | --- |
-| `API_BASE_URL` | URL de la API general, con `/api/v1`. Obligatoria. |
-| `REQUESTS_BACKEND` | `legacy`, por defecto, u `orchestrator`. |
-| `ORCHESTRATOR_BASE_URL` | URL del orquestador, con `/api/v1`. |
-| `ORCHESTRATOR_API_KEY` | Clave del canal Web en el orquestador. Secreto. |
-| `PORTAL_DATA_DIR` | Carpeta del registro del canal Web. |
-| `REGISTRATION_ENABLED` | Registro de cuentas. Apagado por defecto en producción. |
-| `FORWARD_CLIENT_IP` | Envía a la API general la IP del paciente. Apagada hasta acordarlo con backend. |
-| `CATALOG_CACHE_SECONDS` | Duración de la caché del catálogo. Se lee al compilar. |
-| `PATIENT_IDENTITY_MODE` | `none`, por defecto, o `assertion`. |
-| `PATIENT_ASSERTION_CHANNEL_KEY` | Credencial del canal Web ante el emisor de acreditaciones. Obligatoria con `assertion`. Secreto. |
-
-`.env.local` además tiene `PORTAL_TEST_EMAIL`, `PORTAL_TEST_PASSWORD`, `PORTAL_TEST_EMAIL_2` y `PORTAL_TEST_PASSWORD_2`. Son de la cuenta de prueba y solo las usan las pruebas autorizadas.
+**Variables.** Las lee solo el servidor. La lista está en el [README](../README.md), «Variables de entorno», y la configuración en uso en «Instalación y arranque». Los valores los administra el equipo en el servidor.
 
 **Reglas de trabajo que se mantienen.**
 
@@ -226,7 +209,7 @@ pnpm --filter @salud-digna/patient-portal test:legacy         # o un grupo: lega
 - Push solo a `dev/patient-portal` y solo cuando se autorice. Nunca a `main` ni a otra rama, nunca force push y ningún PR sin autorización. `git fetch` sí, para leer.
 - Un solo PR por entrega, contra `main`.
 - No usar endpoints ni propiedades fuera de los contratos. Lo que falte se reporta.
-- Las credenciales solo van en `.env.local`, y las escribe el responsable del portal.
+- Las credenciales las administra el equipo en el servidor. Nunca van en el repositorio ni en los documentos.
 - Las pruebas van contra servicios simulados, en un puerto distinto de 5173.
 - Las llamadas a servicios desplegados, solo autorizadas y contadas.
 

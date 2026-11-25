@@ -42,7 +42,7 @@ La excepción son los segmentos de URL. Van en español y sin acentos porque los
 | `(booking)` | `/tramite/nuevo`, `/tramite/[id]` |
 | `(account)` | `/mi-espacio`, `/continuar`, `/citas`, `/citas/[id]`, `/ayuda`, `/perfil` |
 
-El inicio, el catálogo, `/registro`, `/acceso`, `/perfil`, `/tramite/nuevo`, `/tramite/[id]` y `/continuar` ya funcionan contra la API. `/mi-espacio`, `/citas`, `/citas/[id]` y `/ayuda` muestran por ahora su título y el aviso «Disponible en un paso posterior», sin datos de ejemplo.
+El inicio, el catálogo, `/registro`, `/acceso`, `/perfil`, `/mi-espacio`, `/tramite/nuevo`, `/tramite/[id]` y `/continuar` ya funcionan contra los servicios. `/citas`, `/citas/[id]` y `/ayuda` muestran por ahora su título y el aviso «Disponible en un paso posterior», sin datos de ejemplo.
 
 Los filtros de los listados viajan en la URL con nombres en español: `q` para el nombre, `ciudad`, `pagina` y, en la rejilla de horarios, `dia`.
 
@@ -179,9 +179,9 @@ La notificación devuelve un acuse, no el estado del trámite: el identificador 
 **Decisiones del propietario del portal.**
 
 - Lo que el orquestador no soporta se oculta. El portal no guarda la fecha ni la nota por su cuenta y no crea copias del trámite en la API general.
-- Un trámite de otro canal entra al portal con un código de continuidad. No hay carpeta de traspaso.
+- Con `PATIENT_IDENTITY_MODE=none`, un trámite de otro canal entra al portal con un código de continuidad. Con `assertion`, por el listado del paciente: ver «Continuidad identificada». No hay carpeta de traspaso.
 - Una creación con resultado incierto se reenvía con la misma clave de idempotencia.
-- El listado de trámites por paciente del orquestador no se integra todavía. «Identidad del paciente» explica qué haría falta.
+- El listado de trámites por paciente del orquestador se integra desde la fase 7, con `assertion`: ver «Continuidad identificada».
 
 **Selección.** `REQUESTS_BACKEND` decide quién atiende `RequestNotifier` y `RequestQuery`: `legacy`, por defecto, o `orchestrator`. `lib/composition.ts` lee la variable al cargar el servidor. Acceso, perfil y catálogo siguen en la API general en los dos modos. Un valor distinto de esos dos detiene el arranque.
 
@@ -276,7 +276,7 @@ Cada `POST /events` lleva el `eventId` como `externalEventId`, `schemaVersion: 1
 
 El folio es el identificador del trámite. Mientras el trámite está pendiente de confirmación, el paciente puede cambiar el estudio o la clínica: el orquestador lo devuelve a revisión. El aviso «Copiado.» vale solo para la pantalla en la que se pulsó: desaparece al cambiar la ruta o sus parámetros, por ejemplo al abrir la confirmación de cancelar.
 
-**Identidad del paciente.** `patient-identity.md` añade `GET /journeys`, que lista hasta cien trámites de un paciente, y la creación identificada. Las dos exigen la cabecera `X-Patient-Assertion`. El portal no lo integra porque le falta lo siguiente:
+**Identidad del paciente.** Superado en la fase 7 por «Continuidad identificada»: lo que sigue es el análisis de entonces. `patient-identity.md` añade `GET /journeys`, que lista hasta cien trámites de un paciente, y la creación identificada. Las dos exigen la cabecera `X-Patient-Assertion`. El portal no lo integra porque le falta lo siguiente:
 
 - Una forma de obtener la afirmación. Hoy solo la emite un operador con una CLI local, para pacientes ficticios, ligada a un canal y a una sesión, y vence a los cinco minutos. El contrato deja pendiente su emisión automática.
 - La correspondencia entre la cuenta de la API general y el identificador institucional del paciente. La API general no ofrece ese identificador.
@@ -325,13 +325,13 @@ Aun con el listado, el portal solo vería resúmenes: identificador, tipo, estad
 
 **Preguntas para el equipo del orquestador.**
 
-1. **Permiso.** Sigue abierta. Los códigos de continuidad cubren el paso a otro canal, pero el canal emisor no puede canjear los suyos y el contrato deja pendiente la renovación. ¿Cómo recupera el canal Web un trámite propio pasados los cinco minutos sin pasar por otro canal?
+1. **Permiso.** Resuelta con `assertion`: el portal pide un permiso nuevo con `access-grants`. Sigue abierta con `none`. Los códigos de continuidad cubren el paso a otro canal, pero el canal emisor no puede canjear los suyos y el contrato deja pendiente la renovación. ¿Cómo recupera el canal Web un trámite propio pasados los cinco minutos sin pasar por otro canal?
 2. **Fecha.** Sigue abierta. ¿`JOURNEY_CONTEXT_UPDATED` aceptará `scheduledAt`? Sin fecha, la API general no puede crear la cita.
 3. **Confirmación.** Sigue abierta. ¿Quién crea la cita oficial y cómo se informa `COMPLETED` y `appointmentId` al orquestador?
-4. **Paciente.** Respondida en parte. `GET /journeys` lista los trámites de un paciente y los códigos de continuidad llevan un trámite de un canal a otro. Falta saber cómo obtiene el portal la afirmación de identidad de un paciente sin la CLI del operador.
+4. **Paciente.** Resuelta: la API central emite la acreditación del paciente. Ver «Emisor conectado».
 5. **Acceso.** Respondida para la demo: el portal tiene URL y clave, y su canal figura como `demo-web`. Falta la lista de códigos de los demás canales.
 
-**Puesta en marcha.** Define en `.env.local` `REQUESTS_BACKEND=orchestrator`, `ORCHESTRATOR_BASE_URL` y `ORCHESTRATOR_API_KEY`. La clave tiene la forma `<keyId>.<secret>`, sin el prefijo `Bearer`, y necesita los scopes `EVENTS_PUBLISH` y `JOURNEYS_READ`: emitir un código exige los dos. `PORTAL_DATA_DIR` es opcional. Con un valor ausente o inválido, el servidor registra el motivo al arrancar, sin el valor, y responde `500` a todas las peticiones.
+**Puesta en marcha.** `REQUESTS_BACKEND=orchestrator`, `ORCHESTRATOR_BASE_URL` y `ORCHESTRATOR_API_KEY` van en la configuración del servidor, como explica el [README](../README.md), «Instalación y arranque». La clave tiene la forma `<keyId>.<secret>`, sin el prefijo `Bearer`, y necesita los scopes `EVENTS_PUBLISH` y `JOURNEYS_READ`: emitir un código exige los dos. `PORTAL_DATA_DIR` es opcional. Con un valor ausente o inválido, el servidor registra el motivo al arrancar, sin el valor, y responde `500` a todas las peticiones.
 
 ### Continuidad identificada
 
@@ -455,9 +455,9 @@ Lo que sigue se conserva como referencia para una fase posterior.
 | Requisito | Detalle |
 | --- | --- |
 | Proceso | `next build` y después `next start`, escuchando solo en `127.0.0.1`, detrás de un proxy inverso que termine TLS. |
-| Una sola instancia | Registro, permisos, claves de creación pendientes y límites viven en el proceso. Con dos instancias, cada una vería trámites, permisos y contadores distintos. «Rendimiento y caché» explica qué haría falta para varias. |
-| Variables | `API_BASE_URL`, `REQUESTS_BACKEND`, `ORCHESTRATOR_BASE_URL`, `ORCHESTRATOR_API_KEY`, `PORTAL_DATA_DIR`, `REGISTRATION_ENABLED` y `FORWARD_CLIENT_IP`, inyectadas desde la configuración privada del servicio. Ninguna lleva el prefijo `NEXT_PUBLIC_`. |
-| `PORTAL_DATA_DIR` | Fuera de la carpeta del código, para que un despliegue nuevo no la borre. Propiedad del usuario del servicio, con permisos `0700`. Contiene qué cuenta tiene qué trámites: hay que incluirla en los respaldos y excluirla de cualquier carpeta servida. |
+| Una sola instancia | Registro, permisos, acreditaciones, claves de creación pendientes y límites viven en el proceso. Con dos instancias, cada una vería trámites, permisos y contadores distintos. «Rendimiento y caché» explica qué haría falta para varias. |
+| Variables | Las del [README](../README.md), «Variables de entorno», inyectadas desde la configuración privada del servicio. Ninguna lleva el prefijo `NEXT_PUBLIC_`. |
+| `PORTAL_DATA_DIR` | Solo con `PATIENT_IDENTITY_MODE=none`. Fuera de la carpeta del código, para que un despliegue nuevo no la borre. Propiedad del usuario del servicio, con permisos `0700`. Contiene qué cuenta tiene qué trámites: hay que incluirla en los respaldos y excluirla de cualquier carpeta servida. |
 | Proxy | Debe conservar el `Host` original o enviar `X-Forwarded-Host`, escribir `X-Real-IP` con la IP del cliente y sobrescribir las cabeceras de reenvío que mande el navegador. Sin el host correcto, el portal rechaza todos los formularios con `403`. |
 | HTTPS | Obligatorio para el navegador: la cookie de sesión lleva `Secure` y el prefijo `__Host-`. |
 
@@ -677,7 +677,7 @@ Al añadir una ruta a `(account)` o `(booking)` hay que registrar su prefijo en 
 
 ### Cliente de API y configuración
 
-`API_BASE_URL` es obligatoria. `REQUESTS_BACKEND`, `ORCHESTRATOR_BASE_URL`, `ORCHESTRATOR_API_KEY` y `PORTAL_DATA_DIR` solo importan en modo orquestador y se describen en «Adaptador del orquestador». `REGISTRATION_ENABLED` y `FORWARD_CLIENT_IP` se describen en «Publicación del portal». Todas las lee solo el servidor, sin prefijo `NEXT_PUBLIC_`. `.env.example` documenta los nombres y los valores reales van en `.env.local`, que Git ignora. Sobre `API_BASE_URL`: `instrumentation.ts` la valida al arrancar con `checkConfiguration()`, de `lib/composition.ts`: debe usar `https`, salvo en `localhost` y `127.0.0.1`. Con un valor inválido, el servidor registra el error al arrancar y responde `500` a todas las peticiones. `next build` funciona sin la variable, porque ninguna página llama a la API durante la compilación.
+`API_BASE_URL` es obligatoria. `REQUESTS_BACKEND`, `ORCHESTRATOR_BASE_URL`, `ORCHESTRATOR_API_KEY` y `PORTAL_DATA_DIR` solo importan en modo orquestador y se describen en «Adaptador del orquestador». `REGISTRATION_ENABLED` y `FORWARD_CLIENT_IP` se describen en «Publicación del portal». Todas las lee solo el servidor, sin prefijo `NEXT_PUBLIC_`. `.env.example` documenta los nombres. Los valores los administra el equipo en el servidor donde corre el portal: en su configuración privada o en `.env.local`, que Git ignora. Sobre `API_BASE_URL`: `instrumentation.ts` la valida al arrancar con `checkConfiguration()`, de `lib/composition.ts`: debe usar `https`, salvo en `localhost` y `127.0.0.1`. Con un valor inválido, el servidor registra el error al arrancar y responde `500` a todas las peticiones. `next build` llama a la API general para generar el catálogo. Si no la alcanza, termina igual y esas páginas se generan en cada petición: ver «Rendimiento y caché».
 
 `lib/adapters/general-api/client.ts` es el único punto de salida hacia la API y lleva `server-only`, así que un componente de cliente no puede importarlo. Cada llamada:
 
@@ -746,7 +746,7 @@ Los servicios no avisan de los cambios. El portal lee el trámite en cada carga 
 
 ### Dirección de desarrollo
 
-El portal se sirve en `http://127.0.0.1:5173` durante el desarrollo. El puerto 3000, predeterminado de Next.js, es también el de la API local. El ejemplo de configuración de la API permite `http://localhost:5173`, que es un origen distinto, según [Desarrollo e integración](../../../docs/development.md). El portal prescinde de CORS porque sus llamadas a la API salen del servidor de Next.
+El portal se sirve en `http://127.0.0.1:5173` durante el desarrollo, contra los servicios publicados. Prescinde de CORS porque sus llamadas a los servicios salen del servidor de Next.
 
 ### Trámite de agendamiento
 
