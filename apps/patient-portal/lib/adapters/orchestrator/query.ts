@@ -3,18 +3,51 @@ import { failure, success } from "@/lib/domain/errors";
 import type { BookingRequest, LockedRequest } from "@/lib/domain/model";
 import type { RequestQuery } from "@/lib/domain/ports";
 import type { RegistryEntry } from "@/lib/state/ports";
-import { callWithGrant, readRequest, reportRegistryFailure, resolveAccess, type OrchestratorDependencies } from "./access";
-import { reportUnexpectedBody } from "./client";
-import { toFailure } from "./failures";
-import { toHistoryPage } from "./mapping";
+import {
+  callWithGrant,
+  readRequest,
+  reportRegistryFailure,
+  resolveAccess,
+  withAssertion,
+  type OrchestratorDependencies,
+} from "./access";
+import { orchestratorRequest, reportUnexpectedBody } from "./client";
+import { toFailure, toIdentifiedFailure } from "./failures";
+import { readJourneySummaries, toHistoryPage } from "./mapping";
 
 /**
- * Consulta del trámite sobre el orquestador. El orquestador no lista los trámites de un paciente:
- * la lista sale del registro del canal Web, y de cada trámite solo se lee el estado si hay permiso vigente.
+ * Consulta del trámite sobre el orquestador.
+ * - Modo `none`: la lista sale del registro del canal Web, y de cada trámite solo se lee el estado si hay
+ *   permiso vigente.
+ * - Modo `assertion`: la lista sale de `GET /journeys?active=true` con la acreditación del paciente e
+ *   incluye los trámites de cualquier canal. Solo trae folio, estado y fechas: el detalle se lee al abrir
+ *   cada trámite, con un permiso que se pide en ese momento.
  */
 export function createOrchestratorQuery(deps: OrchestratorDependencies): RequestQuery {
   return {
     async listPending({ page, limit }) {
+      if (deps.identityMode === "assertion") {
+        const patient = await deps.currentPatient();
+        if (!patient.ok) return patient;
+        const asked = await withAssertion(deps, (assertion) =>
+          orchestratorRequest({ method: "GET", path: "/journeys", query: { active: "true" }, assertion }),
+          { renewOnRejection: true },
+        );
+        if (!asked.ok) return asked.error.kind === "session" ? asked : failure("identity-unavailable");
+        const result = asked.data;
+        if (!result.ok) return toIdentifiedFailure(result, false);
+        const summaries = readJourneySummaries(result.data);
+        if (!summaries) {
+          reportUnexpectedBody("GET", "/journeys");
+          return failure("unavailable");
+        }
+        return success({
+          items: [],
+          summaries: summaries.slice((page - 1) * limit, page * limit),
+          hasMore: summaries.length > page * limit,
+        });
+      }
+
       const patient = await deps.currentPatient();
       if (!patient.ok) return patient;
       const { accountId } = patient.data;
@@ -33,7 +66,7 @@ export function createOrchestratorQuery(deps: OrchestratorDependencies): Request
       const reads = await Promise.all(
         slice.map(async (entry) => {
           const grant = await deps.grants.find(accountId, entry.id);
-          return grant ? readRequest(deps, { accountId, requestId: entry.id, grant }) : failure("access-expired");
+          return grant ? readRequest(deps, { accountId, requestId: entry.id, grant, fresh: false }) : failure("access-expired");
         }),
       );
 

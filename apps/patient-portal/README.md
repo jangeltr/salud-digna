@@ -32,6 +32,9 @@ Todas las lee solo el servidor de Next. Ninguna lleva el prefijo `NEXT_PUBLIC_`,
 | `REGISTRATION_ENABLED` | `true` o `false`. Decide si existe `/registro`. | Apagado en producción, encendido en desarrollo. |
 | `FORWARD_CLIENT_IP` | `true` o `false`. Envía a la API general la IP del paciente en `X-Portal-Client-IP`. | Apagada. |
 | `CATALOG_CACHE_SECONDS` | Segundos que dura en caché el catálogo, de 1 a 86 400. **Se lee al compilar**: cambiarla exige volver a compilar. | 300. |
+| `PATIENT_IDENTITY_MODE` | `none` o `assertion`. Con `assertion`, cada trámite se crea y se consulta con la acreditación del paciente. Exige `REQUESTS_BACKEND=orchestrator`. | `none`. |
+| `PATIENT_ASSERTION_PROVIDER` | `pending` o `simulator`. `pending` falla siempre hasta que exista el emisor de la API central. `simulator` solo arranca con servicios locales. | `pending`. |
+| `PATIENT_ASSERTION_SIMULATOR_KEY` | Clave del emisor de simulación, 32 bytes en base64url. Solo para pruebas locales. Es un secreto. | Obligatoria con `simulator`. |
 
 Un valor ausente o inválido detiene el arranque: el servidor registra qué variable falla, sin mostrar su valor, y responde `500` a todo.
 
@@ -128,20 +131,22 @@ Viven en memoria y se vacían al reiniciar.
 | Códigos de continuidad generados | 30 por paciente y hora. |
 | Canjes fallidos de un código | 5 por paciente cada 10 minutos. |
 
-## Recorrido de demostración: Web, código de continuidad y WhatsApp
+## Recorrido de demostración: Web, código de continuidad y app móvil
 
-Requiere `REQUESTS_BACKEND=orchestrator`.
+Requiere `REQUESTS_BACKEND=orchestrator`. Desde el 2026-11-24 WhatsApp está fuera del MVP; ver «Continuidad identificada» en [las decisiones](docs/decisions.md).
+
+Con `PATIENT_IDENTITY_MODE=assertion` el recorrido no necesita código: el trámite aparece en **Continuar** y en **Mi espacio** en cualquier canal donde el paciente se identifique, y el código queda bajo **Otra forma de continuar**. Ese modo necesita el emisor de acreditaciones de la API central, que aún no existe: con el emisor `pending`, el portal responde «No pudimos verificar tu identidad». El recorrido siguiente es el del modo `none`.
 
 1. Entra en el portal e inicia sesión con la cuenta de prueba.
 2. Abre **Estudios**, elige uno y pulsa **Agendar este estudio**. Después, **Empezar el trámite**.
 3. En «Elige una clínica», baja hasta **Continuar en otro canal** y pulsa **Generar código de continuidad**.
 4. La pantalla muestra un código de doce caracteres y la hora a la que vence.
-5. Escribe el código en WhatsApp antes de esa hora. WhatsApp continúa el mismo trámite.
+5. Escribe el código en la app móvil antes de esa hora. La app continúa el mismo trámite.
 6. De vuelta en el portal, recarga el trámite para ver el avance. **Ver el historial del trámite** nombra los dos canales.
 
 Tiempos que conviene tener presentes:
 
 - El portal puede leer y cambiar un trámite durante cinco minutos desde que lo crea. Después muestra «Necesita un permiso nuevo».
 - El código vale como mucho hasta ese mismo momento. Genéralo justo después de elegir el estudio.
-- Para volver al portal pasado ese tiempo, pide un código en WhatsApp y escríbelo en **Continuar**, en el campo **Tengo un código de continuidad**.
+- Para volver al portal pasado ese tiempo, pide un código en la app móvil o en Call Center y escríbelo en **Continuar**, en el campo **Tengo un código de continuidad**.
 - El portal no puede canjear un código que él mismo generó.

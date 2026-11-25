@@ -49,3 +49,11 @@ export function getDataDir(): string {
   dataDir ??= readDataDir();
   return dataDir;
 }
+
+/**
+ * Identificador público de la clave del canal, la parte anterior al punto. Sirve para saber en el registro
+ * qué clave usa el servidor. El secreto, tras el punto, nunca se muestra.
+ */
+export function channelKeyId(): string {
+  return getChannelKey().reveal().split(".", 1)[0];
+}

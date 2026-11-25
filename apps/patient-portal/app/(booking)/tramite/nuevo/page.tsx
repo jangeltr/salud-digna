@@ -5,7 +5,9 @@ import { formatPrice, isUuid } from "@/features/catalog/params";
 import { LockedList } from "@/features/requests/handoff";
 import { PendingList } from "@/features/requests/pending-list";
 import { StartForm } from "@/features/requests/start-form";
+import { IdentityUnavailable, SummaryList } from "@/features/requests/summary-list";
 import { generalData, requestCapabilities, requestQuery } from "@/lib/composition";
+import { reportShownError } from "@/lib/report";
 import { expireSession, requireAccount } from "@/lib/session/session";
 
 export const metadata: Metadata = { title: "Agendar un estudio" };
@@ -25,6 +27,15 @@ export default async function NewRequestPage({ searchParams }: PageProps<"/trami
   if (!account) return <ServiceUnavailable retryHref={path} />;
   if (!pending.ok) {
     if (pending.error.kind === "session") await expireSession();
+    reportShownError("/tramite/nuevo", pending.error.kind);
+    if (pending.error.kind === "identity-unavailable") {
+      return (
+        <>
+          <h1 className="text-2xl font-bold tracking-tight">Agendar un estudio</h1>
+          <IdentityUnavailable retryHref={path} />
+        </>
+      );
+    }
     return <ServiceUnavailable retryHref={path} />;
   }
 
@@ -32,7 +43,9 @@ export default async function NewRequestPage({ searchParams }: PageProps<"/trami
   const open = pending.data.items;
   // Solo con servicios que exigen un permiso por trámite: los que el portal conoce pero no puede consultar.
   const locked = pending.data.locked ?? [];
-  const openCount = open.length + locked.length;
+  // Solo con continuidad identificada: trámites del paciente de cualquier canal.
+  const summaries = pending.data.summaries ?? [];
+  const openCount = open.length + locked.length + summaries.length;
 
   return (
     <>
@@ -59,6 +72,7 @@ export default async function NewRequestPage({ searchParams }: PageProps<"/trami
             {openCount === 1 ? "Tienes un trámite abierto" : `Tienes ${openCount} trámites abiertos`}
           </h2>
           <p className="mt-1 text-sm text-muted">Puedes continuar uno de ellos o empezar otro.</p>
+          {summaries.length > 0 ? <SummaryList summaries={summaries} /> : null}
           {open.length > 0 ? <PendingList requests={open} /> : null}
           {locked.length > 0 ? <LockedList requests={locked} /> : null}
           {pending.data.hasMore ? (
@@ -77,8 +91,8 @@ export default async function NewRequestPage({ searchParams }: PageProps<"/trami
         </h2>
         <p className="mt-1 mb-3 text-sm text-muted">
           {requestCapabilities.pause
-            ? "Podrás guardarlo y continuar después, también por WhatsApp o con un asesor."
-            : "Al terminar lo envías a confirmación y continúas por WhatsApp o Call Center."}
+            ? "Podrás guardarlo y continuar después, también en la app móvil o con un asesor."
+            : "Al terminar lo envías a confirmación y continúas en la app móvil o en Call Center."}
         </p>
         <StartForm
           studyId={selected?.id}

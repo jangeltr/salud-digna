@@ -2,7 +2,9 @@ import "server-only";
 import { cache } from "react";
 import { checkGeneralApiConfiguration, generalApiData } from "./adapters/general-api/general-data";
 import { useSessionCache } from "./adapters/general-api/session";
-import { getDataDir } from "./adapters/orchestrator/config";
+import { pendingAssertionIssuer } from "./adapters/general-api/assertions";
+import { getApiBaseUrl, forwardsClientIp } from "./adapters/general-api/config";
+import { channelKeyId, getDataDir, getOrchestratorBaseUrl } from "./adapters/orchestrator/config";
 import { legacyCapabilities } from "./adapters/legacy-requests/capabilities";
 import { legacyRequestNotifier } from "./adapters/legacy-requests/notifier";
 import { legacyRequestQuery } from "./adapters/legacy-requests/query";
@@ -11,9 +13,14 @@ import { orchestratorCapabilities } from "./adapters/orchestrator/capabilities";
 import { createOrchestratorNotifier } from "./adapters/orchestrator/notifier";
 import { createOrchestratorQuery } from "./adapters/orchestrator/query";
 import type { GeneralData, RequestCapabilities, RequestNotifier, RequestQuery } from "./domain/ports";
-import { checkSettings } from "./settings";
+import { createAssertionSource } from "./identity/cache";
+import { assertSimulatorIsLocal, readAssertionProvider, readIdentityMode, readSimulatorKey, type IdentityMode } from "./identity/config";
+import type { AssertionIssuer } from "./identity/ports";
+import { createSimulatorIssuer } from "./identity/simulator";
+import { checkSettings, isRegistrationEnabled } from "./settings";
 import { createFileRegistry } from "./state/file-registry";
 import {
+  createMemoryAssertionCache,
   createMemoryAttemptStore,
   createMemoryGrantStore,
   createMemoryPendingCreationStore,
@@ -61,17 +68,51 @@ export const attemptStore: AttemptStore = createMemoryAttemptStore();
 // El perfil se pide una sola vez por renderizado: lo comparten la sesión, las acciones y el adaptador.
 const currentPatient = cache(() => generalApiData.getProfile());
 
+/*
+ * Identidad del paciente ante el orquestador. `PATIENT_IDENTITY_MODE` elige `none`, por defecto, o
+ * `assertion`; `PATIENT_ASSERTION_PROVIDER`, el emisor: `pending` hasta que la API central entregue el
+ * contrato de su emisor, o `simulator` para las pruebas locales. Un valor inválido detiene el arranque.
+ */
+const identityMode: IdentityMode = (() => {
+  try {
+    return readIdentityMode();
+  } catch {
+    return "none";
+  }
+})();
+
+function selectIssuer(): AssertionIssuer {
+  try {
+    return readAssertionProvider() === "simulator" ? createSimulatorIssuer(currentPatient, readSimulatorKey()) : pendingAssertionIssuer;
+  } catch {
+    // `checkConfiguration` detiene el arranque con el motivo.
+    return pendingAssertionIssuer;
+  }
+}
+
+const assertions = createAssertionSource(selectIssuer(), createMemoryAssertionCache());
+
 const orchestratorDependencies = {
   currentPatient,
   getStudy: generalApiData.getStudy,
   getClinic: generalApiData.getClinic,
+  identityMode,
+  assertions,
   registry,
   grants,
   pendingCreations,
 };
 
 /** Catálogo, perfil del paciente, acceso y registro: API general, en los dos modos. */
-export const generalData: GeneralData = { ...generalApiData, getProfile: currentPatient };
+export const generalData: GeneralData = {
+  ...generalApiData,
+  getProfile: currentPatient,
+  // Al cerrar sesión también se olvida la acreditación de esa sesión.
+  async signOut() {
+    await assertions.forget();
+    await generalApiData.signOut();
+  },
+};
 
 /** Notificación de los cambios del trámite. */
 export const requestNotifier: RequestNotifier =
@@ -83,12 +124,32 @@ export const requestQuery: RequestQuery =
 
 /** Lo que soporta el adaptador activo del trámite. Las pantallas muestran solo eso. */
 export const requestCapabilities: RequestCapabilities =
-  backend === "orchestrator" ? orchestratorCapabilities : legacyCapabilities;
+  backend === "orchestrator" ? orchestratorCapabilities(identityMode) : legacyCapabilities;
 
 /** Se ejecuta al arrancar. Detiene el servidor si la configuración de un adaptador en uso es inválida. */
 export async function checkConfiguration(): Promise<void> {
   checkSettings();
   // La API general se usa en los dos modos: acceso, perfil y catálogo.
   checkGeneralApiConfiguration();
-  if (readRequestsBackend() === "orchestrator") await checkOrchestratorConfiguration(registry);
+  const requests = readRequestsBackend();
+  const identity = readIdentityMode();
+  const provider = readAssertionProvider();
+  if (identity === "assertion" && requests !== "orchestrator") {
+    throw new Error("PATIENT_IDENTITY_MODE=assertion requiere REQUESTS_BACKEND=orchestrator.");
+  }
+  if (requests === "orchestrator") await checkOrchestratorConfiguration(registry, identity);
+  if (identity === "assertion" && provider === "simulator") {
+    readSimulatorKey();
+    assertSimulatorIsLocal([getApiBaseUrl(), getOrchestratorBaseUrl()]);
+  }
+
+  // Modos activos, para el registro del servidor. Sin valores secretos: de la clave solo su identificador público.
+  const parts = [
+    `trámites: ${requests}`,
+    `identidad del paciente: ${identity}${identity === "assertion" ? ` (emisor: ${provider === "simulator" ? "simulación" : "pendiente"})` : ""}`,
+    `registro de cuentas: ${isRegistrationEnabled() ? "encendido" : "apagado"}`,
+    `IP del cliente a la API: ${forwardsClientIp() ? "encendida" : "apagada"}`,
+  ];
+  if (requests === "orchestrator") parts.push(`clave del canal: ${channelKeyId()}`);
+  console.info(`[portal] ${parts.join(" | ")}`);
 }

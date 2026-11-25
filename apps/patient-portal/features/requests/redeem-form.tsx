@@ -18,7 +18,7 @@ export function RedeemForm() {
       <TextField
         name="codigo"
         label="Código de continuidad"
-        hint="Tiene 12 letras y números. Lo genera el canal donde está tu trámite: WhatsApp o Call Center."
+        hint="Tiene 12 letras y números. Lo genera el canal donde está tu trámite: la app móvil o Call Center."
         error={state.message}
         required
         autoComplete="off"

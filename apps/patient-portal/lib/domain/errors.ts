@@ -12,6 +12,8 @@
  *   o el adaptador activo no la soporta.
  * - `access-expired`: el trámite es del paciente, pero el portal no tiene un permiso vigente para
  *   consultarlo ni modificarlo.
+ * - `identity-unavailable`: no se pudo obtener o acreditar la identidad institucional del paciente.
+ *   Con este error no se crea ni se lee ningún trámite.
  */
 export type ErrorKind =
   | "not-found"
@@ -21,7 +23,8 @@ export type ErrorKind =
   | "invalid"
   | "unavailable"
   | "rejected"
-  | "access-expired";
+  | "access-expired"
+  | "identity-unavailable";
 
 export type PortalError = {
   kind: ErrorKind;

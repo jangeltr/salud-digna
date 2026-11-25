@@ -98,7 +98,10 @@ export async function apiRequest<Data>(request: ApiRequest): Promise<ApiResult<D
   if (!response.ok) {
     // El cuerpo del error se descarta: su mensaje nunca llega a la interfaz.
     await response.body?.cancel().catch(() => undefined);
-    if (response.status >= 500) report(method, path, `respuesta ${response.status}`);
+    // Toda respuesta que no sea 2xx deja el código, salvo el 404 de un estudio o una clínica por identificador,
+    // que es un enlace a un registro inactivo o inexistente y no un fallo.
+    const catalogMiss = response.status === 404 && (path === "/studies/{id}" || path === "/clinics/{id}");
+    if (!catalogMiss) report(method, path, `respuesta ${response.status}`);
     return {
       ok: false,
       status: response.status,

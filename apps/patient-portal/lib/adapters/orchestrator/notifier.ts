@@ -8,10 +8,11 @@ import {
   readVersion,
   reportRegistryFailure,
   resolveAccess,
+  withAssertion,
   type OrchestratorDependencies,
 } from "./access";
-import { orchestratorRequest, reportConflictWithoutVersionChange, reportUnexpectedBody } from "./client";
-import { isUncertain, toCreationFailure, toFailure, toRedeemFailure } from "./failures";
+import { orchestratorRequest, reportConflictWithoutVersionChange, reportUnexpectedBody, type OrchestratorResult } from "./client";
+import { isUncertain, toCreationFailure, toFailure, toIdentifiedFailure, toRedeemFailure } from "./failures";
 import { normalizeContinuityCode, readContinuityCode, readCreatedJourney, readRedeemedJourney } from "./mapping";
 
 type OnRequestEvent = Exclude<RequestEvent, { type: "request-started" | "continuity-redeemed" }>;
@@ -65,8 +66,9 @@ async function start(deps: OrchestratorDependencies, eventId: string): Promise<R
   if (!patient.ok) return patient;
   const { accountId } = patient.data;
 
-  // Nada se envió todavía: el fallo es seguro.
-  if (!(await registryIsReadable(deps, accountId))) return failure("rejected");
+  const identified = deps.identityMode === "assertion";
+  // Nada se envió todavía: el fallo es seguro. En modo `assertion` el registro no se usa.
+  if (!identified && !(await registryIsReadable(deps, accountId))) return failure("rejected");
 
   const pendingKey = await deps.pendingCreations.get(accountId);
   const request = {
@@ -76,16 +78,27 @@ async function start(deps: OrchestratorDependencies, eventId: string): Promise<R
     body: JSON.stringify({ type: "APPOINTMENT" }),
   } as const;
 
-  let created = await orchestratorRequest(request);
+  // En modo `assertion` cada envío lleva la acreditación. Si no se obtiene, no se envía nada:
+  // nunca se crea un trámite anónimo en su lugar. El reenvío conserva la clave de idempotencia.
+  const send = async (): Promise<Result<OrchestratorResult>> =>
+    identified
+      ? withAssertion(deps, (assertion) => orchestratorRequest({ ...request, assertion }), { renewOnRejection: true })
+      : success(await orchestratorRequest(request));
+
+  const first = await send();
+  if (!first.ok) return first.error.kind === "session" ? first : failure("identity-unavailable");
+  let created = first.data;
   let repeated = pendingKey !== undefined;
   if (!created.ok && isUncertain(created)) {
-    created = await orchestratorRequest(request);
+    const again = await send();
+    if (!again.ok) return again.error.kind === "session" ? again : failure("identity-unavailable");
+    created = again.data;
     repeated = true;
   }
 
   if (!created.ok) {
     if (isUncertain(created)) await deps.pendingCreations.set(accountId, request.idempotencyKey, PENDING_CREATION_MS);
-    return toCreationFailure(created);
+    return identified ? toIdentifiedFailure(created, true) : toCreationFailure(created);
   }
   await deps.pendingCreations.delete(accountId);
 
@@ -97,6 +110,8 @@ async function start(deps: OrchestratorDependencies, eventId: string): Promise<R
 
   // Un reintento tardío puede llegar sin permiso: el trámite se anota igual y pedirá un permiso nuevo.
   if (journey.access) await deps.grants.save(accountId, journey.id, journey.access.grant, journey.access.expiresAt);
+  // En modo `assertion` el trámite queda asociado al paciente en el orquestador: no hay nada que anotar.
+  if (identified) return success(repeated ? { requestId: journey.id } : { requestId: journey.id, version: 1 });
   try {
     await deps.registry.add(accountId, journey.id, new Date().toISOString());
   } catch {
@@ -205,7 +220,8 @@ async function redeemContinuityCode(deps: OrchestratorDependencies, typed: strin
   // Un texto sin forma de código no llega al orquestador, que cuenta cada intento de canje del canal.
   const code = normalizeContinuityCode(typed);
   if (!code) return failure("invalid");
-  if (!(await registryIsReadable(deps, accountId))) return failure("rejected");
+  const identified = deps.identityMode === "assertion";
+  if (!identified && !(await registryIsReadable(deps, accountId))) return failure("rejected");
 
   const result = await orchestratorRequest({
     method: "POST",
@@ -221,6 +237,7 @@ async function redeemContinuityCode(deps: OrchestratorDependencies, typed: strin
   }
 
   await deps.grants.save(accountId, journey.id, journey.access.grant, journey.access.expiresAt);
+  if (identified) return success({ requestId: journey.id });
   try {
     await deps.registry.add(accountId, journey.id, new Date().toISOString());
   } catch {

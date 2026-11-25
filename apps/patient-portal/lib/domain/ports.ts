@@ -93,6 +93,12 @@ export type RequestCapabilities = {
   /** Emitir un código para continuar en otro canal y canjear el que emitió otro. */
   continuityCodes: boolean;
   /**
+   * Continuidad identificada: el servicio reconoce al paciente por una acreditación institucional,
+   * lista sus trámites de cualquier canal y renueva solo el permiso de cada uno.
+   * El código de continuidad queda como alternativa.
+   */
+  identifiedContinuity: boolean;
+  /**
    * El servicio lista los trámites por paciente, también los de otros canales. Sin esto, la lista
    * sale del registro del portal y un inicio de trámite con resultado incierto no se puede comprobar.
    */

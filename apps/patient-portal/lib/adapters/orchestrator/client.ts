@@ -15,6 +15,7 @@ export type OrchestratorPath =
   | "/journeys/:journeyId/context"
   | "/journeys/:journeyId/history"
   | "/journeys/:journeyId/continuity-codes"
+  | "/journeys/:journeyId/access-grants"
   | "/continuity-codes/redeem";
 
 export type OrchestratorSuccess = { ok: true; status: number; data: unknown };
@@ -37,12 +38,14 @@ export type OrchestratorRequest = {
   grant?: Secret;
   /** Clave de idempotencia de `POST /journeys`. Viaja en Idempotency-Key. */
   idempotencyKey?: string;
+  /** Acreditación institucional del paciente. Viaja en X-Patient-Assertion. */
+  assertion?: Secret;
   /** Cuerpo JSON ya serializado, para que un reenvío sea idéntico byte a byte. */
   body?: string;
 };
 
-// El registro omite la clave del canal, los permisos, las claves de idempotencia, los códigos
-// de continuidad, los cuerpos y los identificadores: solo método, ruta del contrato y motivo.
+// El registro omite la clave del canal, los permisos, las acreditaciones, las claves de idempotencia,
+// los códigos de continuidad, los cuerpos y los identificadores: solo método, ruta del contrato y motivo.
 function report(method: string, path: string, reason: string) {
   console.error(`[orquestador] ${method} ${path}: ${reason}`);
 }
@@ -68,13 +71,14 @@ function buildUrl({ path, journeyId, query }: OrchestratorRequest): string {
 
 /** Única salida hacia el orquestador. Ninguna respuesta se guarda en caché. */
 export async function orchestratorRequest(request: OrchestratorRequest): Promise<OrchestratorResult> {
-  const { method, path, grant, idempotencyKey, body } = request;
+  const { method, path, grant, idempotencyKey, assertion, body } = request;
 
   // Las cabeceras se construyen aquí y no salen de esta función: no se registran ni se devuelven.
   const headers = new Headers({ Accept: "application/json" });
   headers.set("Authorization", `Bearer ${getChannelKey().reveal()}`);
   if (grant) headers.set("X-Journey-Grant", grant.reveal());
   if (idempotencyKey) headers.set("Idempotency-Key", idempotencyKey);
+  if (assertion) headers.set("X-Patient-Assertion", assertion.reveal());
   if (body !== undefined) headers.set("Content-Type", "application/json");
 
   let response: Response;
@@ -98,11 +102,9 @@ export async function orchestratorRequest(request: OrchestratorRequest): Promise
   if (!response.ok) {
     // El cuerpo del error se descarta: su mensaje nunca llega a la interfaz.
     await response.body?.cancel().catch(() => undefined);
-    if (response.status === 401 || response.status === 403) {
-      report(method, path, `credencial de canal rechazada (${response.status})`);
-    } else if (response.status >= 500) {
-      report(method, path, `respuesta ${response.status}`);
-    }
+    // Toda respuesta que no sea 2xx deja el código, para poder distinguir las causas en el registro.
+    const reason = response.status === 401 || response.status === 403 ? " (credencial de canal rechazada)" : "";
+    report(method, path, `respuesta ${response.status}${reason}`);
     return {
       ok: false,
       status: response.status,

@@ -1,7 +1,7 @@
 import "server-only";
 import type { Patient } from "@/lib/domain/model";
 import type { Secret } from "@/lib/secret";
-import type { AttemptLimit, AttemptStore, Backoff, GrantStore, PendingCreationStore, SessionCache } from "./ports";
+import type { AssertionCache, AttemptLimit, AttemptStore, Backoff, GrantStore, PendingCreationStore, SessionCache } from "./ports";
 
 /**
  * Implementaciones en la memoria del proceso. Sirven con una sola instancia del portal
@@ -67,6 +67,22 @@ export function createMemoryGrantStore(): GrantStore {
     },
     async drop(accountId, requestId) {
       grants.delete(pair(accountId, requestId));
+    },
+  };
+}
+
+/** Acreditaciones del paciente, solo en memoria y con el vencimiento que fija `lib/identity/cache.ts`. */
+export function createMemoryAssertionCache(): AssertionCache {
+  const assertions = expiringMap<Secret>("patient-assertions");
+  return {
+    async get(sessionKey) {
+      return assertions.get(sessionKey);
+    },
+    async set(sessionKey, assertion, expiresAt) {
+      assertions.set(sessionKey, assertion, expiresAt);
+    },
+    async delete(sessionKey) {
+      assertions.delete(sessionKey);
     },
   };
 }

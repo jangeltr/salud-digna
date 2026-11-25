@@ -4,7 +4,9 @@
 
 Este documento registra las decisiones del portal y el estado de la API del que dependen. El estado corresponde al contrato y a las guías publicados en `main` el 2026-11-22, y al contrato del orquestador publicado en `main` el 2026-11-24. El documento vive junto a la aplicación porque cada equipo mantiene la documentación de la suya, según la [guía de revisión de pull requests](../../../docs/revision-pull-requests.md).
 
-El portal tiene su carcasa, con identidad, rutas y un encabezado con la navegación, además de registro, acceso, sesión, catálogo y trámite de agendamiento contra la API. El trámite puede registrarse también en el orquestador, como explica «Adaptador del orquestador». `/mi-espacio`, `/citas`, `/citas/[id]` y `/ayuda` muestran solo su título.
+El portal tiene su carcasa, con identidad, rutas y un encabezado con la navegación, además de registro, acceso, sesión, catálogo y trámite de agendamiento contra la API. El trámite puede registrarse también en el orquestador, como explica «Adaptador del orquestador», y, con continuidad identificada, el paciente ve sus trámites de cualquier canal, como explica «Continuidad identificada». `/mi-espacio` lista los trámites activos en ese modo y muestra solo su título en los demás. `/citas`, `/citas/[id]` y `/ayuda` muestran solo su título.
+
+El estado del trabajo, para retomarlo en otra sesión, está en [estado.md](estado.md).
 
 Las decisiones que dejaron de aplicarse se conservan al final, en «Decisiones retiradas», con su fecha y su motivo.
 
@@ -331,6 +333,82 @@ Aun con el listado, el portal solo vería resúmenes: identificador, tipo, estad
 
 **Puesta en marcha.** Define en `.env.local` `REQUESTS_BACKEND=orchestrator`, `ORCHESTRATOR_BASE_URL` y `ORCHESTRATOR_API_KEY`. La clave tiene la forma `<keyId>.<secret>`, sin el prefijo `Bearer`, y necesita los scopes `EVENTS_PUBLISH` y `JOURNEYS_READ`: emitir un código exige los dos. `PORTAL_DATA_DIR` es opcional. Con un valor ausente o inválido, el servidor registra el motivo al arrancar, sin el valor, y responde `500` a todas las peticiones.
 
+### Continuidad identificada
+
+**Fecha.** 2026-11-24.
+
+**Contrato.** [Continuidad identificada](contratos/continuidad-identificada.md), entregado por el equipo del orquestador. Dice que los endpoints nuevos están implementados en local y sin desplegar. Las diferencias con el código que hay en el repositorio están más abajo, en «Contrato frente al código».
+
+**Decisión.** El paciente cambia de canal sin código. Cada canal acredita al paciente ante el orquestador, y el orquestador le devuelve sus trámites, vengan del canal que vengan. El código de continuidad se conserva como alternativa discreta.
+
+**Modo de identidad.** `PATIENT_IDENTITY_MODE` lo elige y solo lo lee el servidor.
+
+- `none`, por defecto, conserva el comportamiento anterior sin cambios: registro del canal Web, permiso de cinco minutos y «Necesita un permiso nuevo».
+- `assertion` exige `REQUESTS_BACKEND=orchestrator`. Cada trámite nuevo y cada listado llevan la acreditación del paciente en `X-Patient-Assertion`.
+- En modo `assertion`, si no hay acreditación no se crea ni se lee nada y el paciente ve «No pudimos verificar tu identidad». Nunca se recurre a la creación anónima, que el orquestador todavía acepta sin la cabecera.
+- Un valor inválido detiene el arranque. Al arrancar, el servidor registra los modos activos y el identificador público de la clave del canal, nunca su secreto.
+
+**Emisor de acreditaciones.** Es la interfaz `AssertionIssuer` de `lib/identity/ports.ts`. Obtiene la acreditación del paciente de la sesión que ya validó el servidor y no recibe ningún dato del navegador. `PATIENT_ASSERTION_PROVIDER` elige la implementación.
+
+- `pending`, por defecto, está en `lib/adapters/general-api/assertions.ts`. Falla siempre con `identity-unavailable` porque el contrato del emisor de la API central no está definido, y no inventa cabeceras, credenciales ni cuerpo.
+- `simulator`, en `lib/identity/simulator.ts`, solo sirve al orquestador simulado de las pruebas. Firma un formato propio de las pruebas y se niega a arrancar si la API general o el orquestador no están en `localhost` o `127.0.0.1`.
+- La caché, en `lib/identity/cache.ts`, guarda en memoria una acreditación por sesión, con el SHA-256 del token como clave. Nunca la guarda más de cinco minutos y la renueva 30 segundos antes de vencer. Al cerrar sesión se olvida.
+- La acreditación nunca llega al navegador, al registro de archivo ni a los logs.
+
+**Adaptador del orquestador en modo `assertion`.**
+
+- **Creación.** `POST /journeys` con `X-Patient-Assertion` e `Idempotency-Key`. Si el orquestador responde `404` a una acreditación guardada, se pide otra y se reenvía una sola vez con la misma clave de idempotencia.
+- **Listado.** `GET /journeys?active=true`. `/continuar`, `/mi-espacio` y `/tramite/nuevo` muestran folio, estado y fecha. El detalle se lee al abrir el trámite.
+- **Permiso.** Al abrir un trámite sin permiso vigente en memoria, el portal lo pide con `POST /journeys/:id/access-grants` y la acreditación de la sesión.
+  - La pertenencia la decide el orquestador, así que el portal nunca usa un identificador de trámite del navegador sin ese paso.
+  - Si el orquestador rechaza un permiso guardado, se pide otro y se reintenta una sola vez.
+  - Un `404` de `access-grants` significa «no encontrado», igual para un trámite ajeno que para uno inexistente, y no se reintenta: repetir doblaría las llamadas de quien pruebe identificadores.
+- **Registro del canal Web.** No se usa ni se prepara al arrancar. Se mantienen `expectedVersion`, `externalEventId` e `Idempotency-Key`.
+
+**Pantallas.**
+
+- En modo `assertion`, «Necesita un permiso nuevo» desaparece porque el permiso se renueva solo.
+- «Continuar en otro canal» explica que basta identificarse en la app móvil o en Call Center. El código de continuidad queda plegado bajo «Otra forma de continuar», en `/continuar` y en el trámite.
+
+**WhatsApp fuera del MVP.** Desde el 2026-11-24, los canales del MVP son el portal web, la app móvil nativa, Call Center y Administración. La interfaz del portal ya no ofrece WhatsApp como canal: los textos dicen «app móvil» o «Call Center». El nombre «WhatsApp» solo aparece en el historial, cuando un evento viene de ese canal. «Vinculación de WhatsApp», más abajo, describe una operación de la API general que el MVP no usa.
+
+**Registro mínimo de errores.**
+
+- Toda respuesta no 2xx del orquestador y de la API general deja método, ruta del contrato y código.
+- La excepción son los `404` de un estudio o una clínica por identificador, que son enlaces a registros inactivos.
+- Cada error mostrado al paciente deja `[portal] error mostrado en <lugar>: <tipo>`.
+- Nada de esto incluye identificadores, cuerpos ni credenciales.
+
+**Selección sin cambios.** Elegir el estudio o la clínica que ya tiene el contexto vigente no publica nada: la acción lee el trámite y, si la selección coincide, vuelve a la pantalla sin escribir, aunque la versión del formulario sea antigua. Así el historial que ve Administración no se llena de eventos vacíos. La pantalla ya ocultaba el botón de la opción elegida: la comprobación cubre otra pestaña o un formulario manipulado. Cuesta una lectura antes de cada selección, en los dos modos de trámites.
+
+#### Contrato frente al código
+
+Revisado el 2026-11-24 en el código de `apps/orchestrator` que hay en `main`, en `ff989cc`, integrado en esta rama. Las rutas son relativas a `apps/orchestrator/`.
+
+| Punto | Contrato | Código del repositorio | Cómo quedó el portal |
+| --- | --- | --- | --- |
+| `POST /journeys` con acreditación | Crea el trámite asociado al paciente. | Existe: `src/journeys/journey-writes.controller.ts:21-24`. Misma respuesta que sin acreditación, con `id`, `status`, `grant` y `grantExpiresAt` (`src/journeys/journey-writes.service.ts:63` y `:103`). Una acreditación inválida, ajena o sin correspondencia responde `404` y nunca crea un provisional (`docs/patient-identity.md:64`). | Coinciden. El `404` se traduce a `identity-unavailable`. |
+| `POST /journeys` sin acreditación | No lo dice. | Sigue aceptado como creación provisional, sin paciente (`journey-writes.controller.ts:25`, `docs/patient-identity.md:59`). | En modo `assertion` el portal nunca lo envía sin la cabecera. |
+| Reintento de creación | Mantener `Idempotency-Key`. | Los reintentos con la misma clave deben acreditar al mismo sujeto y actor, aunque se renueve la acreditación (`docs/patient-identity.md:66-67`). | El reenvío conserva la clave y pide la acreditación de la misma sesión. |
+| `GET /journeys?active=true` | Solo `DRAFT`, `IN_PROGRESS` y `PENDING_CONFIRMATION`. | Existe sin el filtro: ignora `active` y devuelve todos los estados, hasta 100, ordenados por actualización (`src/journeys/journey-queries.controller.ts:19-26`, `src/journeys/journey-queries.service.ts:39-43`). Exige `JOURNEYS_READ`. | Envía `active=true` y además filtra: solo cita, solo esos tres estados. Funciona con las dos versiones. |
+| `POST /journeys/:id/access-grants` | Devuelve `grant` y su vencimiento, sin nombrar el campo. | **No existe.** Ningún archivo de `src/` ni de `docs/` lo menciona. La documentación vigente dice que la acreditación no sustituye al permiso, y que para continuar hace falta un código o un permiso de la CLI del operador (`docs/patient-identity.md:70-77`). | Implementado según el contrato, única fuente. Lee `grantExpiresAt`, como en la creación y el canje, y si falta, `expiresAt`. Hay que confirmar el nombre, el código de éxito y los scopes. |
+| Formato de la acreditación | JWS firmado con Ed25519 por la API central. | HMAC-SHA256 con una clave compartida (`ORCHESTRATOR_PATIENT_IDENTITY_KEY`), forma `<contenido>.<firma de 43 caracteres>` y contenido `{channelId, identifierId, actorRef, exp}`, emitido por una CLI del operador (`src/journeys/patient-identity.ts:7`, `:36`, `:40` y `:45-70`). Un JWS, con tres partes y firma de 86 caracteres, no pasaría esa validación. | Sin efecto en el portal: trata la acreditación como un secreto opaco y no la decodifica. El orquestador tendrá que aceptar el JWS cuando llegue el emisor. |
+| Vigencia | Cinco minutos como máximo. | 300 segundos (`patient-identity.ts:40`). | La caché nunca pasa de cinco minutos y renueva antes. |
+| Tamaño | No lo dice. | Máximo 768 caracteres y una sola cabecera (`patient-identity.ts:47`). | El portal envía una sola cabecera. El tamaño depende del emisor. |
+| Emisor `POST /auth/patient-assertions` | Previsto en `apps/api`. | **No existe** en `apps/api/src` ni en `docs/openapi.json`. | Emisor `pending`: el modo `assertion` falla con un aviso claro hasta que llegue. |
+
+**Pendiente del emisor para conectarlo.** Sustituir `pendingAssertionIssuer` solo cambia `lib/adapters/general-api/assertions.ts`, y hace falta saber:
+
+1. Cómo se autentica la petición: con el token del paciente, con una credencial propia del portal o con las dos. Si hay credencial propia, su nombre y su forma.
+2. Cómo se indica el canal `demo-web`: en el cuerpo, en una cabecera o deducido de la credencial.
+3. El cuerpo exacto de la petición, si lo hay.
+4. La respuesta: si trae vencimiento además de `assertion`, cómo se llama y en qué formato.
+5. Los códigos de error y cuáles admiten reintento. Si tiene límite propio, con `Retry-After`.
+6. Si la acreditación puede reutilizarse durante su vigencia o es de un solo uso.
+7. Qué `actorRef` lleva, porque el orquestador exige el mismo sujeto y actor al repetir una creación.
+8. Si el orquestador desplegado ya acepta el JWS, o hasta cuándo convivirá con el formato HMAC.
+9. Del orquestador: el nombre del campo de vencimiento de `access-grants`, su código de éxito, sus scopes y cuándo filtrará `active`.
+
 ### Publicación del portal
 
 **Fecha.** 2026-11-24. Revisión y preparación hechas sobre la compilación de producción, sin publicar nada. Los pasos para arrancar y la lista de publicación están en el [README](../README.md).
@@ -603,6 +681,8 @@ El paciente confirma su cita en el portal con `POST /api/v1/requests/{id}/confir
 Si el paciente necesita ayuda, genera un código de asistencia con `POST /api/v1/requests/{id}/assistance-code`, sin cuerpo, y lo entrega al asesor. El código tiene 22 caracteres, vence a los cinco minutos y se consume una vez. Con él, el asesor obtiene un permiso de 30 minutos para consultar la solicitud y confirmarla. Para editar las selecciones, el paciente usa su propia sesión. Consulta la [guía de Call Center](../../../docs/frontend-callcenter.md), sección «Recuperar una atención», y el [contrato de Call Center](../../../docs/api-call-center.md), sección «Emitir y canjear».
 
 ### Vinculación de WhatsApp
+
+**Fuera del MVP desde el 2026-11-24.** El portal no ofrece esta vinculación. Ver «Continuidad identificada».
 
 El paciente inicia la vinculación en el portal. `features/identity` llama a `POST /api/v1/identity/links` con `{"provider":"WHATSAPP"}` y muestra el `linkId` y el `code` de la respuesta. El paciente envía `vincular <linkId> <code>` desde su teléfono al remitente configurado. El desafío vence a los cinco minutos. `GET /api/v1/identity` lista las identidades de la cuenta. El campo `phone` del registro carece de efecto sobre la vinculación.
 

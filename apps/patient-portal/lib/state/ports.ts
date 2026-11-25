@@ -71,6 +71,17 @@ export interface AttemptStore {
 }
 
 /**
+ * Acreditaciones institucionales del paciente, por sesión. La clave es un hash del token de sesión.
+ * Son secretos: viven solo en memoria y nunca llegan al navegador, al registro de archivo ni a los logs.
+ */
+export interface AssertionCache {
+  get(sessionKey: string): Promise<Secret | undefined>;
+  /** `expiresAt` en milisegundos desde 1970. Una acreditación ya vencida no se guarda. */
+  set(sessionKey: string, assertion: Secret, expiresAt: number): Promise<void>;
+  delete(sessionKey: string): Promise<void>;
+}
+
+/**
  * Perfiles de sesión ya validados por la API general. La clave es un hash del token:
  * el token nunca se guarda.
  */

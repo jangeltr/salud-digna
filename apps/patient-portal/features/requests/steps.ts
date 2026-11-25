@@ -111,6 +111,7 @@ const NOTICES = {
   guardado: { tone: "success", text: "Tu trámite quedó guardado. Puedes continuarlo cuando quieras." },
   enviado: { tone: "success", text: "Tu trámite se envió a confirmación." },
   cancelado: { tone: "success", text: "Trámite cancelado." },
+  identidad: { tone: "danger", text: "No pudimos verificar tu identidad. Tu trámite no cambió: inténtalo de nuevo en unos minutos." },
 } as const;
 
 export type Notice = (typeof NOTICES)[keyof typeof NOTICES];

@@ -6,7 +6,9 @@ import { EmptyState } from "@/features/catalog/empty-state";
 import { isUuid } from "@/features/catalog/params";
 import { AccessExpired } from "@/features/requests/handoff";
 import { Timeline } from "@/features/requests/history";
+import { IdentityUnavailable } from "@/features/requests/summary-list";
 import { requestCapabilities, requestQuery } from "@/lib/composition";
+import { reportShownError } from "@/lib/report";
 import { expireSession, requireAccount } from "@/lib/session/session";
 
 export const metadata: Metadata = { title: "Historial del trámite" };
@@ -42,11 +44,12 @@ export default async function RequestHistoryPage({ params, searchParams }: PageP
     if (result.error.kind === "not-found") notFound();
     // El servicio no reconoce ese cursor: se vuelve al inicio del historial.
     if (result.error.kind === "invalid" && cursor) redirect(path);
-    if (result.error.kind === "access-expired") {
+    reportShownError("/tramite/[id]/historial", result.error.kind);
+    if (result.error.kind === "access-expired" || result.error.kind === "identity-unavailable") {
       return (
         <>
           <h1 className="text-2xl font-bold tracking-tight">Historial del trámite</h1>
-          <AccessExpired requestId={id} />
+          {result.error.kind === "access-expired" ? <AccessExpired requestId={id} /> : <IdentityUnavailable retryHref={currentPath} />}
         </>
       );
     }

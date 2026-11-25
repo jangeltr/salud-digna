@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { CopyButton } from "@/components/copy-button";
+import { requestCapabilities } from "@/lib/composition";
 import type { BookingRequest, LockedRequest } from "@/lib/domain/model";
 import { cancelRequest, requestConfirmation } from "./actions";
 import { ContinuityForm } from "./continuity-form";
@@ -13,7 +14,13 @@ import { formatDateTime } from "./schedule";
  * la envía a confirmación y la termina un canal de atención.
  */
 
-const OTHER_CHANNELS = "Puedes continuar por WhatsApp o Call Center.";
+/**
+ * Dónde puede seguir el paciente. Con continuidad identificada le basta identificarse en el otro canal.
+ * WhatsApp quedó fuera del MVP el 2026-11-24: ver «Continuidad identificada» en `docs/decisions.md`.
+ */
+const OTHER_CHANNELS = requestCapabilities.identifiedContinuity
+  ? "Puedes continuar en la app móvil o en Call Center: al identificarte verás este trámite, sin código."
+  : "Puedes continuar en la app móvil o en Call Center.";
 
 const dangerButton =
   "inline-flex min-h-11 items-center justify-center rounded-lg bg-danger px-4 font-semibold text-canvas hover:opacity-90 disabled:opacity-70";
@@ -30,17 +37,41 @@ export function Folio({ requestId }: { requestId: string }) {
 }
 
 /**
- * «Continuar en otro canal»: emite un código de continuidad para seguir con este trámite
- * en WhatsApp o Call Center. Se ofrece desde que el trámite tiene un estudio.
+ * «Continuar en otro canal». Se ofrece desde que el trámite tiene un estudio.
+ * Con continuidad identificada, el paciente solo tiene que identificarse en el otro canal, y el código
+ * queda como alternativa discreta, plegada bajo «Otra forma de continuar».
  */
 export function ContinuitySection({ requestId }: { requestId: string }) {
+  if (requestCapabilities.identifiedContinuity) {
+    return (
+      <section aria-labelledby="continuidad" className="mt-10 border-t border-line pt-6">
+        <h2 id="continuidad" className="text-lg font-semibold">
+          Continuar en otro canal
+        </h2>
+        <p className="mt-1 text-sm text-muted">
+          Puedes seguir con este trámite en la app móvil o en Call Center. Al identificarte allí verás tus trámites
+          activos, sin necesidad de código.
+        </p>
+        <details className="mt-4">
+          <summary className="inline-flex min-h-11 cursor-pointer items-center text-sm font-semibold text-brand underline underline-offset-4">
+            Otra forma de continuar
+          </summary>
+          <p className="mt-2 mb-3 text-sm text-muted">
+            Si el otro canal te pide un código, genéralo aquí. Dura cinco minutos como máximo y sirve una sola vez.
+          </p>
+          <ContinuityForm requestId={requestId} />
+        </details>
+      </section>
+    );
+  }
+
   return (
     <section aria-labelledby="continuidad" className="mt-10 border-t border-line pt-6">
       <h2 id="continuidad" className="text-lg font-semibold">
         Continuar en otro canal
       </h2>
       <p className="mt-1 mb-3 text-sm text-muted">
-        Genera un código y úsalo en WhatsApp o Call Center para seguir con este trámite. Dura cinco minutos como máximo
+        Genera un código y úsalo en la app móvil o en Call Center para seguir con este trámite. Dura cinco minutos como máximo
         y sirve una sola vez.
       </p>
       <ContinuityForm requestId={requestId} />
@@ -57,7 +88,7 @@ export function SubmitStep({ request, selections }: { request: BookingRequest; s
       </h2>
       <Summary request={request} selections={selections} showSchedule={false} />
       <p className="mt-6 mb-3 text-sm text-muted">
-        Si todo es correcto, envíalo a confirmación. La fecha y la hora se acuerdan después por WhatsApp o Call Center.
+        Si todo es correcto, envíalo a confirmación. La fecha y la hora se acuerdan después en la app móvil o en Call Center.
       </p>
       <RequestForm action={requestConfirmation} request={request} label="Enviar a confirmación" pendingLabel="Enviando…" />
     </section>

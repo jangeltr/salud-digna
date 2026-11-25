@@ -30,7 +30,9 @@ Desde el 2026-11-24 el portal es solo web. El proyecto cambió de arquitectura: 
 - Cada adaptador del trámite declara sus capacidades. Las pantallas muestran solo lo que declara `requestCapabilities` y cada acción lo comprueba otra vez en el servidor.
 - La clave del canal y los permisos de trámite del orquestador son secretos: quedan fuera de logs, errores, respuestas, cookies y disco. Los permisos viven solo en memoria.
 - Un código de continuidad es una credencial de un solo uso. Se muestra al paciente en la respuesta de la acción y nada más: no viaja en la URL ni se guarda en el navegador, en el registro o en un log.
-- En modo orquestador, toda lectura o escritura de un trámite comprueba antes en el registro del canal Web que pertenece al paciente de la sesión.
+- En modo orquestador, toda lectura o escritura de un trámite comprueba antes que pertenece al paciente de la sesión. Con `PATIENT_IDENTITY_MODE=none`, en el registro del canal Web. Con `assertion`, pidiendo el permiso con la acreditación de esa sesión: el portal nunca usa un identificador de trámite del navegador sin ese paso.
+- La acreditación del paciente es un secreto, como la clave del canal: vive solo en memoria y queda fuera del navegador, del registro de archivo y de los logs. Si falta, no se crea nada: nunca se recurre a la creación anónima.
+- Los textos para el paciente nombran como canales la app móvil y Call Center. WhatsApp está fuera del MVP desde el 2026-11-24.
 - El contrato de la API general es `docs/openapi.json`. Léelo en su ubicación, sin copiarlo al portal. `lib/adapters/` y `mocks/` usan solo operaciones y propiedades de ese archivo.
 - Toda llamada a un servicio sale del servidor de Next. El JWT vive en una cookie `HttpOnly` y queda fuera del código del navegador.
 - Cada página nueva de `(account)` o `(booking)` llama a `requireAccount()` y registra su prefijo en `lib/session/routes.ts`.
