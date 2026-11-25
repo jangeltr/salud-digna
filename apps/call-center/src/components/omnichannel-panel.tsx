@@ -240,6 +240,20 @@ export function OmnichannelPanel({ api, writable = false, enabled, frame, initia
   }
 
   return frame(<>
+    <section className="fields" aria-labelledby="automatic-continuity-title">
+      <h3 id="automatic-continuity-title">Recuperación automática</h3>
+      <dl className="context-data">
+        <div><dt>Asesor</dt><dd>Sesión de asesor activa</dd></div>
+        <div><dt>Verificación del paciente</dt><dd>Pendiente del procedimiento institucional</dd></div>
+        <div><dt>Autorización de atención</dt><dd>Pendiente de acreditación institucional</dd></div>
+      </dl>
+      <fieldset disabled aria-describedby="automatic-continuity-status">
+        <button type="button">Verificar paciente y autorización</button>
+      </fieldset>
+      <h4>Trámites activos</h4>
+      <p id="automatic-continuity-status">La recuperación sin códigos se habilitará cuando la API central pueda acreditar esta atención.</p>
+    </section>
+    <h3>Alternativa con código de continuidad</h3>
     <p>{activeId ? "Cierra el acceso al trámite antes de continuar otra atención." : "Ingresa el código de continuidad que recibió el paciente."}</p>
     <form onSubmit={redeem}>
       <fieldset className="fields" disabled={busy || !!pending || !enabled || !!activeId}>

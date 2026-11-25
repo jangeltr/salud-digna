@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { automaticContinuityActions, automaticContinuityBlocker } from "./automatic-continuity";
 import { allowsPending, continuityCode, eventPayload, hasPublishScope, readRedemption, isId, readContext, readHistory, readReceipt, readSummary, record, type Outcome } from "./contract";
 
 class HttpFailure extends Error {
@@ -11,7 +12,7 @@ const grants = new Map<string, Access>();
 const running = new Map<string, AbortController>();
 const maxSessions = 256;
 const grantFormat = /^[A-Za-z0-9_-]{43}$/;
-const operations = ["open", "read", "history", "close", "publish", "retry", "redeem", "resume"];
+const operations = ["open", "read", "history", "close", "publish", "retry", "redeem", "resume", ...automaticContinuityActions];
 const upstreamBase = "https://orchestrator.salud-digna.app/api/v1/";
 const accessWindow = 300000;
 
@@ -117,6 +118,12 @@ export function createOmnichannelHandler(role: "ADVISOR" | "ADMIN", keyName: str
         if (deadline <= Date.now()) { revoke(sessionKey); return reply({ error: "session" }, 401); }
         if (action === "close") { revoke(sessionKey); return reply({ closed: true }); }
         if (role === "ADMIN" && (["publish", "retry", "redeem", "resume"].includes(String(action)))) return reply({ error: "operator" }, 403);
+        const blocker = automaticContinuityBlocker(String(action));
+        if (blocker) {
+          if (role !== "ADVISOR") return reply({ error: "operator" }, 403);
+          if (Object.keys(body).length !== 1) return reply({ error: "input" }, 400);
+          return reply({ error: "automatic-continuity-unavailable", blocker }, 503);
+        }
         const apiKey = process.env[keyName];
         if (!apiKey) return reply({ error: "configuration" }, 503);
         controller!.signal.throwIfAborted();
