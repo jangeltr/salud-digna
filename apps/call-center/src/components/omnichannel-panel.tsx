@@ -3,12 +3,14 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { continuityCode, referenceLabels, type HistoryPage, type Outcome, type View } from "../omnichannel/contract";
 
+import type { ActiveJourney } from "../omnichannel/automatic-continuity";
+
 export type OmnichannelApi = <T>(body: object) => Promise<T>;
-type AccessView = View & { expiresAt: number; canMarkPending: boolean };
+type AccessView = View & { expiresAt: number; canMarkPending: boolean; canWrite: boolean };
 type Redemption = { journeyId: string; expiresAt: number };
 
 class ReadError extends Error {
-  constructor(readonly status: number) { super("Omnichannel request failed"); }
+  constructor(readonly status: number, readonly reason?: string) { super("Omnichannel request failed"); }
 }
 
 export async function omnichannelRequest<T>(token: string, instanceId: string, body: object) {
@@ -16,12 +18,19 @@ export async function omnichannelRequest<T>(token: string, instanceId: string, b
     method: "POST", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json", "X-Staff-Instance": instanceId },
     body: JSON.stringify(body), cache: "no-store", keepalive: true, signal: AbortSignal.timeout(45000),
   });
-  if (!response.ok) throw new ReadError(response.status);
+  if (!response.ok) {
+    const failure = await response.json().catch(() => null) as { error?: unknown } | null;
+    throw new ReadError(response.status, typeof failure?.error === "string" ? failure.error : undefined);
+  }
   return await response.json() as T;
 }
 
 function errorText(error: unknown) {
   if (!(error instanceof ReadError)) return "La conexión se interrumpió o la respuesta fue incompleta.";
+  if (error.reason === "consent-required") return "No hay consentimiento institucional disponible. El paciente debe autorizar a este asesor desde su canal.";
+  if (error.reason === "institutional-configuration") return "Falta la configuración privada de la atención institucional.";
+  if (error.reason === "institutional-expired") return "La autorización institucional venció. Solicita al canal de origen un consentimiento vigente.";
+  if (error.reason === "journey-not-authorized") return "El trámite no pertenece al listado autorizado. Actualiza los trámites activos.";
   return ({
     400: "Revisa el UUID, el permiso y los datos ingresados.",
     401: "La sesión del operador o la credencial del canal no está autorizada.",
@@ -39,6 +48,8 @@ export function OmnichannelPanel({ api, writable = false, enabled, frame, initia
   const [activeId, setActiveId] = useState("");
   const [recoverable, setRecoverable] = useState(false);
   const [expiresAt, setExpiresAt] = useState<number | null>(null);
+  const [institutional, setInstitutional] = useState(false);
+  const [activeJourneys, setActiveJourneys] = useState<ActiveJourney[] | null>(null);
   const [view, setView] = useState<AccessView | null>(null);
   const [message, setMessage] = useState("");
   const [outcome, setOutcome] = useState("");
@@ -51,6 +62,8 @@ export function OmnichannelPanel({ api, writable = false, enabled, frame, initia
     live.current += 1;
     setView(null);
     setActiveId("");
+    setInstitutional(false);
+    setActiveJourneys(null);
     setJourneyId("");
     setExpiresAt(null);
     setPending(null);
@@ -61,7 +74,7 @@ export function OmnichannelPanel({ api, writable = false, enabled, frame, initia
     if (expiresAt === null) return;
     const timer = window.setTimeout(() => {
       clear();
-      setMessage("El permiso venció. Usa un código de continuidad nuevo para volver a consultar.");
+      setMessage("El permiso venció. Obtén una autorización institucional vigente o usa un código nuevo para volver a consultar.");
     }, Math.max(0, expiresAt - Date.now()));
     return () => window.clearTimeout(timer);
   }, [expiresAt]);
@@ -88,6 +101,29 @@ export function OmnichannelPanel({ api, writable = false, enabled, frame, initia
     setView(null);
     const recovered = await api<AccessView>({ action: "read", journeyId: result.journeyId });
     if (generation === live.current) setView(recovered);
+  }
+
+  async function listActive(generation: number) {
+    setActiveJourneys(null);
+    const result = await api<{ items: ActiveJourney[] }>({ action: "active-journeys" });
+    if (generation === live.current) setActiveJourneys(result.items);
+  }
+
+  function verifyPatient() {
+    run(async (generation) => {
+      const result = await api<{ expiresAt: number }>({ action: "verify-patient" });
+      if (generation !== live.current) return;
+      setInstitutional(true);
+      setExpiresAt(result.expiresAt);
+      await listActive(generation);
+    });
+  }
+
+  function authorizeJourney(id: string) {
+    run(async (generation) => {
+      const result = await api<Redemption>({ action: "authorize-journey", journeyId: id });
+      await readRedeemed(result, generation);
+    });
   }
 
   function redeem(event: FormEvent<HTMLFormElement>) {
@@ -213,7 +249,7 @@ export function OmnichannelPanel({ api, writable = false, enabled, frame, initia
         }
         return;
       }
-      setOutcome(result.outcome === "applied" ? "El orquestador acreditó el avance persistido."
+      setOutcome(result.outcome === "applied" ? "Evento aceptado. Consultando el estado vigente."
         : result.status === 409 ? "Avance rechazado por conflicto. Revisa la versión y las transiciones admitidas."
         : result.status === 429 ? "Límite de solicitudes. Espera antes de volver a intentar."
         : result.status === 503 ? "No se pudo verificar el contexto. Actualiza antes de volver a intentar."
@@ -226,7 +262,10 @@ export function OmnichannelPanel({ api, writable = false, enabled, frame, initia
       if (result.outcome === "applied" || result.status === 409) {
         setView(null);
         const resultView = await api<AccessView>({ action: "read", journeyId: activeId });
-        if (generation === live.current) setView(resultView);
+        if (generation === live.current) {
+          setView(resultView);
+          if (result.outcome === "applied") setOutcome("Avance registrado. Estado actualizado desde el orquestador.");
+        }
       }
     });
   }
@@ -241,22 +280,37 @@ export function OmnichannelPanel({ api, writable = false, enabled, frame, initia
 
   return frame(<>
     <section className="fields" aria-labelledby="automatic-continuity-title">
-      <h3 id="automatic-continuity-title">Recuperación automática</h3>
+      <h3 id="automatic-continuity-title">Atención e identidad</h3>
       <dl className="context-data">
         <div><dt>Asesor</dt><dd>Sesión de asesor activa</dd></div>
-        <div><dt>Verificación del paciente</dt><dd>Pendiente del procedimiento institucional</dd></div>
-        <div><dt>Autorización de atención</dt><dd>Pendiente de acreditación institucional</dd></div>
+        <div><dt>Verificación y consentimiento</dt><dd>{institutional ? "Aceptados por la API central" : "Pendientes de autorización del paciente"}</dd></div>
+        <div><dt>Autorización institucional</dt><dd>{institutional ? "Vigente para esta atención" : "Sin acreditar"}</dd></div>
       </dl>
-      <fieldset disabled aria-describedby="automatic-continuity-status">
-        <button type="button">Verificar paciente y autorización</button>
-      </fieldset>
-      <h4>Trámites activos</h4>
-      <p id="automatic-continuity-status">La recuperación sin códigos se habilitará cuando la API central pueda acreditar esta atención.</p>
+      {!institutional ? <>
+        <p>El paciente debe autorizar a este asesor desde su sesión. El canal de origen entrega el consentimiento firmado de forma privada al servidor.</p>
+        <button type="button" disabled={busy || !!activeId || !enabled} onClick={verifyPatient}>Comprobar autorización institucional</button>
+      </> : <>
+        <h4>Trámites activos</h4>
+        <button type="button" disabled={busy || !!pending} onClick={() => run(listActive)}>Actualizar trámites activos</button>
+        {activeJourneys?.length === 0 && <p>El paciente no tiene trámites activos.</p>}
+        {activeJourneys && activeJourneys.length > 0 && <ul className="event-list">
+          {activeJourneys.map((item) => <li key={item.id} className="break-words"><article className="fields">
+            <p>Folio: {item.id}</p>
+            <p>{item.type} · {item.status === "PENDING_CONFIRMATION" ? "Pendiente de confirmación" : item.status}</p>
+            <p>Creado: <time dateTime={item.createdAt}>{new Date(item.createdAt).toLocaleString("es-MX")}</time></p>
+            <p>Actualizado: <time dateTime={item.updatedAt}>{new Date(item.updatedAt).toLocaleString("es-MX")}</time></p>
+            <button type="button" disabled={busy || !!pending || activeId === item.id}
+              onClick={() => authorizeJourney(item.id)}>{activeId === item.id ? "Trámite seleccionado" : "Seleccionar trámite"}</button>
+          </article></li>)}
+        </ul>}
+        {!activeId && <button type="button" disabled={busy} onClick={close}>Cerrar atención institucional</button>}
+      </>}
     </section>
-    <h3>Alternativa con código de continuidad</h3>
+    <details>
+      <summary>Alternativa con código de continuidad</summary>
     <p>{activeId ? "Cierra el acceso al trámite antes de continuar otra atención." : "Ingresa el código de continuidad que recibió el paciente."}</p>
     <form onSubmit={redeem}>
-      <fieldset className="fields" disabled={busy || !!pending || !enabled || !!activeId}>
+      <fieldset className="fields" disabled={busy || !!pending || !enabled || !!activeId || institutional}>
         <label>Código de continuidad<input name="code" autoComplete="off" spellCheck={false}
           required minLength={12} maxLength={14} pattern={"(?:[0-9A-HJKMNP-TV-Za-hjkmnp-tv-z]{12}|[0-9A-HJKMNP-TV-Za-hjkmnp-tv-z]{4}(?:\\-[0-9A-HJKMNP-TV-Za-hjkmnp-tv-z]{4}){2})"} /></label>
         <button type="submit">Continuar atención</button>
@@ -267,13 +321,14 @@ export function OmnichannelPanel({ api, writable = false, enabled, frame, initia
     <details>
       <summary>Consultar con permiso de demostración</summary>
     <form onSubmit={open}>
-      <fieldset className="fields" disabled={busy || !!pending || !enabled || !!activeId}>
+      <fieldset className="fields" disabled={busy || !!pending || !enabled || !!activeId || institutional}>
         <label>UUID del trámite<input required value={journeyId} minLength={36} maxLength={36}
           onChange={(event) => setJourneyId(event.target.value)} /></label>
         <label>Permiso temporal<input name="grant" type="password" autoComplete="off" required minLength={43} maxLength={43} /></label>
         <button type="submit">Consultar trámite</button>
       </fieldset>
     </form>
+    </details>
     </details>
     <p role="status">{busy ? "Consultando el servicio… " : ""}{outcome} {message}</p>
     {activeId && <>
@@ -296,7 +351,7 @@ export function OmnichannelPanel({ api, writable = false, enabled, frame, initia
       </dl>
       {writable && view.canMarkPending && <button type="button" className="primary"
         disabled={busy || !!pending} onClick={() => publish(undefined, true)}>Dejar pendiente de confirmación</button>}
-      {writable && <fieldset className="fields" disabled={busy || !!pending}>
+      {writable && view.canWrite && <fieldset className="fields" disabled={busy || !!pending}>
         <form className="fields" onSubmit={publish}>
           <input type="hidden" name="type" value="JOURNEY_CONTEXT_UPDATED" />
           <label>UUID del estudio<input name="studyId" minLength={36} maxLength={36} /></label>
